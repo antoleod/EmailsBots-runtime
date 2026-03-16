@@ -1,6 +1,6 @@
 (() => {
   // utils.js
-  (function() {
+  (function () {
     const ns = window.__SN_SMART_EMAIL__ = window.__SN_SMART_EMAIL__ || {};
     ns.CONFIG = {
       BUTTON_ID: "sn-smart-email-generator",
@@ -33,7 +33,7 @@
   })();
 
   // servicenow.js
-  (function() {
+  (function () {
     const ns = window.__SN_SMART_EMAIL__ = window.__SN_SMART_EMAIL__ || {};
     const { CONFIG } = ns;
     const utils = ns.utils || {};
@@ -239,19 +239,164 @@
       servicenow.hidePreview(popup, popupDoc);
       return user;
     };
+    servicenow.getShortDescription = () => {
+      try {
+        const fromGForm = servicenow.safeGetField("short_description");
+        if (fromGForm) return fromGForm;
+      } catch (e) {
+      }
+      return servicenow.getFirstExistingValue([
+        "#sc_task\\.short_description",
+        "#incident\\.short_description",
+        "#ticket\\.short_description",
+        "#short_description",
+        'input[id="sc_task.short_description"]',
+        'input[id="incident.short_description"]',
+        'input[id="ticket.short_description"]',
+        'input[name="short_description"]',
+        'textarea[name="short_description"]'
+      ]);
+    };
   })();
 
   // templates.js
-  (function() {
+  (function () {
     const ns = window.__SN_SMART_EMAIL__ = window.__SN_SMART_EMAIL__ || {};
     const utils = ns.utils || {};
     const templates = ns.templates = ns.templates || {};
+    const TICKET_PATTERNS = {
+      incident: /^INC\d+$/i,
+      ritm: /^RITM\d+$/i,
+      sctask: /^SCTASK\d+$/i,
+      req: /^REQ\d+$/i
+    };
+    const REQUEST_CATEGORY_RULES = [
+      {
+        type: "schedule_smartphone_delivery_closure",
+        match: (text) => text.includes("schedule smartphone delivery, delivery and closure") || text.includes("schedule smartphone delivery") && text.includes("delivery and closure")
+      },
+      {
+        type: "iphone_replacement",
+        match: (text) => text.includes("iphone replacement") || text.includes("replacement plan")
+      },
+      {
+        type: "smartphone",
+        match: (text) => text.includes("smartphone") || text.includes("iphone") || text.includes("samsung")
+      },
+      {
+        type: "headset",
+        match: (text) => text.includes("headset")
+      },
+      {
+        type: "token",
+        match: (text) => text.includes("token") || text.includes("virtual token")
+      },
+      {
+        type: "mdm",
+        match: (text) => text.includes("mdm") || text.includes("mobile device management") || text.includes("intune")
+      },
+      {
+        type: "collection",
+        match: (text) => text.includes("collect") || text.includes("pickup") || text.includes("return old device")
+      },
+      {
+        type: "laptop",
+        match: (text) => text.includes("laptop") || text.includes("surface")
+      }
+    ];
+    const INCIDENT_TEMPLATE_LIBRARY = {
+      incident_acknowledgement: {
+        label: "Incident Acknowledgement",
+        subject: (ctx) => `Incident acknowledged - ${ctx.ticketLabel}`,
+        body: (ctx) => `${ctx.salutation}
+
+Thank you for contacting the IT Service Desk regarding the reported incident.
+
+This message confirms that your incident has been received and is currently under review by our support team. An initial assessment is in progress, and we will continue with the appropriate troubleshooting steps.
+
+${ctx.details}Should immediate action or additional coordination be required, we will contact you accordingly.
+
+${ctx.signature}`
+      },
+      incident_follow_up: {
+        label: "Incident Follow-up / Request for Information",
+        subject: (ctx) => `Additional information required - ${ctx.ticketLabel}`,
+        body: (ctx) => `${ctx.salutation}
+
+We are following up on the reported incident and require a few additional details in order to continue the investigation efficiently.
+
+${ctx.details}At your convenience, please share any relevant information such as the exact behaviour observed, the time of occurrence, screenshots, error messages, impacted users, or recent changes related to the issue.
+
+Once this information is received, we will continue our analysis without delay.
+
+${ctx.signature}`
+      },
+      incident_resolution_proposal: {
+        label: "Incident Resolution Proposal",
+        subject: (ctx) => `Proposed resolution for ${ctx.ticketLabel}`,
+        body: (ctx) => `${ctx.salutation}
+
+Following our review of the reported incident, we have identified a proposed resolution path.
+
+${ctx.details}Based on the information currently available, we are ready to proceed with the corrective action or validation step required to restore normal service.
+
+Please confirm whether we may proceed, or let us know if the issue has already been resolved from your side.
+
+${ctx.signature}`
+      },
+      incident_closure_confirmation: {
+        label: "Incident Closure Confirmation",
+        subject: (ctx) => `Closure confirmation - ${ctx.ticketLabel}`,
+        body: (ctx) => `${ctx.salutation}
+
+We are contacting you to confirm whether the reported incident can now be considered resolved.
+
+${ctx.details}If the service is operating as expected, we will proceed with the closure of the incident. If the issue persists, please reply with the current status so that we may continue our investigation.
+
+Unless we receive further information indicating that support is still required, the ticket may be closed accordingly.
+
+${ctx.signature}`
+      },
+      incident_generic: {
+        label: "Generic Incident Communication",
+        subject: (ctx) => `Incident update - ${ctx.ticketLabel}`,
+        body: (ctx) => `${ctx.salutation}
+
+We are contacting you regarding the reported incident.
+
+${ctx.details}The case is being handled by the support team, and the current status remains under active review. We will provide further updates as soon as additional information becomes available.
+
+If you have any relevant update in the meantime, please feel free to share it by replying to this message.
+
+${ctx.signature}`
+      }
+    };
     function safeClean(value) {
       return typeof utils.cleanValue === "function" ? utils.cleanValue(value) : String(value || "").trim();
     }
     function safeNormalize(value) {
       if (typeof utils.normalize === "function") return utils.normalize(value);
       return safeClean(value).toLowerCase();
+    }
+    function joinParagraphs(parts) {
+      return parts.filter(Boolean).join("\n\n");
+    }
+    function getTicketLabel(ticket) {
+      return safeClean(ticket) || "Ticket";
+    }
+    function createContext({ user, ticket, shortDesc, desc, ci, device, ticketType, requestType }) {
+      return {
+        salutation: templates.buildSalutation(user),
+        signature: templates.buildSignature(),
+        details: templates.buildDetailsBlock({ device, ci, shortDesc, ticket }),
+        ticketLabel: getTicketLabel(ticket),
+        shortDesc: safeClean(shortDesc),
+        desc: safeClean(desc),
+        ci: safeClean(ci),
+        device: safeClean(device),
+        ticketType: safeClean(ticketType),
+        requestType: safeClean(requestType)
+      };
     }
     templates.buildSalutation = (user = {}) => {
       const firstName = safeClean(user.firstName);
@@ -261,17 +406,15 @@
       if (firstName) return `Dear ${firstName},`;
       return "Dear colleague,";
     };
-    templates.buildSignature = () => {
-      return "Kind regards,";
-    };
-    templates.buildDetailsBlock = ({ device, ci, shortDesc }) => {
+    templates.buildSignature = () => "Kind regards,";
+    templates.buildDetailsBlock = ({ device, ci, shortDesc, ticket }) => {
       const lines = [
+        safeClean(ticket) ? `Ticket: ${safeClean(ticket)}` : "",
         safeClean(device) ? `Device: ${safeClean(device)}` : "",
-        safeClean(ci) ? `PI / Configuration item: ${safeClean(ci)}` : "",
-        safeClean(shortDesc) ? `Request: ${safeClean(shortDesc)}` : ""
+        safeClean(ci) ? `Configuration item: ${safeClean(ci)}` : "",
+        safeClean(shortDesc) ? `Subject: ${safeClean(shortDesc)}` : ""
       ].filter(Boolean);
       return lines.length ? `${lines.join("\n")}
-
 ` : "";
     };
     templates.detectDevice = (rawText, ciText) => {
@@ -297,136 +440,210 @@
       if (text.includes("laptop")) return "LAPTOP";
       return "";
     };
-    templates.detectType = (text) => {
-      text = safeNormalize(text);
-      if (text.includes("schedule smartphone delivery, delivery and closure") || text.includes("schedule smartphone delivery") && text.includes("delivery and closure")) {
-        return "schedule_smartphone_delivery_closure";
-      }
-      if (text.includes("iphone replacement") || text.includes("replacement plan")) {
-        return "iphone_replacement";
-      }
-      if (text.includes("smartphone") || text.includes("iphone") || text.includes("samsung")) {
-        return "smartphone";
-      }
-      if (text.includes("headset")) return "headset";
-      if (text.includes("token") || text.includes("virtual token")) return "token";
-      if (text.includes("mdm") || text.includes("mobile device management") || text.includes("intune")) {
-        return "mdm";
-      }
-      if (text.includes("collect") || text.includes("pickup") || text.includes("return old device")) {
-        return "collection";
-      }
-      if (text.includes("laptop") || text.includes("surface")) return "laptop";
+    templates.detectTicketType = (ticket) => {
+      const cleanTicket = safeClean(ticket).toUpperCase();
+      if (TICKET_PATTERNS.incident.test(cleanTicket)) return "incident";
+      if (TICKET_PATTERNS.ritm.test(cleanTicket)) return "ritm";
+      if (TICKET_PATTERNS.sctask.test(cleanTicket)) return "sctask";
+      if (TICKET_PATTERNS.req.test(cleanTicket)) return "req";
       return "generic";
     };
-    templates.emailTemplate = (type, device, ci, user, ticket, shortDesc) => {
-      const salutation = templates.buildSalutation(user);
-      const signature = templates.buildSignature();
-      const details = templates.buildDetailsBlock({ device, ci, shortDesc });
-      const cleanTicket = safeClean(ticket) || "Ticket";
-      const cleanDevice = safeClean(device);
+    templates.isIncidentTicket = (ticket) => templates.detectTicketType(ticket) === "incident";
+    templates.detectRequestType = (text) => {
+      const normalized = safeNormalize(text);
+      for (const rule of REQUEST_CATEGORY_RULES) {
+        if (rule.match(normalized)) return rule.type;
+      }
+      return "generic";
+    };
+    templates.detectType = (text, ticket) => {
+      const ticketType = templates.detectTicketType(ticket);
+      if (ticketType === "incident") return "incident_generic";
+      return templates.detectRequestType(text);
+    };
+    templates.getCategoryFromShortDescription = (shortDesc) => {
+      const value = safeNormalize(shortDesc);
+      if (value === "any other request related to outlook email and calendar") {
+        return "outlook_calendar";
+      }
+      if (value.includes("outlook") || value.includes("calendar")) {
+        return "outlook_calendar";
+      }
+      return "default";
+    };
+    templates.buildSuggestedTemplate = (templateId, ctx) => {
+      const template = INCIDENT_TEMPLATE_LIBRARY[templateId];
+      if (!template) return null;
+      return {
+        id: templateId,
+        label: template.label,
+        subject: safeClean(template.subject(ctx)),
+        body: safeClean(template.body(ctx))
+      };
+    };
+    templates.getSuggestedTemplates = ({ user, ticket, shortDesc, desc, ci, device, ticketType }) => {
+      const ctx = createContext({
+        user,
+        ticket,
+        shortDesc,
+        desc,
+        ci,
+        device,
+        ticketType,
+        requestType: templates.detectRequestType(`${safeClean(shortDesc)} ${safeClean(desc)} ${safeClean(ci)}`)
+      });
+      const category = templates.getCategoryFromShortDescription(shortDesc);
+      const suggestions = [];
+      if (category === "outlook_calendar") {
+        suggestions.push(
+          {
+            id: "outlook_calendar_generic",
+            label: "Generic Outlook / Calendar Request",
+            subject: `Outlook and calendar service request - ${ctx.ticketLabel}`,
+            body: joinParagraphs([
+              ctx.salutation,
+              "We are contacting you regarding your request related to Outlook email and calendar services.",
+              "Your request has been received and is currently under review by the support team.",
+              `${ctx.details}If any clarification, approval, or additional detail is required, we will contact you accordingly.`,
+              ctx.signature
+            ])
+          },
+          {
+            id: "outlook_distribution_list",
+            label: "Distribution List / Mail Group Request",
+            subject: `Distribution list request - ${ctx.ticketLabel}`,
+            body: joinParagraphs([
+              ctx.salutation,
+              "We are contacting you regarding your request related to a distribution list or mail-enabled group.",
+              "The request is currently being reviewed so that the required change can be processed accurately and in line with the defined access model.",
+              `${ctx.details}If needed, we may contact you to confirm the list name, requested action, ownership, or target recipients.`,
+              ctx.signature
+            ])
+          },
+          {
+            id: "outlook_shared_mailbox_access",
+            label: "Shared Mailbox / Access / Delegation Request",
+            subject: `Shared mailbox or delegation request - ${ctx.ticketLabel}`,
+            body: joinParagraphs([
+              ctx.salutation,
+              "We are contacting you regarding your request for shared mailbox access, mailbox delegation, or calendar permission changes.",
+              "The request has been received and is currently under assessment by the support team.",
+              `${ctx.details}If required, we may follow up to confirm the mailbox name, requested permission level, approver, or business justification.`,
+              ctx.signature
+            ])
+          }
+        );
+      }
+      if (ticketType === "incident") {
+        Object.keys(INCIDENT_TEMPLATE_LIBRARY).forEach((templateId) => {
+          const template = templates.buildSuggestedTemplate(templateId, ctx);
+          if (template) suggestions.push(template);
+        });
+      }
+      return suggestions;
+    };
+    templates.emailTemplate = (type, device, ci, user, ticket, shortDesc, desc, ticketType) => {
+      const ctx = createContext({
+        user,
+        ticket,
+        shortDesc,
+        desc,
+        ci,
+        device,
+        ticketType,
+        requestType: type
+      });
+      if (ticketType === "incident") {
+        return templates.buildSuggestedTemplate("incident_generic", ctx);
+      }
       const map = {
         schedule_smartphone_delivery_closure: () => ({
-          subject: `Schedule smartphone delivery - ${cleanTicket}`,
-          body: `${salutation}
-
-We are contacting you regarding the delivery of your corporate smartphone.
-
-Your new device has been prepared and is ready for handover${cleanDevice ? ` (${cleanDevice})` : ""}.
-
-As part of the iPhone Replacement Plan 2026, we would be grateful if you could let us know your availability so that we may arrange the handover and complete the request afterwards.
-
-${details}${signature}`
+          subject: `Corporate smartphone handover scheduling - ${ctx.ticketLabel}`,
+          body: joinParagraphs([
+            ctx.salutation,
+            `We are contacting you regarding the handover of your corporate smartphone${ctx.device ? ` (${ctx.device})` : ""}.`,
+            "The device is prepared and ready for delivery. To complete the fulfilment process and close the related activity, we kindly ask you to confirm your availability.",
+            ctx.details + "Once your availability is confirmed, we will arrange the handover accordingly.",
+            ctx.signature
+          ])
         }),
         iphone_replacement: () => ({
-          subject: `Smartphone delivery - ${cleanTicket}`,
-          body: `${salutation}
-
-We are contacting you regarding the delivery of your corporate smartphone and the completion of the related request.
-
-Your new device has been prepared and is ready for handover${cleanDevice ? ` (${cleanDevice})` : ""}.
-
-As part of the iPhone Replacement Plan 2026, we would be grateful if you could let us know your availability so that we may arrange the handover and proceed with the closure of the request.
-
-${details}${signature}`
+          subject: `iPhone replacement coordination - ${ctx.ticketLabel}`,
+          body: joinParagraphs([
+            ctx.salutation,
+            `We are contacting you regarding your corporate smartphone replacement${ctx.device ? ` (${ctx.device})` : ""}.`,
+            "The replacement device is ready, and the request can proceed to the delivery stage.",
+            ctx.details + "Please share your availability so that we may coordinate the handover and complete the related request.",
+            ctx.signature
+          ])
         }),
         smartphone: () => ({
-          subject: `Smartphone delivery - ${cleanTicket}`,
-          body: `${salutation}
-
-We are contacting you regarding your corporate smartphone${cleanDevice ? ` (${cleanDevice})` : ""}.
-
-Your device is now ready for handover.
-
-${details}Please let us know your availability so that we may arrange the delivery.
-
-${signature}`
+          subject: `Corporate smartphone request update - ${ctx.ticketLabel}`,
+          body: joinParagraphs([
+            ctx.salutation,
+            `We are contacting you regarding your corporate smartphone request${ctx.device ? ` (${ctx.device})` : ""}.`,
+            "The required action is ready to move forward.",
+            ctx.details + "Please let us know your availability so that we may arrange the handover or next operational step.",
+            ctx.signature
+          ])
         }),
         laptop: () => ({
-          subject: `Laptop delivery - ${cleanTicket}`,
-          body: `${salutation}
-
-We are contacting you regarding your corporate laptop${cleanDevice ? ` (${cleanDevice})` : ""}.
-
-Your device is now ready for handover.
-
-${details}Please let us know your availability so that we may arrange the delivery.
-
-${signature}`
+          subject: `Corporate laptop request update - ${ctx.ticketLabel}`,
+          body: joinParagraphs([
+            ctx.salutation,
+            `We are contacting you regarding your corporate laptop request${ctx.device ? ` (${ctx.device})` : ""}.`,
+            "The device is prepared and ready for the next fulfilment step.",
+            ctx.details + "Please confirm your availability so that we may arrange the handover.",
+            ctx.signature
+          ])
         }),
         headset: () => ({
-          subject: `Headset handover - ${cleanTicket}`,
-          body: `${salutation}
-
-We are contacting you regarding your headset request.
-
-Your equipment is ready for collection or handover.
-
-${details}Please let us know your availability so that we may arrange this with you.
-
-${signature}`
+          subject: `Headset request update - ${ctx.ticketLabel}`,
+          body: joinParagraphs([
+            ctx.salutation,
+            "We are contacting you regarding your headset request.",
+            "The equipment is available and ready for handover or collection.",
+            ctx.details + "Please let us know your availability so that we may coordinate the next step.",
+            ctx.signature
+          ])
         }),
         token: () => ({
-          subject: `Token setup assistance - ${cleanTicket}`,
-          body: `${salutation}
-
-We are contacting you regarding the setup of your authentication token.
-
-We would like to assist you with the configuration and final verification.
-
-Please let us know your availability so that we may proceed.
-
-${signature}`
+          subject: `Authentication token support - ${ctx.ticketLabel}`,
+          body: joinParagraphs([
+            ctx.salutation,
+            "We are contacting you regarding the setup or activation of your authentication token.",
+            "The support team is ready to assist with the required configuration and validation steps.",
+            "Please let us know your availability so that we may continue.",
+            ctx.signature
+          ])
         }),
         mdm: () => ({
-          subject: `MDM setup - ${cleanTicket}`,
-          body: `${salutation}
-
-We are contacting you regarding the Mobile Device Management (MDM) setup of your device${cleanDevice ? ` (${cleanDevice})` : ""}.
-
-${details}Please let us know your availability so that we may continue with the configuration.
-
-${signature}`
+          subject: `Mobile device management request - ${ctx.ticketLabel}`,
+          body: joinParagraphs([
+            ctx.salutation,
+            `We are contacting you regarding the Mobile Device Management configuration of your device${ctx.device ? ` (${ctx.device})` : ""}.`,
+            "The request is ready to proceed with the required configuration actions.",
+            ctx.details + "Please let us know your availability so that we may continue.",
+            ctx.signature
+          ])
         }),
         collection: () => ({
-          subject: `Collection of previous device - ${cleanTicket}`,
-          body: `${salutation}
-
-We would like to arrange the collection of your previous device.
-
-${details}Please let us know your availability so that we may organise the pickup or handover.
-
-${signature}`
+          subject: `Previous device collection - ${ctx.ticketLabel}`,
+          body: joinParagraphs([
+            ctx.salutation,
+            "We would like to coordinate the collection of the previous device related to your request.",
+            ctx.details + "Please let us know your availability so that we may organise the pickup or handover.",
+            ctx.signature
+          ])
         }),
         generic: () => ({
-          subject: `IT equipment follow-up - ${cleanTicket}`,
-          body: `${salutation}
-
-We are contacting you regarding your IT equipment request.
-
-${details}Please let us know your availability so that we may proceed with the next step.
-
-${signature}`
+          subject: `IT service request follow-up - ${ctx.ticketLabel}`,
+          body: joinParagraphs([
+            ctx.salutation,
+            "We are contacting you regarding your IT service request.",
+            ctx.details + "Please share any additional information or confirmation required so that we may proceed with the next step.",
+            ctx.signature
+          ])
         })
       };
       return (map[type] || map.generic)();
@@ -434,24 +651,35 @@ ${signature}`
     templates.buildMail = ({ user, ticket, shortDesc, desc, ci }) => {
       const fullText = `${safeClean(shortDesc)} ${safeClean(desc)} ${safeClean(ci)}`;
       const device = safeClean(templates.detectDevice(fullText, ci));
-      const type = safeClean(templates.detectType(fullText)) || "generic";
-      const mail = templates.emailTemplate(type, device, ci, user, ticket, shortDesc);
+      const ticketType = templates.detectTicketType(ticket);
+      const type = safeClean(templates.detectType(fullText, ticket)) || "generic";
+      const mail = templates.emailTemplate(type, device, ci, user, ticket, shortDesc, desc, ticketType);
       const recipient = safeClean(user && user.email);
       return {
         ...mail,
         type,
+        ticketType,
         device,
         ci: safeClean(ci),
         shortDesc: safeClean(shortDesc),
         desc: safeClean(desc),
-        ticket: safeClean(ticket) || "Ticket",
+        ticket: getTicketLabel(ticket),
+        suggestedTemplates: templates.getSuggestedTemplates({
+          user,
+          ticket,
+          shortDesc,
+          desc,
+          ci,
+          device,
+          ticketType
+        }),
         mailto: `mailto:${encodeURIComponent(recipient)}?subject=${encodeURIComponent(safeClean(mail.subject))}&body=${encodeURIComponent(safeClean(mail.body))}`
       };
     };
   })();
 
   // ui.js
-  (function() {
+  (function () {
     const ns = window.__SN_SMART_EMAIL__ = window.__SN_SMART_EMAIL__ || {};
     const CONFIG = ns.CONFIG || {
       BUTTON_ID: "sn-smart-email-generator",
@@ -469,6 +697,10 @@ ${signature}`
     const servicenow = ns.servicenow || {};
     const ui = ns.ui = ns.ui || {};
     const UI_CONTAINER_ID = "sn-smart-email-ui-container";
+    const UI_CLOSE_BUTTON_ID = "sn-smart-email-close-btn";
+    function clamp(value, min, max) {
+      return Math.min(Math.max(value, min), max);
+    }
     function getAllDocs() {
       if (servicenow && typeof servicenow.getAllDocs === "function") return servicenow.getAllDocs();
       return [document];
@@ -517,6 +749,7 @@ ${signature}`
       return doc.body || doc.documentElement || null;
     }
     function positionContainer(container) {
+      if (container && container.dataset && container.dataset.dragged === "true") return;
       try {
         const doc = container.ownerDocument || document;
         const w = doc.defaultView || window;
@@ -529,6 +762,69 @@ ${signature}`
         container.style.top = `${topPx}px`;
       } catch (e) {
       }
+    }
+    function makeContainerDraggable(container) {
+      if (!container || container.__snSmartEmailDragBound) return;
+      container.__snSmartEmailDragBound = true;
+      const onPointerDown = (event) => {
+        const target = event.target;
+        if (!target || target.closest(`button[id="${UI_CLOSE_BUTTON_ID}"]`)) return;
+        if (target.tagName !== "BUTTON" && !target.closest("button")) return;
+        const doc = container.ownerDocument || document;
+        const w = doc.defaultView || window;
+        const rect = container.getBoundingClientRect();
+        const offsetX = event.clientX - rect.left;
+        const offsetY = event.clientY - rect.top;
+        container.dataset.dragged = "true";
+        container.style.right = "auto";
+        container.style.bottom = "auto";
+        container.style.left = `${rect.left}px`;
+        container.style.top = `${rect.top}px`;
+        container.style.cursor = "grabbing";
+        const onPointerMove = (moveEvent) => {
+          const maxLeft = Math.max((w.innerWidth || 0) - rect.width - 8, 8);
+          const maxTop = Math.max((w.innerHeight || 0) - rect.height - 8, 8);
+          const nextLeft = clamp(moveEvent.clientX - offsetX, 8, maxLeft);
+          const nextTop = clamp(moveEvent.clientY - offsetY, 8, maxTop);
+          container.style.left = `${nextLeft}px`;
+          container.style.top = `${nextTop}px`;
+        };
+        const stopDragging = () => {
+          container.style.cursor = "grab";
+          w.removeEventListener("pointermove", onPointerMove);
+          w.removeEventListener("pointerup", stopDragging);
+        };
+        w.addEventListener("pointermove", onPointerMove);
+        w.addEventListener("pointerup", stopDragging);
+      };
+      container.style.cursor = "grab";
+      container.addEventListener("pointerdown", onPointerDown);
+    }
+    function ensureCloseButton(container) {
+      const doc = container.ownerDocument || document;
+      let button = doc.getElementById(UI_CLOSE_BUTTON_ID);
+      if (button) return button;
+      button = doc.createElement("button");
+      button.id = UI_CLOSE_BUTTON_ID;
+      button.type = "button";
+      button.textContent = "Close";
+      button.setAttribute("aria-label", "Close smart email controls");
+      Object.assign(button.style, {
+        background: "#ffffff",
+        color: "#1f2937",
+        border: "1px solid #cbd5e1",
+        padding: "10px 12px",
+        borderRadius: "8px",
+        cursor: "pointer",
+        boxShadow: "0 2px 10px rgba(0,0,0,.08)",
+        fontSize: "13px",
+        fontFamily: "Arial, sans-serif"
+      });
+      button.addEventListener("click", () => {
+        container.remove();
+      });
+      container.appendChild(button);
+      return button;
     }
     function ensureContainer() {
       for (const doc of getAllDocs()) {
@@ -552,6 +848,8 @@ ${signature}`
         alignItems: "center"
       });
       (primaryDoc.body || primaryDoc.documentElement).appendChild(container);
+      ensureCloseButton(container);
+      makeContainerDraggable(container);
       positionContainer(container);
       try {
         const w = primaryDoc.defaultView;
@@ -597,6 +895,15 @@ ${signature}`
       ui.removeActionButton();
       ui.removeMainButton();
     };
+    ui.closeControls = () => {
+      for (const doc of getAllDocs()) {
+        try {
+          const container = doc.getElementById(UI_CONTAINER_ID);
+          if (container) container.remove();
+        } catch (e) {
+        }
+      }
+    };
     ui.openMailto = (mailto) => {
       window.location.href = mailto;
     };
@@ -611,7 +918,7 @@ ${signature}`
         // Mandatory: fully hidden, no layout space, not user-clickable.
         display: "none"
       });
-      btn.addEventListener("click", function() {
+      btn.addEventListener("click", function () {
         ui.openMailto(mail.mailto);
       });
       btn.setAttribute("aria-hidden", "true");
@@ -640,12 +947,12 @@ ${signature}`
         fontFamily: "Arial, sans-serif"
       });
       b.addEventListener("click", onClick);
-      container.appendChild(b);
+      container.insertBefore(b, ensureCloseButton(container));
     };
   })();
 
   // core.js
-  (function() {
+  (function () {
     const ns = window.__SN_SMART_EMAIL__ = window.__SN_SMART_EMAIL__ || {};
     const CONFIG = ns.CONFIG || {
       CI_SELECTORS: [
@@ -690,7 +997,7 @@ ${signature}`
   })();
 
   // entry.js
-  (function() {
+  (function () {
     const ns = window.__SN_SMART_EMAIL__;
     if (!ns || !ns.core || typeof ns.core.init !== "function") {
       console.error("[SN Smart Email] core.init not found");
