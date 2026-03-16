@@ -156,6 +156,30 @@
       }
       return "";
     };
+    servicenow.getFieldDisplayValue = (fieldName) => {
+      const docs = servicenow.getAllDocs();
+      const selectors = [
+        `#sys_display\\.${fieldName.replace(/\./g, "\\.")}`,
+        `#${fieldName.replace(/\./g, "\\.")}`,
+        `input[id="sys_display.${fieldName}"]`,
+        `input[id="${fieldName}"]`,
+        `input[name="${fieldName}"]`,
+        `textarea[id="${fieldName}"]`,
+        `textarea[name="${fieldName}"]`
+      ];
+      for (const doc of docs) {
+        for (const selector of selectors) {
+          try {
+            const el = doc.querySelector(selector);
+            if (!el) continue;
+            const value = utils.cleanValue(el.value || el.innerText || el.textContent || "");
+            if (value) return value;
+          } catch (e) {
+          }
+        }
+      }
+      return "";
+    };
     servicenow.getUserFromPopup = (popup) => {
       return {
         firstName: servicenow.getPopupValue(popup, [
@@ -177,6 +201,65 @@
           'input[id="sys_user.email"]'
         ])
       };
+    };
+    servicenow.getUserFromForm = () => {
+      const gf = servicenow.getBestGForm();
+      const fieldCandidates = [
+        "requested_for",
+        "request.requested_for",
+        "caller_id",
+        "opened_for",
+        "u_requested_for"
+      ];
+      const user = {
+        firstName: "",
+        lastName: "",
+        email: ""
+      };
+      for (const fieldName of fieldCandidates) {
+        try {
+          if (!gf) continue;
+          const displayValue = utils.cleanValue(gf.getDisplayValue && gf.getDisplayValue(fieldName)) || servicenow.getFieldDisplayValue(fieldName);
+          if (displayValue && !user.firstName && !user.lastName) {
+            const parts = displayValue.split(/\s+/).filter(Boolean);
+            if (parts.length === 1) {
+              user.firstName = parts[0];
+            } else if (parts.length > 1) {
+              user.firstName = parts[0];
+              user.lastName = parts.slice(1).join(" ");
+            }
+          }
+        } catch (e) {
+        }
+      }
+      const emailCandidates = [
+        "u_email",
+        "email",
+        "caller_id.email",
+        "requested_for.email",
+        "opened_for.email"
+      ];
+      for (const fieldName of emailCandidates) {
+        try {
+          const fromForm = utils.cleanValue(gf && gf.getValue && gf.getValue(fieldName)) || servicenow.getFieldDisplayValue(fieldName);
+          if (fromForm && fromForm.includes("@")) {
+            user.email = fromForm;
+            break;
+          }
+        } catch (e) {
+        }
+      }
+      return user;
+    };
+    servicenow.getUserFromSession = () => {
+      try {
+        const raw = sessionStorage.getItem(CONFIG.STORAGE_KEY);
+        if (!raw) return null;
+        const user = JSON.parse(raw);
+        if (user && utils.cleanValue(user.email)) return user;
+      } catch (e) {
+      }
+      return null;
     };
     servicenow.hidePreview = (popup, popupDoc = document) => {
       if (!popup) return false;
@@ -238,6 +321,68 @@
       sessionStorage.setItem(CONFIG.STORAGE_KEY, JSON.stringify(user));
       servicenow.hidePreview(popup, popupDoc);
       return user;
+    };
+    servicenow.getUserContext = async () => {
+      try {
+        const previewUser = await servicenow.getRequestedForFromPreview();
+        if (utils.cleanValue(previewUser.email)) return previewUser;
+      } catch (e) {
+        utils.log("Preview-based user lookup unavailable, using fallback.", e);
+      }
+      const formUser = servicenow.getUserFromForm();
+      if (utils.cleanValue(formUser.email)) {
+        sessionStorage.setItem(CONFIG.STORAGE_KEY, JSON.stringify(formUser));
+        return formUser;
+      }
+      const sessionUser = servicenow.getUserFromSession();
+      if (sessionUser) return sessionUser;
+      return { firstName: "", lastName: "", email: "" };
+    };
+    servicenow.composeWorkNote = ({ user, mail, ticket }) => {
+      const recipient = utils.cleanValue(user && user.email) || "the user";
+      const lines = [
+        `Email has sent for ${recipient}.`,
+        `Ticket: ${utils.cleanValue(ticket) || "Ticket"}`,
+        `Subject: ${utils.cleanValue(mail && mail.subject)}`,
+        "",
+        utils.cleanValue(mail && mail.body)
+      ];
+      return lines.filter((line, index) => line || index === 3).join("\n");
+    };
+    servicenow.setWorkNotesDraft = (text) => {
+      const value = utils.cleanValue(text);
+      if (!value) return false;
+      const gf = servicenow.getBestGForm();
+      try {
+        if (gf && typeof gf.setValue === "function") {
+          gf.setValue("work_notes", value);
+          return true;
+        }
+      } catch (e) {
+        utils.log("g_form.setValue(work_notes) failed", e);
+      }
+      const docs = servicenow.getAllDocs();
+      const selectors = [
+        "#activity-stream-work_notes-textarea",
+        "#work_notes",
+        'textarea[id="work_notes"]',
+        'textarea[name="work_notes"]',
+        'textarea[id*="work_notes"]'
+      ];
+      for (const doc of docs) {
+        for (const selector of selectors) {
+          try {
+            const el = doc.querySelector(selector);
+            if (!el) continue;
+            el.value = value;
+            el.dispatchEvent(new Event("input", { bubbles: true }));
+            el.dispatchEvent(new Event("change", { bubbles: true }));
+            return true;
+          } catch (e) {
+          }
+        }
+      }
+      return false;
     };
     servicenow.getShortDescription = () => {
       try {
@@ -807,17 +952,21 @@ ${ctx.signature}`
       button = doc.createElement("button");
       button.id = UI_CLOSE_BUTTON_ID;
       button.type = "button";
-      button.textContent = "Close";
+      button.textContent = "X";
       button.setAttribute("aria-label", "Close smart email controls");
       Object.assign(button.style, {
-        background: "#ffffff",
-        color: "#1f2937",
-        border: "1px solid #cbd5e1",
-        padding: "10px 12px",
-        borderRadius: "8px",
+        background: "#fff1f2",
+        color: "#b42318",
+        border: "1px solid #fda29b",
+        width: "28px",
+        height: "28px",
+        padding: "0",
+        borderRadius: "999px",
         cursor: "pointer",
-        boxShadow: "0 2px 10px rgba(0,0,0,.08)",
-        fontSize: "13px",
+        boxShadow: "0 2px 8px rgba(0,0,0,.08)",
+        fontSize: "12px",
+        fontWeight: "700",
+        lineHeight: "1",
         fontFamily: "Arial, sans-serif"
       });
       button.addEventListener("click", () => {
@@ -970,7 +1119,7 @@ ${ctx.signature}`
     core.run = async () => {
       try {
         if (ui && typeof ui.purgeToasts === "function") ui.purgeToasts();
-        const user = await servicenow.getRequestedForFromPreview();
+        const user = await servicenow.getUserContext();
         const ticket = utils.cleanValue(servicenow.safeGetField("number")) || "Ticket";
         const shortDesc = utils.cleanValue(servicenow.safeGetField("short_description"));
         const desc = utils.cleanValue(servicenow.safeGetField("description"));
@@ -985,6 +1134,9 @@ ${ctx.signature}`
           cmdb_ci: servicenow.getFirstExistingValue(CONFIG.CI_SELECTORS),
           detected_type: mail.type
         });
+        const workNoteDraft = servicenow.composeWorkNote({ user, mail, ticket });
+        const workNotesPrepared = servicenow.setWorkNotesDraft(workNoteDraft);
+        utils.log("Work notes prepared:", workNotesPrepared);
         ui.openMailto(mail.mailto);
       } catch (err) {
         utils.log("Run failed:", err);
