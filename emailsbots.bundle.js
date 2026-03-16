@@ -903,7 +903,7 @@ ${ctx.signature}`
             ctx.salutation,
             `We are contacting you regarding the handover of your corporate smartphone${ctx.device ? ` (${ctx.device})` : ""}.`,
             "The device is prepared and ready for delivery. To complete the fulfilment process and close the related activity, we kindly ask you to confirm your availability.",
-            ctx.details + "Once your availability is confirmed, we will arrange the handover accordingly.",
+            "Once your availability is confirmed, we will arrange the handover accordingly.",
             ctx.signature
           ])
         }),
@@ -913,7 +913,7 @@ ${ctx.signature}`
             ctx.salutation,
             `We are contacting you regarding your corporate smartphone replacement${ctx.device ? ` (${ctx.device})` : ""}.`,
             "The replacement device is ready, and the request can proceed to the delivery stage.",
-            ctx.details + "Please share your availability so that we may coordinate the handover and complete the related request.",
+            "Please share your availability so that we may coordinate the handover and complete the related request.",
             ctx.signature
           ])
         }),
@@ -923,7 +923,7 @@ ${ctx.signature}`
             ctx.salutation,
             `We are contacting you regarding your corporate smartphone request${ctx.device ? ` (${ctx.device})` : ""}.`,
             "The required action is ready to move forward.",
-            ctx.details + "Please let us know your availability so that we may arrange the handover or next operational step.",
+            "Please let us know your availability so that we may arrange the handover or next operational step.",
             ctx.signature
           ])
         }),
@@ -933,7 +933,7 @@ ${ctx.signature}`
             ctx.salutation,
             `We are contacting you regarding your corporate laptop request${ctx.device ? ` (${ctx.device})` : ""}.`,
             "The device is prepared and ready for the next fulfilment step.",
-            ctx.details + "Please confirm your availability so that we may arrange the handover.",
+            "Please confirm your availability so that we may arrange the handover.",
             ctx.signature
           ])
         }),
@@ -943,7 +943,7 @@ ${ctx.signature}`
             ctx.salutation,
             "We are contacting you regarding your headset request.",
             "The equipment is available and ready for handover or collection.",
-            ctx.details + "Please let us know your availability so that we may coordinate the next step.",
+            "Please let us know your availability so that we may coordinate the next step.",
             ctx.signature
           ])
         }),
@@ -963,7 +963,7 @@ ${ctx.signature}`
             ctx.salutation,
             `We are contacting you regarding the Mobile Device Management configuration of your device${ctx.device ? ` (${ctx.device})` : ""}.`,
             "The request is ready to proceed with the required configuration actions.",
-            ctx.details + "Please let us know your availability so that we may continue.",
+            "Please let us know your availability so that we may continue.",
             ctx.signature
           ])
         }),
@@ -972,7 +972,7 @@ ${ctx.signature}`
           body: joinParagraphs([
             ctx.salutation,
             "We would like to coordinate the collection of the previous device related to your request.",
-            ctx.details + "Please let us know your availability so that we may organise the pickup or handover.",
+            "Please let us know your availability so that we may organise the pickup or handover.",
             ctx.signature
           ])
         }),
@@ -981,7 +981,7 @@ ${ctx.signature}`
           body: joinParagraphs([
             ctx.salutation,
             "We are contacting you regarding your IT service request.",
-            ctx.details + "Please share any additional information or confirmation required so that we may proceed with the next step.",
+            "Please share any additional information or confirmation required so that we may proceed with the next step.",
             ctx.signature
           ])
         })
