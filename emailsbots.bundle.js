@@ -17,7 +17,8 @@
       PREVIEW_WAIT_MS: 2e4,
       POPUP_WAIT_MS: 5e3,
       STORAGE_KEY: "sn_requested_for_user_info",
-      STATE_STORAGE_KEY: "sn_smart_email_state"
+      STATE_STORAGE_KEY: "sn_smart_email_state",
+      POSITION_STORAGE_KEY: "sn_smart_email_launcher_position"
     };
     const utils = ns.utils = ns.utils || {};
     const runtime = ns.runtime = ns.runtime || {};
@@ -74,6 +75,7 @@
         activeRecordKey: "",
         pending: false,
         currentPanel: "",
+        launcherVisible: true,
         lastUser: null,
         lastMail: null,
         lastDebugFields: null,
@@ -96,7 +98,8 @@
           JSON.stringify({
             activeRecordKey: state.activeRecordKey,
             lastTemplateType: state.lastTemplateType,
-            pending: state.pending
+            pending: state.pending,
+            launcherVisible: state.launcherVisible !== false
           })
         );
       } catch (e) {
@@ -662,16 +665,8 @@ ${ctx.signature}`
       },
       incident_generic: {
         label: "Generic Incident Communication",
-        subject: (ctx) => `Incident update - ${ctx.ticketLabel}`,
-        body: (ctx) => `${ctx.salutation}
-
-We are contacting you regarding the reported incident.
-
-${ctx.details}The case is being handled by the support team, and the current status remains under active review. We will provide further updates as soon as additional information becomes available.
-
-If you have any relevant update in the meantime, please feel free to share it by replying to this message.
-
-${ctx.signature}`
+        subject: (ctx) => templates.buildIncidentEmailTemplate(ctx).subject,
+        body: (ctx) => templates.buildIncidentEmailTemplate(ctx).body
       }
     };
     function safeClean(value) {
@@ -687,6 +682,9 @@ ${ctx.signature}`
     function getTicketLabel(ticket) {
       return safeClean(ticket) || "Ticket";
     }
+    function stripTicketNoise(text) {
+      return safeClean(text).replace(/\b(?:inc|ritm|req|sctask)\d+\b/gi, "").replace(/\s+/g, " ").trim();
+    }
     function createContext({ user, ticket, shortDesc, desc, ci, device, ticketType, requestType }) {
       return {
         salutation: templates.buildSalutation(user),
@@ -701,6 +699,45 @@ ${ctx.signature}`
         requestType: safeClean(requestType)
       };
     }
+    templates.extractBestProblemLabel = ({ shortDesc, desc, device, ci }) => {
+      const cleanShort = stripTicketNoise(shortDesc);
+      const cleanDesc = stripTicketNoise(desc);
+      const cleanDevice = safeClean(device) || safeClean(ci);
+      const normalizedShort = safeNormalize(cleanShort);
+      const weakLabels = ["incident", "issue", "problem", "request", "support", "incident update"];
+      if (cleanShort && cleanShort.length >= 8 && !weakLabels.includes(normalizedShort)) {
+        return cleanShort.charAt(0).toLowerCase() + cleanShort.slice(1);
+      }
+      if (cleanDesc) {
+        const sentence = cleanDesc.split(/[\r\n.]+/).map((part) => part.trim()).find(Boolean);
+        if (sentence && sentence.length >= 8) {
+          return sentence.charAt(0).toLowerCase() + sentence.slice(1);
+        }
+      }
+      if (cleanDevice) return `the issue affecting your ${cleanDevice.toLowerCase()}`;
+      return "the issue you reported";
+    };
+    templates.buildIncidentEmailTemplate = (ctx) => {
+      const problemLabel = templates.extractBestProblemLabel({
+        shortDesc: ctx.shortDesc,
+        desc: ctx.desc,
+        device: ctx.device,
+        ci: ctx.ci
+      });
+      return {
+        label: "Incident Follow-up",
+        subject: `Incident update - ${ctx.ticketLabel}`,
+        body: joinParagraphs([
+          ctx.salutation,
+          `I am following up regarding ${problemLabel}.`,
+          "Could you please confirm whether you are still experiencing the problem, or if the situation has already been resolved?",
+          "If the issue persists, we can arrange an intervention, either on-site or remotely, to investigate further.",
+          "Please let me know your availability, including any suitable date and time slots, so we can schedule this accordingly.",
+          "Thank you in advance for your feedback.",
+          ctx.signature
+        ])
+      };
+    };
     templates.buildSalutation = (user = {}) => {
       const firstName = safeClean(user.firstName);
       const lastName = safeClean(user.lastName);
@@ -984,18 +1021,7 @@ ${ctx.signature}`
   // ui.js
   (function () {
     const ns = window.__SN_SMART_EMAIL__ = window.__SN_SMART_EMAIL__ || {};
-    const CONFIG = ns.CONFIG || {
-      BUTTON_ID: "sn-smart-email-generator",
-      PANEL_ID: "sn-smart-email-panel",
-      TOAST_ID: "sn-smart-email-toast",
-      PREVIEW_ID: "viewr.sc_task.request_item.request.requested_for",
-      CI_SELECTORS: [
-        "#sys_display\\.sc_task\\.cmdb_ci",
-        "#sys_display\\.sc_req_item\\.cmdb_ci",
-        "#sys_display\\.task\\.cmdb_ci",
-        'input[id*="cmdb_ci"]'
-      ]
-    };
+    const CONFIG = ns.CONFIG || {};
     const utils = ns.utils || {};
     const servicenow = ns.servicenow || {};
     const ui = ns.ui = ns.ui || {};
@@ -1005,14 +1031,11 @@ ${ctx.signature}`
       if (servicenow && typeof servicenow.getAllDocs === "function") return servicenow.getAllDocs();
       return [document];
     }
+    function clamp(value, min, max) {
+      return Math.min(Math.max(value, min), max);
+    }
     function findPrimaryDoc() {
       const docs = getAllDocs();
-      for (const doc of docs) {
-        try {
-          if (doc.getElementById(CONFIG.PREVIEW_ID)) return doc;
-        } catch (e) {
-        }
-      }
       for (const doc of docs) {
         try {
           const w = doc.defaultView;
@@ -1020,21 +1043,13 @@ ${ctx.signature}`
         } catch (e) {
         }
       }
-      for (const doc of docs) {
-        for (const sel of CONFIG.CI_SELECTORS || []) {
-          try {
-            if (doc.querySelector(sel)) return doc;
-          } catch (e) {
-          }
-        }
-      }
       return document;
     }
     function findFormRoot(doc) {
       const selectors = ["#sys_form", 'form[name="sys_form"]', "#sysparm_form", "form"];
-      for (const sel of selectors) {
+      for (const selector of selectors) {
         try {
-          const el = doc.querySelector(sel);
+          const el = doc.querySelector(selector);
           if (!el) continue;
           const rect = el.getBoundingClientRect && el.getBoundingClientRect();
           if (rect && rect.width && rect.width > 600) return el;
@@ -1043,19 +1058,175 @@ ${ctx.signature}`
       }
       return doc.body || doc.documentElement || null;
     }
+    function getSavedPosition() {
+      try {
+        const raw = localStorage.getItem(CONFIG.POSITION_STORAGE_KEY);
+        return raw ? JSON.parse(raw) : null;
+      } catch (e) {
+        return null;
+      }
+    }
+    function savePosition(position) {
+      try {
+        localStorage.setItem(CONFIG.POSITION_STORAGE_KEY, JSON.stringify(position));
+      } catch (e) {
+      }
+    }
     function positionContainer(container) {
+      if (!container) return;
+      const saved = getSavedPosition();
+      if (saved && Number.isFinite(saved.left) && Number.isFinite(saved.top)) {
+        container.style.left = `${saved.left}px`;
+        container.style.top = `${saved.top}px`;
+        container.style.right = "auto";
+        return;
+      }
       try {
         const doc = container.ownerDocument || document;
         const w = doc.defaultView || window;
         const formRoot = findFormRoot(doc);
         if (!w || !formRoot || typeof formRoot.getBoundingClientRect !== "function") return;
         const rect = formRoot.getBoundingClientRect();
-        const rightPx = Math.max((w.innerWidth || 0) - rect.right + 10, 12);
-        const topPx = Math.max(rect.top + 10, 68);
+        const rightPx = Math.max((w.innerWidth || 0) - rect.right + 14, 12);
+        const topPx = Math.max(rect.top + 12, 68);
         container.style.right = `${rightPx}px`;
         container.style.top = `${topPx}px`;
+        container.style.left = "auto";
       } catch (e) {
       }
+    }
+    function createBaseButton(doc) {
+      const button = doc.createElement("button");
+      button.type = "button";
+      Object.assign(button.style, {
+        border: "none",
+        borderRadius: "999px",
+        fontFamily: "'Segoe UI', Arial, sans-serif",
+        cursor: "pointer",
+        transition: "transform 120ms ease, box-shadow 180ms ease, background 180ms ease, opacity 180ms ease",
+        willChange: "transform"
+      });
+      return button;
+    }
+    function setLauncherLabel(button, label) {
+      if (button) button.textContent = label;
+    }
+    function attachButtonMotion(button) {
+      if (!button || button.__snMotionBound) return;
+      button.__snMotionBound = true;
+      button.addEventListener("mouseenter", () => {
+        button.style.transform = "translateY(-1px)";
+        button.style.boxShadow = "0 10px 22px rgba(11, 79, 138, 0.22)";
+      });
+      button.addEventListener("mouseleave", () => {
+        button.style.transform = "translateY(0)";
+        button.style.boxShadow = "0 8px 18px rgba(15, 23, 42, 0.16)";
+      });
+      button.addEventListener("mousedown", () => {
+        button.style.transform = "translateY(0) scale(0.98)";
+      });
+      button.addEventListener("mouseup", () => {
+        button.style.transform = "translateY(-1px)";
+      });
+    }
+    function createDraftLauncher(onDraftClick) {
+      const container = ensureContainer();
+      const doc = container.ownerDocument || document;
+      container.replaceChildren();
+      Object.assign(container.style, {
+        display: "flex",
+        alignItems: "center",
+        gap: "6px",
+        background: "rgba(255,255,255,0.92)",
+        backdropFilter: "blur(10px)",
+        border: "1px solid rgba(208, 213, 221, 0.9)",
+        borderRadius: "999px",
+        padding: "6px",
+        boxShadow: "0 10px 24px rgba(15, 23, 42, 0.14)"
+      });
+      const draftButton = createBaseButton(doc);
+      draftButton.id = CONFIG.BUTTON_ID;
+      setLauncherLabel(draftButton, "Draft");
+      Object.assign(draftButton.style, {
+        minWidth: "64px",
+        height: "34px",
+        padding: "0 14px",
+        background: "linear-gradient(135deg, #0b4f8a 0%, #1463a5 100%)",
+        color: "#ffffff",
+        fontSize: "12px",
+        fontWeight: "700",
+        boxShadow: "0 8px 18px rgba(15, 23, 42, 0.16)"
+      });
+      attachButtonMotion(draftButton);
+      draftButton.addEventListener("click", onDraftClick);
+      const closeButton = createBaseButton(doc);
+      closeButton.id = UI_CLOSE_BUTTON_ID;
+      closeButton.textContent = "X";
+      Object.assign(closeButton.style, {
+        width: "24px",
+        height: "24px",
+        padding: "0",
+        background: "#fff1f2",
+        color: "#b42318",
+        border: "1px solid #fda29b",
+        fontSize: "11px",
+        fontWeight: "800",
+        boxShadow: "none"
+      });
+      closeButton.addEventListener("mouseenter", () => {
+        closeButton.style.background = "#ffe4e8";
+      });
+      closeButton.addEventListener("mouseleave", () => {
+        closeButton.style.background = "#fff1f2";
+      });
+      closeButton.addEventListener("click", (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        closeDraftLauncher();
+      });
+      container.appendChild(draftButton);
+      container.appendChild(closeButton);
+      makeLauncherDraggable(container, draftButton, closeButton);
+      return { container, draftButton, closeButton };
+    }
+    function makeLauncherDraggable(container, draftButton, closeButton) {
+      if (!container || container.__snDragBound) return;
+      container.__snDragBound = true;
+      let dragState = null;
+      const doc = container.ownerDocument || document;
+      const w = doc.defaultView || window;
+      const onPointerMove = (event) => {
+        if (!dragState) return;
+        const nextLeft = clamp(event.clientX - dragState.offsetX, 8, Math.max((w.innerWidth || 0) - dragState.width - 8, 8));
+        const nextTop = clamp(event.clientY - dragState.offsetY, 8, Math.max((w.innerHeight || 0) - dragState.height - 8, 8));
+        container.style.left = `${nextLeft}px`;
+        container.style.top = `${nextTop}px`;
+        container.style.right = "auto";
+        savePosition({ left: nextLeft, top: nextTop });
+      };
+      const onPointerUp = () => {
+        dragState = null;
+        container.style.cursor = "grab";
+        w.removeEventListener("pointermove", onPointerMove);
+        w.removeEventListener("pointerup", onPointerUp);
+      };
+      const onPointerDown = (event) => {
+        const target = event.target;
+        if (!target || target === closeButton || target.closest(`#${UI_CLOSE_BUTTON_ID}`)) return;
+        if (target !== draftButton && !target.closest(`#${CONFIG.BUTTON_ID}`)) return;
+        const rect = container.getBoundingClientRect();
+        dragState = {
+          offsetX: event.clientX - rect.left,
+          offsetY: event.clientY - rect.top,
+          width: rect.width,
+          height: rect.height
+        };
+        container.style.cursor = "grabbing";
+        w.addEventListener("pointermove", onPointerMove);
+        w.addEventListener("pointerup", onPointerUp);
+      };
+      container.style.cursor = "grab";
+      container.addEventListener("pointerdown", onPointerDown);
     }
     function ensureContainer() {
       for (const doc of getAllDocs()) {
@@ -1071,12 +1242,9 @@ ${ctx.signature}`
       Object.assign(container.style, {
         position: "fixed",
         top: "72px",
-        right: "16px",
+        right: "18px",
         zIndex: "999999",
-        display: "flex",
-        flexDirection: "column",
-        gap: "6px",
-        alignItems: "flex-end"
+        userSelect: "none"
       });
       (primaryDoc.body || primaryDoc.documentElement).appendChild(container);
       positionContainer(container);
@@ -1085,71 +1253,45 @@ ${ctx.signature}`
         if (w && !container.__snSmartEmailBound) {
           container.__snSmartEmailBound = true;
           w.addEventListener("resize", () => positionContainer(container), { passive: true });
-          w.addEventListener("scroll", () => positionContainer(container), { passive: true });
         }
       } catch (e) {
       }
       return container;
     }
-    function buildBaseButton(doc, label) {
-      const button = doc.createElement("button");
-      button.type = "button";
-      button.textContent = label;
-      Object.assign(button.style, {
-        border: "none",
-        borderRadius: "999px",
-        cursor: "pointer",
+    function showToast(message, tone = "success") {
+      const container = ensureContainer();
+      const doc = container.ownerDocument || document;
+      ui.purgeToasts();
+      const toast = doc.createElement("div");
+      toast.id = CONFIG.TOAST_ID;
+      toast.textContent = utils.cleanValue(message);
+      Object.assign(toast.style, {
+        marginTop: "8px",
+        padding: "8px 10px",
+        borderRadius: "10px",
         fontSize: "12px",
-        lineHeight: "1",
-        fontFamily: "Arial, sans-serif"
+        fontFamily: "'Segoe UI', Arial, sans-serif",
+        color: tone === "error" ? "#b42318" : "#0f5132",
+        background: tone === "error" ? "#fff1f2" : "#ecfdf3",
+        border: tone === "error" ? "1px solid #fda29b" : "1px solid #abefc6",
+        boxShadow: "0 8px 18px rgba(15, 23, 42, 0.1)"
       });
-      return button;
+      container.appendChild(toast);
+      setTimeout(() => {
+        if (toast.isConnected) toast.remove();
+      }, 1600);
     }
-    function copyToClipboard(text) {
-      const value = utils.cleanValue(text);
-      if (!value) return Promise.resolve(false);
-      if (navigator.clipboard && typeof navigator.clipboard.writeText === "function") {
-        return navigator.clipboard.writeText(value).then(() => true, () => false);
-      }
-      try {
-        const ta = document.createElement("textarea");
-        ta.value = value;
-        ta.setAttribute("readonly", "true");
-        ta.style.position = "fixed";
-        ta.style.opacity = "0";
-        document.body.appendChild(ta);
-        ta.select();
-        const ok = document.execCommand("copy");
-        ta.remove();
-        return Promise.resolve(Boolean(ok));
-      } catch (e) {
-        return Promise.resolve(false);
-      }
+    function closeDraftLauncher() {
+      const state = utils.getRuntimeState();
+      state.launcherVisible = false;
+      utils.persistRuntimeState();
+      ui.closeControls();
     }
-    ui.toast = () => {
-    };
+    ui.toast = showToast;
     ui.purgeToasts = () => {
       for (const doc of getAllDocs()) {
         try {
           const old = doc.getElementById(CONFIG.TOAST_ID);
-          if (old) old.remove();
-        } catch (e) {
-        }
-      }
-    };
-    ui.removeMainButton = () => {
-      for (const doc of getAllDocs()) {
-        try {
-          const old = doc.getElementById(CONFIG.BUTTON_ID);
-          if (old) old.remove();
-        } catch (e) {
-        }
-      }
-    };
-    ui.removeDraftPanel = () => {
-      for (const doc of getAllDocs()) {
-        try {
-          const old = doc.getElementById(CONFIG.PANEL_ID);
           if (old) old.remove();
         } catch (e) {
         }
@@ -1164,129 +1306,53 @@ ${ctx.signature}`
         }
       }
     };
-    ui.cleanupTemporaryUi = () => {
-      ui.removeDraftPanel();
-      ui.purgeToasts();
-    };
     ui.openMailto = (mailto) => {
       window.location.href = mailto;
     };
-    ui.injectMainButton = (onClick) => {
-      ui.removeMainButton();
-      const container = ensureContainer();
-      const doc = container.ownerDocument || document;
-      const b = buildBaseButton(doc, "Draft");
-      b.id = CONFIG.BUTTON_ID;
-      Object.assign(b.style, {
-        background: "#0b4f8a",
-        color: "#ffffff",
-        padding: "8px 12px",
-        minWidth: "56px",
-        boxShadow: "0 2px 8px rgba(15, 23, 42, 0.18)",
-        fontWeight: "600"
-      });
-      b.addEventListener("click", onClick);
-      container.insertBefore(b, container.firstChild);
+    ui.setLauncherState = (label, status) => {
+      for (const doc of getAllDocs()) {
+        try {
+          const button = doc.getElementById(CONFIG.BUTTON_ID);
+          if (!button) continue;
+          setLauncherLabel(button, label || "Draft");
+          if (status === "busy") {
+            button.style.opacity = "0.9";
+            button.style.background = "linear-gradient(135deg, #1d4f91 0%, #0b4f8a 100%)";
+          } else if (status === "success") {
+            button.style.background = "linear-gradient(135deg, #127243 0%, #1f9d61 100%)";
+          } else if (status === "error") {
+            button.style.background = "linear-gradient(135deg, #b42318 0%, #d92d20 100%)";
+          } else {
+            button.style.opacity = "1";
+            button.style.background = "linear-gradient(135deg, #0b4f8a 0%, #1463a5 100%)";
+          }
+        } catch (e) {
+        }
+      }
     };
-    ui.showDraftPanel = ({ mail, onOpenDraft, onCopyEmail, onClose }) => {
-      ui.removeDraftPanel();
-      const container = ensureContainer();
-      const doc = container.ownerDocument || document;
-      const panel = doc.createElement("div");
-      panel.id = CONFIG.PANEL_ID;
-      Object.assign(panel.style, {
-        width: "252px",
-        background: "#ffffff",
-        color: "#111827",
-        border: "1px solid #d0d5dd",
-        borderRadius: "14px",
-        boxShadow: "0 12px 28px rgba(15, 23, 42, 0.16)",
-        padding: "12px"
-      });
-      const topRow = doc.createElement("div");
-      Object.assign(topRow.style, {
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "space-between",
-        gap: "8px",
-        marginBottom: "8px"
-      });
-      const title = doc.createElement("div");
-      title.textContent = "Draft ready";
-      Object.assign(title.style, {
-        fontSize: "13px",
-        fontWeight: "700",
-        color: "#101828"
-      });
-      const close = buildBaseButton(doc, "X");
-      close.id = UI_CLOSE_BUTTON_ID;
-      Object.assign(close.style, {
-        width: "24px",
-        height: "24px",
-        padding: "0",
-        background: "#fff1f2",
-        color: "#b42318",
-        border: "1px solid #fda29b",
-        fontWeight: "700"
-      });
-      close.addEventListener("click", onClose);
-      topRow.appendChild(title);
-      topRow.appendChild(close);
-      const meta = doc.createElement("div");
-      meta.textContent = utils.cleanValue(mail && mail.subject) || "Email prepared";
-      Object.assign(meta.style, {
-        fontSize: "12px",
-        lineHeight: "1.4",
-        color: "#475467",
-        marginBottom: "10px"
-      });
-      const actions = doc.createElement("div");
-      Object.assign(actions.style, {
-        display: "flex",
-        gap: "6px",
-        flexWrap: "wrap"
-      });
-      const openButton = buildBaseButton(doc, "Open draft");
-      Object.assign(openButton.style, {
-        background: "#0b4f8a",
-        color: "#ffffff",
-        padding: "8px 10px",
-        fontWeight: "600"
-      });
-      openButton.addEventListener("click", onOpenDraft);
-      const copyButton = buildBaseButton(doc, "Copy email");
-      Object.assign(copyButton.style, {
-        background: "#eaf2f9",
-        color: "#0b4f8a",
-        padding: "8px 10px",
-        border: "1px solid #bfd3e6",
-        fontWeight: "600"
-      });
-      copyButton.addEventListener("click", async () => {
-        const content = [utils.cleanValue(mail.subject), "", utils.cleanValue(mail.body)].join("\n");
-        const copied = await copyToClipboard(content);
-        if (typeof onCopyEmail === "function") onCopyEmail(copied);
-        copyButton.textContent = copied ? "Copied" : "Copy failed";
-        setTimeout(() => {
-          if (copyButton.isConnected) copyButton.textContent = "Copy email";
-        }, 1200);
-      });
-      const closeButton = buildBaseButton(doc, "Close");
-      Object.assign(closeButton.style, {
-        background: "#f8fafc",
-        color: "#344054",
-        padding: "8px 10px",
-        border: "1px solid #d0d5dd"
-      });
-      closeButton.addEventListener("click", onClose);
-      actions.appendChild(openButton);
-      actions.appendChild(copyButton);
-      actions.appendChild(closeButton);
-      panel.appendChild(topRow);
-      panel.appendChild(meta);
-      panel.appendChild(actions);
-      container.appendChild(panel);
-      return panel;
+    ui.hideLauncher = () => {
+      for (const doc of getAllDocs()) {
+        try {
+          const container = doc.getElementById(UI_CONTAINER_ID);
+          if (container) container.style.display = "none";
+        } catch (e) {
+        }
+      }
+    };
+    ui.showLauncher = () => {
+      for (const doc of getAllDocs()) {
+        try {
+          const container = doc.getElementById(UI_CONTAINER_ID);
+          if (container) container.style.display = "flex";
+        } catch (e) {
+        }
+      }
+    };
+    ui.createDraftLauncher = (onDraftClick) => createDraftLauncher(onDraftClick);
+    ui.makeLauncherDraggable = makeLauncherDraggable;
+    ui.closeDraftLauncher = closeDraftLauncher;
+    ui.injectMainButton = (onClick) => {
+      createDraftLauncher(onClick);
     };
   })();
 
@@ -1301,11 +1367,103 @@ ${ctx.signature}`
     function getState() {
       return utils.getRuntimeState();
     }
-    function cleanupTemporaryState(reason) {
+    function cleanupDraftState(reason) {
       const state = getState();
-      utils.log("Temporary cleanup", { reason, recordKey: state.activeRecordKey });
-      if (ui && typeof ui.cleanupTemporaryUi === "function") ui.cleanupTemporaryUi();
+      utils.log("Cleanup draft state", { reason, recordKey: state.activeRecordKey });
+      ui.purgeToasts && ui.purgeToasts();
       utils.clearRuntimeState({ preserveMount: true });
+    }
+    function getReporterEmail(ticketData) {
+      return utils.cleanValue(ticketData && ticketData.user && ticketData.user.email);
+    }
+    function fillComposerFields(payload) {
+      const docs = servicenow.getAllDocs ? servicenow.getAllDocs() : [document];
+      const selectors = {
+        to: ['input[name="recipients"]', 'input[id*="to"]', 'input[placeholder*="To"]'],
+        subject: ['input[name="subject"]', 'input[id*="subject"]'],
+        body: ['textarea[name="body"]', 'textarea[id*="body"]', '[contenteditable="true"]']
+      };
+      for (const doc of docs) {
+        try {
+          const toField = selectors.to.map((s) => doc.querySelector(s)).find(Boolean);
+          const subjectField = selectors.subject.map((s) => doc.querySelector(s)).find(Boolean);
+          const bodyField = selectors.body.map((s) => doc.querySelector(s)).find(Boolean);
+          if (toField && payload.to) {
+            toField.value = payload.to;
+            toField.dispatchEvent(new Event("input", { bubbles: true }));
+            toField.dispatchEvent(new Event("change", { bubbles: true }));
+            toField.dispatchEvent(new Event("blur", { bubbles: true }));
+          }
+          if (subjectField && payload.subject) {
+            subjectField.value = payload.subject;
+            subjectField.dispatchEvent(new Event("input", { bubbles: true }));
+            subjectField.dispatchEvent(new Event("change", { bubbles: true }));
+          }
+          if (bodyField && payload.body) {
+            if ("value" in bodyField) {
+              bodyField.value = payload.body;
+            } else {
+              bodyField.textContent = payload.body;
+            }
+            bodyField.dispatchEvent(new Event("input", { bubbles: true }));
+            bodyField.dispatchEvent(new Event("change", { bubbles: true }));
+          }
+          if (toField || subjectField || bodyField) return true;
+        } catch (e) {
+        }
+      }
+      return false;
+    }
+    async function copyEmailToClipboard(mail) {
+      const text = [utils.cleanValue(mail.subject), "", utils.cleanValue(mail.body)].join("\n");
+      if (navigator.clipboard && typeof navigator.clipboard.writeText === "function") {
+        try {
+          await navigator.clipboard.writeText(text);
+          return true;
+        } catch (e) {
+        }
+      }
+      try {
+        const ta = document.createElement("textarea");
+        ta.value = text;
+        ta.setAttribute("readonly", "true");
+        ta.style.position = "fixed";
+        ta.style.opacity = "0";
+        document.body.appendChild(ta);
+        ta.select();
+        const ok = document.execCommand("copy");
+        ta.remove();
+        return Boolean(ok);
+      } catch (e) {
+        return false;
+      }
+    }
+    function openEmailComposer(mail, ticketData, composerBridge) {
+      const to = getReporterEmail(ticketData);
+      const payload = {
+        to,
+        subject: utils.cleanValue(mail.subject),
+        body: utils.cleanValue(mail.body),
+        mailto: `mailto:${encodeURIComponent(to)}?subject=${encodeURIComponent(utils.cleanValue(mail.subject))}&body=${encodeURIComponent(utils.cleanValue(mail.body))}`
+      };
+      fillComposerFields(payload);
+      if (composerBridge && !composerBridge.closed) {
+        try {
+          composerBridge.document.title = "Opening draft...";
+          composerBridge.location.href = payload.mailto;
+          setTimeout(() => {
+            try {
+              composerBridge.close();
+            } catch (e) {
+            }
+          }, 800);
+        } catch (e) {
+          ui.openMailto(payload.mailto);
+        }
+      } else {
+        ui.openMailto(payload.mailto);
+      }
+      return payload;
     }
     function captureDebugFields(context, mail) {
       return {
@@ -1314,14 +1472,29 @@ ${ctx.signature}`
         ticket: context.ticket,
         short_description: context.shortDesc,
         description: context.desc,
-        cmdb_ci: context.ci,
-        template: mail.type,
-        ticketType: mail.ticketType
+        ci: context.ci,
+        template: mail.type
       };
+    }
+    function restoreLauncherAfterComposer() {
+      let restored = false;
+      const restore = () => {
+        if (restored) return;
+        restored = true;
+        ui.showLauncher && ui.showLauncher();
+        ui.setLauncherState && ui.setLauncherState("Opened", "success");
+        setTimeout(() => {
+          ui.setLauncherState && ui.setLauncherState("Draft", "idle");
+        }, 900);
+        window.removeEventListener("focus", restore);
+      };
+      window.addEventListener("focus", restore, { once: true });
+      setTimeout(restore, 2500);
     }
     core.run = async () => {
       const state = getState();
       const record = servicenow.getRecordContext();
+      let composerBridge = null;
       if (state.pending && state.activeRecordKey === record.recordKey) {
         utils.log("Run skipped: pending flow already active", { recordKey: record.recordKey });
         return;
@@ -1331,53 +1504,61 @@ ${ctx.signature}`
         return;
       }
       try {
+        try {
+          composerBridge = window.open("", "_blank");
+          if (composerBridge && composerBridge.document) {
+            composerBridge.document.write("<title>Opening draft...</title><p style='font-family:Arial,sans-serif;padding:16px'>Opening draft...</p>");
+          }
+        } catch (e) {
+        }
         state.pending = true;
         state.activeRecordKey = record.recordKey;
         state.locks[record.recordKey] = true;
+        state.launcherVisible = true;
         utils.persistRuntimeState();
-        if (ui && typeof ui.purgeToasts === "function") ui.purgeToasts();
-        if (ui && typeof ui.removeDraftPanel === "function") ui.removeDraftPanel();
-        const context = await servicenow.readContext();
+        ui.setLauncherState && ui.setLauncherState("Generating...", "busy");
+        const ticketData = await servicenow.readContext();
         const mail = templates.buildMail({
-          user: context.user,
-          ticket: context.ticket,
-          shortDesc: context.shortDesc,
-          desc: context.desc,
-          ci: context.ci
+          user: ticketData.user,
+          ticket: ticketData.ticket,
+          shortDesc: ticketData.shortDesc,
+          desc: ticketData.desc,
+          ci: ticketData.ci
         });
-        const workNoteDraft = servicenow.composeWorkNote({
-          user: context.user,
-          mail,
-          ticket: context.ticket
-        });
-        const workNotesPrepared = servicenow.setWorkNotesDraft(workNoteDraft);
-        state.lastUser = context.user;
+        state.lastUser = ticketData.user;
         state.lastMail = mail;
         state.lastTemplateType = mail.type;
-        state.lastDebugFields = captureDebugFields(context, mail);
-        utils.log("Draft prepared", {
-          table: context.table,
-          recordKey: context.recordKey,
-          template: mail.type,
-          workNotesPrepared
-        });
-        ui.showDraftPanel({
+        state.lastDebugFields = captureDebugFields(ticketData, mail);
+        const workNoteDraft = servicenow.composeWorkNote({
+          user: ticketData.user,
           mail,
-          onOpenDraft: () => {
-            utils.log("Opening draft", { recordKey: context.recordKey, template: mail.type });
-            ui.openMailto(mail.mailto);
-            cleanupTemporaryState("open-draft");
-          },
-          onCopyEmail: (copied) => {
-            utils.log("Copy email", { recordKey: context.recordKey, copied });
-          },
-          onClose: () => {
-            cleanupTemporaryState("close-panel");
-          }
+          ticket: ticketData.ticket
         });
+        servicenow.setWorkNotesDraft(workNoteDraft);
+        const copied = await copyEmailToClipboard(mail);
+        ui.toast && ui.toast(copied ? "Copied" : "Copy unavailable", copied ? "success" : "error");
+        ui.setLauncherState && ui.setLauncherState(copied ? "Copied" : "Opening...", copied ? "success" : "busy");
+        const composerPayload = openEmailComposer(mail, ticketData, composerBridge);
+        utils.log("Composer opened", {
+          recordKey: ticketData.recordKey,
+          table: ticketData.table,
+          to: composerPayload.to,
+          template: mail.type
+        });
+        ui.hideLauncher && ui.hideLauncher();
+        restoreLauncherAfterComposer();
+        cleanupDraftState("draft-opened");
       } catch (err) {
         utils.log("Run failed", err);
-        cleanupTemporaryState("run-error");
+        if (composerBridge && !composerBridge.closed) {
+          try {
+            composerBridge.close();
+          } catch (e) {
+          }
+        }
+        ui.setLauncherState && ui.setLauncherState("Retry", "error");
+        ui.toast && ui.toast("Draft generation failed", "error");
+        cleanupDraftState("run-error");
       } finally {
         const currentState = getState();
         currentState.pending = false;
@@ -1388,7 +1569,16 @@ ${ctx.signature}`
     core.init = () => {
       const state = getState();
       const record = servicenow.getRecordContext();
-      if (state.mountedRecordKey && state.mountedRecordKey === record.recordKey) {
+      const launcherAlreadyInDom = (servicenow.getAllDocs ? servicenow.getAllDocs() : [document]).some(
+        (doc) => {
+          try {
+            return Boolean(doc.getElementById((ns.CONFIG || {}).BUTTON_ID));
+          } catch (e) {
+            return false;
+          }
+        }
+      );
+      if (state.mountedRecordKey && state.mountedRecordKey === record.recordKey && launcherAlreadyInDom) {
         utils.log("Init skipped: launcher already mounted", { recordKey: record.recordKey });
         return;
       }
@@ -1397,17 +1587,18 @@ ${ctx.signature}`
           from: state.mountedRecordKey,
           to: record.recordKey
         });
-        if (ui && typeof ui.closeControls === "function") ui.closeControls();
+        ui.closeControls && ui.closeControls();
         utils.clearRuntimeState({ preserveMount: false });
       }
       const freshState = getState();
       freshState.mountedRecordKey = record.recordKey;
+      freshState.launcherVisible = true;
       utils.log("Init", {
         table: record.table,
         recordKey: record.recordKey
       });
-      if (ui && typeof ui.purgeToasts === "function") ui.purgeToasts();
-      if (ui && typeof ui.injectMainButton === "function") ui.injectMainButton(core.run);
+      ui.purgeToasts && ui.purgeToasts();
+      ui.injectMainButton && ui.injectMainButton(core.run);
     };
   })();
 
