@@ -6,6 +6,7 @@
       BUTTON_ID: "sn-smart-email-generator",
       ACTION_BUTTON_ID: "sn-open-outlook-draft-btn",
       TOAST_ID: "sn-smart-email-toast",
+      PANEL_ID: "sn-smart-email-panel",
       PREVIEW_ID: "viewr.sc_task.request_item.request.requested_for",
       CI_SELECTORS: [
         "#sys_display\\.sc_task\\.cmdb_ci",
@@ -15,12 +16,17 @@
       ],
       PREVIEW_WAIT_MS: 2e4,
       POPUP_WAIT_MS: 5e3,
-      STORAGE_KEY: "sn_requested_for_user_info"
+      STORAGE_KEY: "sn_requested_for_user_info",
+      STATE_STORAGE_KEY: "sn_smart_email_state"
     };
     const utils = ns.utils = ns.utils || {};
+    const runtime = ns.runtime = ns.runtime || {};
     utils.delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
     utils.log = (...args) => {
       console.log("[SN Smart Email]", ...args);
+    };
+    utils.debug = (label, data) => {
+      console.log("[SN Smart Email]", label, data);
     };
     utils.cleanValue = (value) => {
       if (value === null || value === void 0) return "";
@@ -29,6 +35,72 @@
     };
     utils.normalize = (text) => {
       return utils.cleanValue(text).toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/\s+/g, " ").trim();
+    };
+    utils.extractUriFromLocation = (href) => {
+      const raw = utils.cleanValue(href);
+      if (!raw) return "";
+      try {
+        const url = new URL(raw, window.location.origin);
+        const nested = url.searchParams.get("uri");
+        return nested ? decodeURIComponent(nested) : raw;
+      } catch (e) {
+        const match = raw.match(/[?&]uri=([^&]+)/i);
+        return match ? decodeURIComponent(match[1]) : raw;
+      }
+    };
+    utils.createRecordKey = ({ table, sysId }) => {
+      return [utils.cleanValue(table) || "unknown", utils.cleanValue(sysId) || "unknown"].join(":");
+    };
+    utils.getRuntimeState = () => {
+      runtime.state = runtime.state || {
+        mountedRecordKey: "",
+        activeRecordKey: "",
+        pending: false,
+        currentPanel: "",
+        lastUser: null,
+        lastMail: null,
+        lastDebugFields: null,
+        lastTemplateType: "",
+        locks: {}
+      };
+      return runtime.state;
+    };
+    utils.clearRuntimeState = (options = {}) => {
+      const { preserveMount = true } = options;
+      const state = utils.getRuntimeState();
+      const mountedRecordKey = preserveMount ? state.mountedRecordKey : "";
+      runtime.state = {
+        mountedRecordKey,
+        activeRecordKey: "",
+        pending: false,
+        currentPanel: "",
+        lastUser: null,
+        lastMail: null,
+        lastDebugFields: null,
+        lastTemplateType: "",
+        locks: {}
+      };
+      try {
+        sessionStorage.removeItem(ns.CONFIG.STATE_STORAGE_KEY);
+        sessionStorage.removeItem(ns.CONFIG.STORAGE_KEY);
+      } catch (e) {
+      }
+      utils.log("State cleared", { preserveMount, mountedRecordKey });
+      return runtime.state;
+    };
+    utils.persistRuntimeState = () => {
+      try {
+        const state = utils.getRuntimeState();
+        sessionStorage.setItem(
+          ns.CONFIG.STATE_STORAGE_KEY,
+          JSON.stringify({
+            activeRecordKey: state.activeRecordKey,
+            lastTemplateType: state.lastTemplateType,
+            pending: state.pending
+          })
+        );
+      } catch (e) {
+      }
     };
   })();
 
@@ -43,7 +115,7 @@
       for (let i = 0; i < window.frames.length; i++) {
         try {
           const frameDoc = window.frames[i].document;
-          if (frameDoc) docs.push(frameDoc);
+          if (frameDoc && !docs.includes(frameDoc)) docs.push(frameDoc);
         } catch (e) {
         }
       }
@@ -54,7 +126,7 @@
       for (let i = 0; i < window.frames.length; i++) {
         try {
           const w = window.frames[i];
-          if (w) wins.push(w);
+          if (w && !wins.includes(w)) wins.push(w);
         } catch (e) {
         }
       }
@@ -64,14 +136,11 @@
       const wins = servicenow.getAllWindows();
       for (const w of wins) {
         try {
-          if (w.g_form && typeof w.g_form.getValue === "function") {
-            const tableName = utils.cleanValue(w.g_form.getTableName && w.g_form.getTableName()) || "";
-            const number = utils.cleanValue(w.g_form.getValue("number")) || "";
-            const shortDesc = utils.cleanValue(w.g_form.getValue("short_description")) || "";
-            if (tableName || number || shortDesc) {
-              return w.g_form;
-            }
-          }
+          if (!w.g_form || typeof w.g_form.getValue !== "function") continue;
+          const tableName = utils.cleanValue(w.g_form.getTableName && w.g_form.getTableName());
+          const number = utils.cleanValue(w.g_form.getValue("number"));
+          const shortDesc = utils.cleanValue(w.g_form.getValue("short_description"));
+          if (tableName || number || shortDesc) return w.g_form;
         } catch (e) {
         }
       }
@@ -88,6 +157,17 @@
       }
       return "";
     };
+    servicenow.safeGetDisplayValue = (name) => {
+      try {
+        const gf = servicenow.getBestGForm();
+        if (gf && typeof gf.getDisplayValue === "function") {
+          return utils.cleanValue(gf.getDisplayValue(name));
+        }
+      } catch (e) {
+        utils.log(`safeGetDisplayValue failed for ${name}`, e);
+      }
+      return "";
+    };
     servicenow.getFirstExistingValue = (selectors) => {
       const docs = servicenow.getAllDocs();
       for (const doc of docs) {
@@ -95,9 +175,7 @@
           try {
             const el = doc.querySelector(selector);
             if (!el) continue;
-            const value = utils.cleanValue(
-              el.value || el.innerText || el.textContent || ""
-            );
+            const value = utils.cleanValue(el.value || el.innerText || el.textContent || "");
             if (value) return value;
           } catch (e) {
           }
@@ -105,7 +183,84 @@
       }
       return "";
     };
-    servicenow.waitForPreviewButtonInAnyFrame = async (id, timeoutMs = CONFIG.PREVIEW_WAIT_MS, intervalMs = 300) => {
+    servicenow.getFieldDisplayValue = (fieldName) => {
+      const escaped = fieldName.replace(/\./g, "\\.");
+      return servicenow.getFirstExistingValue([
+        `#sys_display\\.${escaped}`,
+        `#${escaped}`,
+        `input[id="sys_display.${fieldName}"]`,
+        `input[id="${fieldName}"]`,
+        `input[name="${fieldName}"]`,
+        `textarea[id="${fieldName}"]`,
+        `textarea[name="${fieldName}"]`
+      ]);
+    };
+    servicenow.detectTable = () => {
+      const gf = servicenow.getBestGForm();
+      try {
+        const fromGForm = utils.cleanValue(gf && gf.getTableName && gf.getTableName());
+        if (fromGForm) return fromGForm;
+      } catch (e) {
+      }
+      const hrefs = servicenow.getAllWindows().map((w) => {
+        try {
+          return utils.extractUriFromLocation(w.location.href);
+        } catch (e) {
+          return "";
+        }
+      }).filter(Boolean);
+      for (const href of hrefs) {
+        const patterns = [
+          /(?:^|\/)(incident)\.do/i,
+          /(?:^|\/)(sc_task)\.do/i,
+          /(?:^|\/)(sc_req_item)\.do/i,
+          /(?:^|\/)(sc_request)\.do/i,
+          /(?:sysparm_table=)(incident|sc_task|sc_req_item|sc_request)/i,
+          /(?:table=)(incident|sc_task|sc_req_item|sc_request)/i
+        ];
+        for (const pattern of patterns) {
+          const match = href.match(pattern);
+          if (match) return utils.cleanValue(match[1]).toLowerCase();
+        }
+      }
+      const byDom = [
+        { table: "incident", selectors: ["#incident\\.number", 'input[id="incident.number"]'] },
+        { table: "sc_task", selectors: ["#sc_task\\.number", 'input[id="sc_task.number"]'] },
+        { table: "sc_req_item", selectors: ["#sc_req_item\\.number", 'input[id="sc_req_item.number"]'] },
+        { table: "sc_request", selectors: ["#sc_request\\.number", 'input[id="sc_request.number"]'] }
+      ];
+      for (const entry of byDom) {
+        if (servicenow.getFirstExistingValue(entry.selectors)) return entry.table;
+      }
+      return "generic";
+    };
+    servicenow.getSysId = () => {
+      const gf = servicenow.getBestGForm();
+      try {
+        const fromGForm = utils.cleanValue(gf && gf.getUniqueValue && gf.getUniqueValue());
+        if (fromGForm) return fromGForm;
+      } catch (e) {
+      }
+      const hrefs = servicenow.getAllWindows().map((w) => {
+        try {
+          return utils.extractUriFromLocation(w.location.href);
+        } catch (e) {
+          return "";
+        }
+      }).filter(Boolean);
+      for (const href of hrefs) {
+        const match = href.match(/[?&](?:sys_id|sysparm_sys_id)=([0-9a-f]{32})/i);
+        if (match) return utils.cleanValue(match[1]);
+      }
+      return "";
+    };
+    servicenow.getRecordContext = () => {
+      const table = servicenow.detectTable();
+      const sysId = servicenow.getSysId();
+      const recordKey = utils.createRecordKey({ table, sysId });
+      return { table, sysId, recordKey };
+    };
+    servicenow.waitForPreviewButtonInAnyFrame = async (id, timeoutMs = CONFIG.PREVIEW_WAIT_MS, intervalMs = 250) => {
       const start = Date.now();
       while (Date.now() - start < timeoutMs) {
         const docs = servicenow.getAllDocs();
@@ -127,10 +282,10 @@
           const pops = doc.querySelectorAll(
             '.popover,[role="dialog"],div[id^="popover"],.modal,.glide_box'
           );
-          for (const p of pops) {
-            const html = p.innerHTML || "";
+          for (const popup of pops) {
+            const html = popup.innerHTML || "";
             if (html.includes("sys_user.email") || html.includes("sys_user.first_name") || html.includes("sys_user.last_name")) {
-              return { popup: p, doc };
+              return { popup, doc };
             }
           }
         } catch (e) {
@@ -138,7 +293,7 @@
       }
       return null;
     };
-    servicenow.waitForPopupInAnyFrame = async (timeoutMs = CONFIG.POPUP_WAIT_MS, intervalMs = 200) => {
+    servicenow.waitForPopupInAnyFrame = async (timeoutMs = CONFIG.POPUP_WAIT_MS, intervalMs = 150) => {
       const start = Date.now();
       while (Date.now() - start < timeoutMs) {
         const found = servicenow.findPopupInAnyFrame();
@@ -149,33 +304,12 @@
     };
     servicenow.getPopupValue = (popup, selectors) => {
       for (const selector of selectors) {
-        const el = popup.querySelector(selector);
-        if (el && typeof el.value === "string" && el.value.trim()) {
-          return utils.cleanValue(el.value);
-        }
-      }
-      return "";
-    };
-    servicenow.getFieldDisplayValue = (fieldName) => {
-      const docs = servicenow.getAllDocs();
-      const selectors = [
-        `#sys_display\\.${fieldName.replace(/\./g, "\\.")}`,
-        `#${fieldName.replace(/\./g, "\\.")}`,
-        `input[id="sys_display.${fieldName}"]`,
-        `input[id="${fieldName}"]`,
-        `input[name="${fieldName}"]`,
-        `textarea[id="${fieldName}"]`,
-        `textarea[name="${fieldName}"]`
-      ];
-      for (const doc of docs) {
-        for (const selector of selectors) {
-          try {
-            const el = doc.querySelector(selector);
-            if (!el) continue;
-            const value = utils.cleanValue(el.value || el.innerText || el.textContent || "");
-            if (value) return value;
-          } catch (e) {
+        try {
+          const el = popup.querySelector(selector);
+          if (el && typeof el.value === "string" && el.value.trim()) {
+            return utils.cleanValue(el.value);
           }
+        } catch (e) {
         }
       }
       return "";
@@ -201,65 +335,6 @@
           'input[id="sys_user.email"]'
         ])
       };
-    };
-    servicenow.getUserFromForm = () => {
-      const gf = servicenow.getBestGForm();
-      const fieldCandidates = [
-        "requested_for",
-        "request.requested_for",
-        "caller_id",
-        "opened_for",
-        "u_requested_for"
-      ];
-      const user = {
-        firstName: "",
-        lastName: "",
-        email: ""
-      };
-      for (const fieldName of fieldCandidates) {
-        try {
-          if (!gf) continue;
-          const displayValue = utils.cleanValue(gf.getDisplayValue && gf.getDisplayValue(fieldName)) || servicenow.getFieldDisplayValue(fieldName);
-          if (displayValue && !user.firstName && !user.lastName) {
-            const parts = displayValue.split(/\s+/).filter(Boolean);
-            if (parts.length === 1) {
-              user.firstName = parts[0];
-            } else if (parts.length > 1) {
-              user.firstName = parts[0];
-              user.lastName = parts.slice(1).join(" ");
-            }
-          }
-        } catch (e) {
-        }
-      }
-      const emailCandidates = [
-        "u_email",
-        "email",
-        "caller_id.email",
-        "requested_for.email",
-        "opened_for.email"
-      ];
-      for (const fieldName of emailCandidates) {
-        try {
-          const fromForm = utils.cleanValue(gf && gf.getValue && gf.getValue(fieldName)) || servicenow.getFieldDisplayValue(fieldName);
-          if (fromForm && fromForm.includes("@")) {
-            user.email = fromForm;
-            break;
-          }
-        } catch (e) {
-        }
-      }
-      return user;
-    };
-    servicenow.getUserFromSession = () => {
-      try {
-        const raw = sessionStorage.getItem(CONFIG.STORAGE_KEY);
-        if (!raw) return null;
-        const user = JSON.parse(raw);
-        if (user && utils.cleanValue(user.email)) return user;
-      } catch (e) {
-      }
-      return null;
     };
     servicenow.hidePreview = (popup, popupDoc = document) => {
       if (!popup) return false;
@@ -299,49 +374,150 @@
       const foundButton = await servicenow.waitForPreviewButtonInAnyFrame(
         CONFIG.PREVIEW_ID,
         CONFIG.PREVIEW_WAIT_MS,
-        300
+        250
       );
       if (!foundButton) {
         throw new Error(`Preview button not found: ${CONFIG.PREVIEW_ID}`);
       }
       foundButton.el.click();
-      const foundPopup = await servicenow.waitForPopupInAnyFrame(
-        CONFIG.POPUP_WAIT_MS,
-        200
-      );
+      const foundPopup = await servicenow.waitForPopupInAnyFrame(CONFIG.POPUP_WAIT_MS, 150);
       if (!foundPopup) {
         throw new Error("Popup not found after clicking preview");
       }
-      const popup = foundPopup.popup;
-      const popupDoc = foundPopup.doc || document;
-      const user = servicenow.getUserFromPopup(popup);
+      const user = servicenow.getUserFromPopup(foundPopup.popup);
       if (!utils.cleanValue(user.email)) {
         throw new Error("Email field not found inside popup");
       }
       sessionStorage.setItem(CONFIG.STORAGE_KEY, JSON.stringify(user));
-      servicenow.hidePreview(popup, popupDoc);
+      servicenow.hidePreview(foundPopup.popup, foundPopup.doc || document);
       return user;
     };
-    servicenow.getUserContext = async () => {
-      try {
-        const previewUser = await servicenow.getRequestedForFromPreview();
-        if (utils.cleanValue(previewUser.email)) return previewUser;
-      } catch (e) {
-        utils.log("Preview-based user lookup unavailable, using fallback.", e);
+    function splitDisplayName(displayValue) {
+      const parts = utils.cleanValue(displayValue).split(/\s+/).filter(Boolean);
+      if (!parts.length) return { firstName: "", lastName: "" };
+      if (parts.length === 1) return { firstName: parts[0], lastName: "" };
+      return { firstName: parts[0], lastName: parts.slice(1).join(" ") };
+    }
+    servicenow.getUserFromForm = (table) => {
+      const user = { firstName: "", lastName: "", email: "" };
+      const userFieldCandidates = {
+        incident: ["caller_id", "opened_for", "u_requested_for"],
+        sc_task: ["request_item.request.requested_for", "request.requested_for", "requested_for"],
+        sc_req_item: ["requested_for", "request.requested_for", "opened_by"],
+        sc_request: ["requested_for", "opened_by"]
+      };
+      const emailFieldCandidates = {
+        incident: ["u_email", "email", "caller_id.email", "opened_for.email"],
+        sc_task: ["requested_for.email", "request_item.request.requested_for.email", "email"],
+        sc_req_item: ["requested_for.email", "email", "opened_by.email"],
+        sc_request: ["requested_for.email", "email", "opened_by.email"]
+      };
+      for (const fieldName of userFieldCandidates[table] || ["requested_for", "caller_id"]) {
+        const displayValue = servicenow.safeGetDisplayValue(fieldName) || servicenow.getFieldDisplayValue(fieldName);
+        if (displayValue) {
+          const parsed = splitDisplayName(displayValue);
+          user.firstName = user.firstName || parsed.firstName;
+          user.lastName = user.lastName || parsed.lastName;
+          break;
+        }
       }
-      const formUser = servicenow.getUserFromForm();
+      for (const fieldName of emailFieldCandidates[table] || ["email"]) {
+        const value = servicenow.safeGetField(fieldName) || servicenow.getFieldDisplayValue(fieldName);
+        if (value && value.includes("@")) {
+          user.email = value;
+          break;
+        }
+      }
+      return user;
+    };
+    servicenow.getUserFromSession = () => {
+      try {
+        const raw = sessionStorage.getItem(CONFIG.STORAGE_KEY);
+        if (!raw) return null;
+        const user = JSON.parse(raw);
+        if (user && utils.cleanValue(user.email)) return user;
+      } catch (e) {
+      }
+      return null;
+    };
+    servicenow.resolveUserContext = async (table) => {
+      if (table === "incident") {
+        const directUser = servicenow.getUserFromForm("incident");
+        if (utils.cleanValue(directUser.email)) {
+          utils.log("User resolved from incident form");
+          sessionStorage.setItem(CONFIG.STORAGE_KEY, JSON.stringify(directUser));
+          return directUser;
+        }
+      }
+      if (table === "sc_task") {
+        try {
+          const previewUser = await servicenow.getRequestedForFromPreview();
+          utils.log("User resolved from sc_task preview");
+          return previewUser;
+        } catch (e) {
+          utils.log("sc_task preview unavailable, using form fallback");
+        }
+      }
+      const formUser = servicenow.getUserFromForm(table);
       if (utils.cleanValue(formUser.email)) {
+        utils.log("User resolved from form fallback", { table });
         sessionStorage.setItem(CONFIG.STORAGE_KEY, JSON.stringify(formUser));
         return formUser;
       }
       const sessionUser = servicenow.getUserFromSession();
-      if (sessionUser) return sessionUser;
+      if (sessionUser) {
+        utils.log("User resolved from session fallback", { table });
+        return sessionUser;
+      }
+      utils.log("User unresolved, using empty fallback", { table });
       return { firstName: "", lastName: "", email: "" };
+    };
+    servicenow.getShortDescription = () => {
+      const fromGForm = servicenow.safeGetField("short_description");
+      if (fromGForm) return fromGForm;
+      return servicenow.getFirstExistingValue([
+        "#incident\\.short_description",
+        "#sc_task\\.short_description",
+        "#sc_req_item\\.short_description",
+        "#sc_request\\.short_description",
+        "#short_description",
+        'input[name="short_description"]',
+        'textarea[name="short_description"]'
+      ]);
+    };
+    servicenow.getDescription = () => {
+      return servicenow.safeGetField("description") || servicenow.getFirstExistingValue([
+        "#incident\\.description",
+        "#sc_task\\.description",
+        "#sc_req_item\\.description",
+        "#sc_request\\.description",
+        "#description",
+        'textarea[name="description"]'
+      ]);
+    };
+    servicenow.getConfigurationItem = () => {
+      return servicenow.getFirstExistingValue(CONFIG.CI_SELECTORS || []);
+    };
+    servicenow.readContext = async () => {
+      const record = servicenow.getRecordContext();
+      const user = await servicenow.resolveUserContext(record.table);
+      const ticket = servicenow.safeGetField("number") || "Ticket";
+      const shortDesc = servicenow.getShortDescription();
+      const desc = servicenow.getDescription();
+      const ci = record.table === "incident" ? "" : servicenow.getConfigurationItem();
+      return {
+        ...record,
+        user,
+        ticket: utils.cleanValue(ticket) || "Ticket",
+        shortDesc: utils.cleanValue(shortDesc),
+        desc: utils.cleanValue(desc),
+        ci: utils.cleanValue(ci)
+      };
     };
     servicenow.composeWorkNote = ({ user, mail, ticket }) => {
       const recipient = utils.cleanValue(user && user.email) || "the user";
       const lines = [
-        `Email has sent for ${recipient}.`,
+        `Email prepared for ${recipient}.`,
         `Ticket: ${utils.cleanValue(ticket) || "Ticket"}`,
         `Subject: ${utils.cleanValue(mail && mail.subject)}`,
         "",
@@ -361,7 +537,6 @@
       } catch (e) {
         utils.log("g_form.setValue(work_notes) failed", e);
       }
-      const docs = servicenow.getAllDocs();
       const selectors = [
         "#activity-stream-work_notes-textarea",
         "#work_notes",
@@ -369,6 +544,7 @@
         'textarea[name="work_notes"]',
         'textarea[id*="work_notes"]'
       ];
+      const docs = servicenow.getAllDocs();
       for (const doc of docs) {
         for (const selector of selectors) {
           try {
@@ -383,24 +559,6 @@
         }
       }
       return false;
-    };
-    servicenow.getShortDescription = () => {
-      try {
-        const fromGForm = servicenow.safeGetField("short_description");
-        if (fromGForm) return fromGForm;
-      } catch (e) {
-      }
-      return servicenow.getFirstExistingValue([
-        "#sc_task\\.short_description",
-        "#incident\\.short_description",
-        "#ticket\\.short_description",
-        "#short_description",
-        'input[id="sc_task.short_description"]',
-        'input[id="incident.short_description"]',
-        'input[id="ticket.short_description"]',
-        'input[name="short_description"]',
-        'textarea[name="short_description"]'
-      ]);
     };
   })();
 
@@ -828,7 +986,7 @@ ${ctx.signature}`
     const ns = window.__SN_SMART_EMAIL__ = window.__SN_SMART_EMAIL__ || {};
     const CONFIG = ns.CONFIG || {
       BUTTON_ID: "sn-smart-email-generator",
-      ACTION_BUTTON_ID: "sn-open-outlook-draft-btn",
+      PANEL_ID: "sn-smart-email-panel",
       TOAST_ID: "sn-smart-email-toast",
       PREVIEW_ID: "viewr.sc_task.request_item.request.requested_for",
       CI_SELECTORS: [
@@ -843,9 +1001,6 @@ ${ctx.signature}`
     const ui = ns.ui = ns.ui || {};
     const UI_CONTAINER_ID = "sn-smart-email-ui-container";
     const UI_CLOSE_BUTTON_ID = "sn-smart-email-close-btn";
-    function clamp(value, min, max) {
-      return Math.min(Math.max(value, min), max);
-    }
     function getAllDocs() {
       if (servicenow && typeof servicenow.getAllDocs === "function") return servicenow.getAllDocs();
       return [document];
@@ -876,104 +1031,31 @@ ${ctx.signature}`
       return document;
     }
     function findFormRoot(doc) {
-      const selectors = [
-        "#sys_form",
-        'form[name="sys_form"]',
-        "#sysparm_form",
-        "form"
-      ];
+      const selectors = ["#sys_form", 'form[name="sys_form"]', "#sysparm_form", "form"];
       for (const sel of selectors) {
         try {
           const el = doc.querySelector(sel);
           if (!el) continue;
-          const r = el.getBoundingClientRect && el.getBoundingClientRect();
-          if (r && r.width && r.width > 600) return el;
+          const rect = el.getBoundingClientRect && el.getBoundingClientRect();
+          if (rect && rect.width && rect.width > 600) return el;
         } catch (e) {
         }
       }
       return doc.body || doc.documentElement || null;
     }
     function positionContainer(container) {
-      if (container && container.dataset && container.dataset.dragged === "true") return;
       try {
         const doc = container.ownerDocument || document;
         const w = doc.defaultView || window;
         const formRoot = findFormRoot(doc);
         if (!w || !formRoot || typeof formRoot.getBoundingClientRect !== "function") return;
         const rect = formRoot.getBoundingClientRect();
-        const rightPx = Math.max((w.innerWidth || 0) - rect.right + 12, 16);
-        const topPx = Math.max(rect.top + 12, 72);
+        const rightPx = Math.max((w.innerWidth || 0) - rect.right + 10, 12);
+        const topPx = Math.max(rect.top + 10, 68);
         container.style.right = `${rightPx}px`;
         container.style.top = `${topPx}px`;
       } catch (e) {
       }
-    }
-    function makeContainerDraggable(container) {
-      if (!container || container.__snSmartEmailDragBound) return;
-      container.__snSmartEmailDragBound = true;
-      const onPointerDown = (event) => {
-        const target = event.target;
-        if (!target || target.closest(`button[id="${UI_CLOSE_BUTTON_ID}"]`)) return;
-        if (target.tagName !== "BUTTON" && !target.closest("button")) return;
-        const doc = container.ownerDocument || document;
-        const w = doc.defaultView || window;
-        const rect = container.getBoundingClientRect();
-        const offsetX = event.clientX - rect.left;
-        const offsetY = event.clientY - rect.top;
-        container.dataset.dragged = "true";
-        container.style.right = "auto";
-        container.style.bottom = "auto";
-        container.style.left = `${rect.left}px`;
-        container.style.top = `${rect.top}px`;
-        container.style.cursor = "grabbing";
-        const onPointerMove = (moveEvent) => {
-          const maxLeft = Math.max((w.innerWidth || 0) - rect.width - 8, 8);
-          const maxTop = Math.max((w.innerHeight || 0) - rect.height - 8, 8);
-          const nextLeft = clamp(moveEvent.clientX - offsetX, 8, maxLeft);
-          const nextTop = clamp(moveEvent.clientY - offsetY, 8, maxTop);
-          container.style.left = `${nextLeft}px`;
-          container.style.top = `${nextTop}px`;
-        };
-        const stopDragging = () => {
-          container.style.cursor = "grab";
-          w.removeEventListener("pointermove", onPointerMove);
-          w.removeEventListener("pointerup", stopDragging);
-        };
-        w.addEventListener("pointermove", onPointerMove);
-        w.addEventListener("pointerup", stopDragging);
-      };
-      container.style.cursor = "grab";
-      container.addEventListener("pointerdown", onPointerDown);
-    }
-    function ensureCloseButton(container) {
-      const doc = container.ownerDocument || document;
-      let button = doc.getElementById(UI_CLOSE_BUTTON_ID);
-      if (button) return button;
-      button = doc.createElement("button");
-      button.id = UI_CLOSE_BUTTON_ID;
-      button.type = "button";
-      button.textContent = "X";
-      button.setAttribute("aria-label", "Close smart email controls");
-      Object.assign(button.style, {
-        background: "#fff1f2",
-        color: "#b42318",
-        border: "1px solid #fda29b",
-        width: "28px",
-        height: "28px",
-        padding: "0",
-        borderRadius: "999px",
-        cursor: "pointer",
-        boxShadow: "0 2px 8px rgba(0,0,0,.08)",
-        fontSize: "12px",
-        fontWeight: "700",
-        lineHeight: "1",
-        fontFamily: "Arial, sans-serif"
-      });
-      button.addEventListener("click", () => {
-        container.remove();
-      });
-      container.appendChild(button);
-      return button;
     }
     function ensureContainer() {
       for (const doc of getAllDocs()) {
@@ -987,18 +1069,16 @@ ${ctx.signature}`
       const container = primaryDoc.createElement("div");
       container.id = UI_CONTAINER_ID;
       Object.assign(container.style, {
-        // Fixed inside the form document (usually the iframe), so it won't collide with global Update/Save/Follow.
         position: "fixed",
         top: "72px",
-        right: "20px",
+        right: "16px",
         zIndex: "999999",
         display: "flex",
-        gap: "8px",
-        alignItems: "center"
+        flexDirection: "column",
+        gap: "6px",
+        alignItems: "flex-end"
       });
       (primaryDoc.body || primaryDoc.documentElement).appendChild(container);
-      ensureCloseButton(container);
-      makeContainerDraggable(container);
       positionContainer(container);
       try {
         const w = primaryDoc.defaultView;
@@ -1011,21 +1091,47 @@ ${ctx.signature}`
       }
       return container;
     }
+    function buildBaseButton(doc, label) {
+      const button = doc.createElement("button");
+      button.type = "button";
+      button.textContent = label;
+      Object.assign(button.style, {
+        border: "none",
+        borderRadius: "999px",
+        cursor: "pointer",
+        fontSize: "12px",
+        lineHeight: "1",
+        fontFamily: "Arial, sans-serif"
+      });
+      return button;
+    }
+    function copyToClipboard(text) {
+      const value = utils.cleanValue(text);
+      if (!value) return Promise.resolve(false);
+      if (navigator.clipboard && typeof navigator.clipboard.writeText === "function") {
+        return navigator.clipboard.writeText(value).then(() => true, () => false);
+      }
+      try {
+        const ta = document.createElement("textarea");
+        ta.value = value;
+        ta.setAttribute("readonly", "true");
+        ta.style.position = "fixed";
+        ta.style.opacity = "0";
+        document.body.appendChild(ta);
+        ta.select();
+        const ok = document.execCommand("copy");
+        ta.remove();
+        return Promise.resolve(Boolean(ok));
+      } catch (e) {
+        return Promise.resolve(false);
+      }
+    }
     ui.toast = () => {
     };
     ui.purgeToasts = () => {
       for (const doc of getAllDocs()) {
         try {
           const old = doc.getElementById(CONFIG.TOAST_ID);
-          if (old) old.remove();
-        } catch (e) {
-        }
-      }
-    };
-    ui.removeActionButton = () => {
-      for (const doc of getAllDocs()) {
-        try {
-          const old = doc.getElementById(CONFIG.ACTION_BUTTON_ID);
           if (old) old.remove();
         } catch (e) {
         }
@@ -1040,9 +1146,14 @@ ${ctx.signature}`
         }
       }
     };
-    ui.removeAllButtons = () => {
-      ui.removeActionButton();
-      ui.removeMainButton();
+    ui.removeDraftPanel = () => {
+      for (const doc of getAllDocs()) {
+        try {
+          const old = doc.getElementById(CONFIG.PANEL_ID);
+          if (old) old.remove();
+        } catch (e) {
+        }
+      }
     };
     ui.closeControls = () => {
       for (const doc of getAllDocs()) {
@@ -1053,98 +1164,250 @@ ${ctx.signature}`
         }
       }
     };
+    ui.cleanupTemporaryUi = () => {
+      ui.removeDraftPanel();
+      ui.purgeToasts();
+    };
     ui.openMailto = (mailto) => {
       window.location.href = mailto;
-    };
-    ui.showOpenOutlookButton = (mail) => {
-      ui.removeActionButton();
-      const container = ensureContainer();
-      const doc = container.ownerDocument || document;
-      const btn = doc.createElement("button");
-      btn.id = CONFIG.ACTION_BUTTON_ID;
-      btn.textContent = "Open Outlook Draft";
-      Object.assign(btn.style, {
-        // Mandatory: fully hidden, no layout space, not user-clickable.
-        display: "none"
-      });
-      btn.addEventListener("click", function () {
-        ui.openMailto(mail.mailto);
-      });
-      btn.setAttribute("aria-hidden", "true");
-      btn.tabIndex = -1;
-      btn.disabled = true;
-      container.appendChild(btn);
-      return btn;
     };
     ui.injectMainButton = (onClick) => {
       ui.removeMainButton();
       const container = ensureContainer();
       const doc = container.ownerDocument || document;
-      const b = doc.createElement("button");
+      const b = buildBaseButton(doc, "Draft");
       b.id = CONFIG.BUTTON_ID;
-      b.textContent = "Prepare Outlook Draft";
       Object.assign(b.style, {
-        position: "relative",
-        background: "#0055A4",
-        color: "#fff",
-        border: "none",
-        padding: "10px 14px",
-        borderRadius: "8px",
-        cursor: "pointer",
-        boxShadow: "0 2px 10px rgba(0,0,0,.12)",
-        fontSize: "13px",
-        fontFamily: "Arial, sans-serif"
+        background: "#0b4f8a",
+        color: "#ffffff",
+        padding: "8px 12px",
+        minWidth: "56px",
+        boxShadow: "0 2px 8px rgba(15, 23, 42, 0.18)",
+        fontWeight: "600"
       });
       b.addEventListener("click", onClick);
-      container.insertBefore(b, ensureCloseButton(container));
+      container.insertBefore(b, container.firstChild);
+    };
+    ui.showDraftPanel = ({ mail, onOpenDraft, onCopyEmail, onClose }) => {
+      ui.removeDraftPanel();
+      const container = ensureContainer();
+      const doc = container.ownerDocument || document;
+      const panel = doc.createElement("div");
+      panel.id = CONFIG.PANEL_ID;
+      Object.assign(panel.style, {
+        width: "252px",
+        background: "#ffffff",
+        color: "#111827",
+        border: "1px solid #d0d5dd",
+        borderRadius: "14px",
+        boxShadow: "0 12px 28px rgba(15, 23, 42, 0.16)",
+        padding: "12px"
+      });
+      const topRow = doc.createElement("div");
+      Object.assign(topRow.style, {
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "space-between",
+        gap: "8px",
+        marginBottom: "8px"
+      });
+      const title = doc.createElement("div");
+      title.textContent = "Draft ready";
+      Object.assign(title.style, {
+        fontSize: "13px",
+        fontWeight: "700",
+        color: "#101828"
+      });
+      const close = buildBaseButton(doc, "X");
+      close.id = UI_CLOSE_BUTTON_ID;
+      Object.assign(close.style, {
+        width: "24px",
+        height: "24px",
+        padding: "0",
+        background: "#fff1f2",
+        color: "#b42318",
+        border: "1px solid #fda29b",
+        fontWeight: "700"
+      });
+      close.addEventListener("click", onClose);
+      topRow.appendChild(title);
+      topRow.appendChild(close);
+      const meta = doc.createElement("div");
+      meta.textContent = utils.cleanValue(mail && mail.subject) || "Email prepared";
+      Object.assign(meta.style, {
+        fontSize: "12px",
+        lineHeight: "1.4",
+        color: "#475467",
+        marginBottom: "10px"
+      });
+      const actions = doc.createElement("div");
+      Object.assign(actions.style, {
+        display: "flex",
+        gap: "6px",
+        flexWrap: "wrap"
+      });
+      const openButton = buildBaseButton(doc, "Open draft");
+      Object.assign(openButton.style, {
+        background: "#0b4f8a",
+        color: "#ffffff",
+        padding: "8px 10px",
+        fontWeight: "600"
+      });
+      openButton.addEventListener("click", onOpenDraft);
+      const copyButton = buildBaseButton(doc, "Copy email");
+      Object.assign(copyButton.style, {
+        background: "#eaf2f9",
+        color: "#0b4f8a",
+        padding: "8px 10px",
+        border: "1px solid #bfd3e6",
+        fontWeight: "600"
+      });
+      copyButton.addEventListener("click", async () => {
+        const content = [utils.cleanValue(mail.subject), "", utils.cleanValue(mail.body)].join("\n");
+        const copied = await copyToClipboard(content);
+        if (typeof onCopyEmail === "function") onCopyEmail(copied);
+        copyButton.textContent = copied ? "Copied" : "Copy failed";
+        setTimeout(() => {
+          if (copyButton.isConnected) copyButton.textContent = "Copy email";
+        }, 1200);
+      });
+      const closeButton = buildBaseButton(doc, "Close");
+      Object.assign(closeButton.style, {
+        background: "#f8fafc",
+        color: "#344054",
+        padding: "8px 10px",
+        border: "1px solid #d0d5dd"
+      });
+      closeButton.addEventListener("click", onClose);
+      actions.appendChild(openButton);
+      actions.appendChild(copyButton);
+      actions.appendChild(closeButton);
+      panel.appendChild(topRow);
+      panel.appendChild(meta);
+      panel.appendChild(actions);
+      container.appendChild(panel);
+      return panel;
     };
   })();
 
   // core.js
   (function () {
     const ns = window.__SN_SMART_EMAIL__ = window.__SN_SMART_EMAIL__ || {};
-    const CONFIG = ns.CONFIG || {
-      CI_SELECTORS: [
-        "#sys_display\\.sc_task\\.cmdb_ci",
-        "#sys_display\\.sc_req_item\\.cmdb_ci",
-        "#sys_display\\.task\\.cmdb_ci",
-        'input[id*="cmdb_ci"]'
-      ]
-    };
     const utils = ns.utils || {};
     const ui = ns.ui || {};
     const servicenow = ns.servicenow || {};
     const templates = ns.templates || {};
     const core = ns.core = ns.core || {};
+    function getState() {
+      return utils.getRuntimeState();
+    }
+    function cleanupTemporaryState(reason) {
+      const state = getState();
+      utils.log("Temporary cleanup", { reason, recordKey: state.activeRecordKey });
+      if (ui && typeof ui.cleanupTemporaryUi === "function") ui.cleanupTemporaryUi();
+      utils.clearRuntimeState({ preserveMount: true });
+    }
+    function captureDebugFields(context, mail) {
+      return {
+        table: context.table,
+        recordKey: context.recordKey,
+        ticket: context.ticket,
+        short_description: context.shortDesc,
+        description: context.desc,
+        cmdb_ci: context.ci,
+        template: mail.type,
+        ticketType: mail.ticketType
+      };
+    }
     core.run = async () => {
+      const state = getState();
+      const record = servicenow.getRecordContext();
+      if (state.pending && state.activeRecordKey === record.recordKey) {
+        utils.log("Run skipped: pending flow already active", { recordKey: record.recordKey });
+        return;
+      }
+      if (state.locks[record.recordKey]) {
+        utils.log("Run skipped: record lock already set", { recordKey: record.recordKey });
+        return;
+      }
       try {
+        state.pending = true;
+        state.activeRecordKey = record.recordKey;
+        state.locks[record.recordKey] = true;
+        utils.persistRuntimeState();
         if (ui && typeof ui.purgeToasts === "function") ui.purgeToasts();
-        const user = await servicenow.getUserContext();
-        const ticket = utils.cleanValue(servicenow.safeGetField("number")) || "Ticket";
-        const shortDesc = utils.cleanValue(servicenow.safeGetField("short_description"));
-        const desc = utils.cleanValue(servicenow.safeGetField("description"));
-        const ci = utils.cleanValue(servicenow.getFirstExistingValue(CONFIG.CI_SELECTORS));
-        const mail = templates.buildMail({ user, ticket, shortDesc, desc, ci });
-        utils.log("User:", user);
-        utils.log("Mail:", mail);
-        utils.log("Debug fields:", {
-          number: servicenow.safeGetField("number"),
-          short_description: servicenow.safeGetField("short_description"),
-          description: servicenow.safeGetField("description"),
-          cmdb_ci: servicenow.getFirstExistingValue(CONFIG.CI_SELECTORS),
-          detected_type: mail.type
+        if (ui && typeof ui.removeDraftPanel === "function") ui.removeDraftPanel();
+        const context = await servicenow.readContext();
+        const mail = templates.buildMail({
+          user: context.user,
+          ticket: context.ticket,
+          shortDesc: context.shortDesc,
+          desc: context.desc,
+          ci: context.ci
         });
-        const workNoteDraft = servicenow.composeWorkNote({ user, mail, ticket });
+        const workNoteDraft = servicenow.composeWorkNote({
+          user: context.user,
+          mail,
+          ticket: context.ticket
+        });
         const workNotesPrepared = servicenow.setWorkNotesDraft(workNoteDraft);
-        utils.log("Work notes prepared:", workNotesPrepared);
-        ui.openMailto(mail.mailto);
+        state.lastUser = context.user;
+        state.lastMail = mail;
+        state.lastTemplateType = mail.type;
+        state.lastDebugFields = captureDebugFields(context, mail);
+        utils.log("Draft prepared", {
+          table: context.table,
+          recordKey: context.recordKey,
+          template: mail.type,
+          workNotesPrepared
+        });
+        ui.showDraftPanel({
+          mail,
+          onOpenDraft: () => {
+            utils.log("Opening draft", { recordKey: context.recordKey, template: mail.type });
+            ui.openMailto(mail.mailto);
+            cleanupTemporaryState("open-draft");
+          },
+          onCopyEmail: (copied) => {
+            utils.log("Copy email", { recordKey: context.recordKey, copied });
+          },
+          onClose: () => {
+            cleanupTemporaryState("close-panel");
+          }
+        });
       } catch (err) {
-        utils.log("Run failed:", err);
+        utils.log("Run failed", err);
+        cleanupTemporaryState("run-error");
+      } finally {
+        const currentState = getState();
+        currentState.pending = false;
+        delete currentState.locks[record.recordKey];
+        utils.persistRuntimeState();
       }
     };
     core.init = () => {
+      const state = getState();
+      const record = servicenow.getRecordContext();
+      if (state.mountedRecordKey && state.mountedRecordKey === record.recordKey) {
+        utils.log("Init skipped: launcher already mounted", { recordKey: record.recordKey });
+        return;
+      }
+      if (state.mountedRecordKey && state.mountedRecordKey !== record.recordKey) {
+        utils.log("Record changed, resetting runtime", {
+          from: state.mountedRecordKey,
+          to: record.recordKey
+        });
+        if (ui && typeof ui.closeControls === "function") ui.closeControls();
+        utils.clearRuntimeState({ preserveMount: false });
+      }
+      const freshState = getState();
+      freshState.mountedRecordKey = record.recordKey;
+      utils.log("Init", {
+        table: record.table,
+        recordKey: record.recordKey
+      });
       if (ui && typeof ui.purgeToasts === "function") ui.purgeToasts();
-      ui.injectMainButton(core.run);
+      if (ui && typeof ui.injectMainButton === "function") ui.injectMainButton(core.run);
     };
   })();
 
