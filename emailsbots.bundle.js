@@ -1,1614 +1,2508 @@
 (() => {
-  // utils.js
-  (function () {
-    const ns = window.__SN_SMART_EMAIL__ = window.__SN_SMART_EMAIL__ || {};
-    ns.CONFIG = {
-      BUTTON_ID: "sn-smart-email-generator",
-      ACTION_BUTTON_ID: "sn-open-outlook-draft-btn",
-      TOAST_ID: "sn-smart-email-toast",
-      PANEL_ID: "sn-smart-email-panel",
-      PREVIEW_ID: "viewr.sc_task.request_item.request.requested_for",
-      CI_SELECTORS: [
+  // Assistant/core/helpers.js
+  function cleanText(value) {
+    if (value === null || value === void 0) return "";
+    const text = String(value).replace(/\u00a0/g, " ").trim();
+    return text === "undefined" || text === "null" ? "" : text;
+  }
+  function normalizeText(value) {
+    return cleanText(value).toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/\s+/g, " ").trim();
+  }
+  function delay(ms) {
+    return new Promise((resolve) => setTimeout(resolve, ms));
+  }
+  function clamp(value, min, max) {
+    return Math.min(Math.max(value, min), max);
+  }
+  function isPlainObject(value) {
+    return Boolean(value) && Object.prototype.toString.call(value) === "[object Object]";
+  }
+  function deepClone(value) {
+    return JSON.parse(JSON.stringify(value ?? {}));
+  }
+  function deepMerge(base, override) {
+    if (!isPlainObject(base) || !isPlainObject(override)) {
+      return override === void 0 ? deepClone(base) : deepClone(override);
+    }
+    const output = deepClone(base);
+    Object.entries(override).forEach(([key, value]) => {
+      if (isPlainObject(value) && isPlainObject(output[key])) {
+        output[key] = deepMerge(output[key], value);
+        return;
+      }
+      output[key] = deepClone(value);
+    });
+    return output;
+  }
+  function parseJson(rawValue, fallback = null) {
+    try {
+      return rawValue ? JSON.parse(rawValue) : fallback;
+    } catch (error) {
+      return fallback;
+    }
+  }
+  function escapeCssIdentifier(value) {
+    const text = cleanText(value);
+    if (typeof CSS !== "undefined" && typeof CSS.escape === "function") {
+      return CSS.escape(text);
+    }
+    return text.replace(/([ !"#$%&'()*+,./:;<=>?@[\\\]^`{|}~])/g, "\\$1");
+  }
+  function escapeHtml(value) {
+    return cleanText(value).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#39;");
+  }
+  function createRecordKey({ table, sysId, ticketNumber }) {
+    const primary = cleanText(sysId) || cleanText(ticketNumber) || "unknown";
+    return `${cleanText(table) || "unknown"}::${primary}`;
+  }
+  function formatToday(language = "en") {
+    const locale = language === "fr" ? "fr-FR" : "en-GB";
+    return new Intl.DateTimeFormat(locale, {
+      year: "numeric",
+      month: "long",
+      day: "numeric"
+    }).format(/* @__PURE__ */ new Date());
+  }
+  function titleCase(value) {
+    return cleanText(value).split(/[\s_-]+/).filter(Boolean).map((segment) => segment.charAt(0).toUpperCase() + segment.slice(1)).join(" ");
+  }
+
+  // Assistant/sn/form.js
+  function getRootWindow() {
+    try {
+      return window.top || window;
+    } catch (error) {
+      return window;
+    }
+  }
+  function getAccessibleWindows(rootWindow = getRootWindow()) {
+    const queue = [rootWindow];
+    const seen = /* @__PURE__ */ new Set();
+    const results = [];
+    while (queue.length) {
+      const current = queue.shift();
+      if (!current || seen.has(current)) continue;
+      seen.add(current);
+      results.push(current);
+      try {
+        for (let index = 0; index < current.frames.length; index += 1) {
+          queue.push(current.frames[index]);
+        }
+      } catch (error) {
+        continue;
+      }
+    }
+    return results;
+  }
+  function getAccessibleDocuments(rootWindow = getRootWindow()) {
+    const documents = [];
+    getAccessibleWindows(rootWindow).forEach((win) => {
+      try {
+        if (win.document && !documents.includes(win.document)) {
+          documents.push(win.document);
+        }
+      } catch (error) {
+        return;
+      }
+    });
+    return documents;
+  }
+  function scoreGForm(gForm) {
+    let score = 0;
+    try {
+      if (cleanText(gForm.getTableName && gForm.getTableName())) score += 3;
+    } catch (error) {
+      score += 0;
+    }
+    try {
+      if (cleanText(gForm.getUniqueValue && gForm.getUniqueValue())) score += 3;
+    } catch (error) {
+      score += 0;
+    }
+    try {
+      if (cleanText(gForm.getValue && gForm.getValue("number"))) score += 2;
+    } catch (error) {
+      score += 0;
+    }
+    try {
+      if (cleanText(gForm.getValue && gForm.getValue("short_description"))) score += 1;
+    } catch (error) {
+      score += 0;
+    }
+    return score;
+  }
+  function getBestGForm(rootWindow = getRootWindow()) {
+    let bestMatch = null;
+    getAccessibleWindows(rootWindow).forEach((win) => {
+      try {
+        const gForm = win.g_form;
+        if (!gForm || typeof gForm.getValue !== "function") return;
+        const score = scoreGForm(gForm);
+        if (!bestMatch || score > bestMatch.score) {
+          bestMatch = { window: win, gForm, score };
+        }
+      } catch (error) {
+        return;
+      }
+    });
+    return bestMatch;
+  }
+  function findFormRoot(documentRef) {
+    const selectors = ["#sys_form", 'form[name="sys_form"]', "#sysparm_form", "form"];
+    for (const selector of selectors) {
+      try {
+        const match = documentRef.querySelector(selector);
+        if (match) return match;
+      } catch (error) {
+        continue;
+      }
+    }
+    return documentRef.body || documentRef.documentElement || null;
+  }
+  function getHostDocument(rootWindow = getRootWindow()) {
+    const bestGForm = getBestGForm(rootWindow);
+    if (bestGForm?.window?.document) return bestGForm.window.document;
+    const documents = getAccessibleDocuments(rootWindow);
+    const ranked = documents.map((documentRef) => {
+      const root = findFormRoot(documentRef);
+      const rect = root?.getBoundingClientRect?.();
+      return {
+        documentRef,
+        score: rect ? rect.width * rect.height : 0
+      };
+    }).sort((left, right) => right.score - left.score);
+    return ranked[0]?.documentRef || document;
+  }
+  function findElementByIdAcrossDocuments(id, rootWindow = getRootWindow()) {
+    for (const documentRef of getAccessibleDocuments(rootWindow)) {
+      try {
+        const element = documentRef.getElementById(id);
+        if (element) return { documentRef, element };
+      } catch (error) {
+        continue;
+      }
+    }
+    return null;
+  }
+
+  // Assistant/sn/tables.js
+  var COMMENTS_TARGET = {
+    fieldNames: ["comments", "comments_and_work_notes"],
+    selectors: [
+      "#activity-stream-comments-textarea",
+      "#activity-stream-comments_and_work_notes-textarea",
+      "#comments",
+      'textarea[name="comments"]',
+      'textarea[id="comments"]',
+      'textarea[name="comments_and_work_notes"]',
+      'textarea[id="comments_and_work_notes"]',
+      'textarea[id*="comments"]'
+    ]
+  };
+  var WORK_NOTES_TARGET = {
+    fieldNames: ["work_notes"],
+    selectors: [
+      "#activity-stream-work_notes-textarea",
+      "#work_notes",
+      'textarea[name="work_notes"]',
+      'textarea[id="work_notes"]',
+      'textarea[id*="work_notes"]'
+    ]
+  };
+  var TABLES = {
+    incident: {
+      label: "Incident",
+      userFieldCandidates: ["caller_id", "opened_for", "u_requested_for"],
+      emailFieldCandidates: ["u_email", "email", "caller_id.email", "opened_for.email"],
+      cmdbCiSelectors: [
+        "#sys_display\\.incident\\.cmdb_ci",
+        'input[id="sys_display.incident.cmdb_ci"]',
+        "#sys_display\\.task\\.cmdb_ci"
+      ],
+      targets: {
+        comments: COMMENTS_TARGET,
+        work_notes: WORK_NOTES_TARGET
+      }
+    },
+    sc_task: {
+      label: "SC Task",
+      userFieldCandidates: [
+        "request_item.request.requested_for",
+        "request.requested_for",
+        "requested_for"
+      ],
+      emailFieldCandidates: [
+        "requested_for.email",
+        "request_item.request.requested_for.email",
+        "request.requested_for.email",
+        "email"
+      ],
+      cmdbCiSelectors: [
         "#sys_display\\.sc_task\\.cmdb_ci",
-        "#sys_display\\.sc_req_item\\.cmdb_ci",
+        'input[id="sys_display.sc_task.cmdb_ci"]',
         "#sys_display\\.task\\.cmdb_ci",
         'input[id*="cmdb_ci"]'
       ],
-      PREVIEW_WAIT_MS: 2e4,
-      POPUP_WAIT_MS: 5e3,
-      STORAGE_KEY: "sn_requested_for_user_info",
-      STATE_STORAGE_KEY: "sn_smart_email_state",
-      POSITION_STORAGE_KEY: "sn_smart_email_launcher_position"
-    };
-    const utils = ns.utils = ns.utils || {};
-    const runtime = ns.runtime = ns.runtime || {};
-    utils.delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
-    utils.log = (...args) => {
-      console.log("[SN Smart Email]", ...args);
-    };
-    utils.debug = (label, data) => {
-      console.log("[SN Smart Email]", label, data);
-    };
-    utils.cleanValue = (value) => {
-      if (value === null || value === void 0) return "";
-      const text = String(value).trim();
-      return text === "undefined" || text === "null" ? "" : text;
-    };
-    utils.normalize = (text) => {
-      return utils.cleanValue(text).toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/\s+/g, " ").trim();
-    };
-    utils.extractUriFromLocation = (href) => {
-      const raw = utils.cleanValue(href);
-      if (!raw) return "";
-      try {
-        const url = new URL(raw, window.location.origin);
-        const nested = url.searchParams.get("uri");
-        return nested ? decodeURIComponent(nested) : raw;
-      } catch (e) {
-        const match = raw.match(/[?&]uri=([^&]+)/i);
-        return match ? decodeURIComponent(match[1]) : raw;
+      previewButtonId: "viewr.sc_task.request_item.request.requested_for",
+      piAssetPrefix: "MUSTBRUN",
+      targets: {
+        comments: COMMENTS_TARGET,
+        work_notes: WORK_NOTES_TARGET
       }
-    };
-    utils.createRecordKey = ({ table, sysId }) => {
-      return [utils.cleanValue(table) || "unknown", utils.cleanValue(sysId) || "unknown"].join(":");
-    };
-    utils.getRuntimeState = () => {
-      runtime.state = runtime.state || {
-        mountedRecordKey: "",
-        activeRecordKey: "",
-        pending: false,
-        currentPanel: "",
-        lastUser: null,
-        lastMail: null,
-        lastDebugFields: null,
-        lastTemplateType: "",
-        locks: {}
-      };
-      return runtime.state;
-    };
-    utils.clearRuntimeState = (options = {}) => {
-      const { preserveMount = true } = options;
-      const state = utils.getRuntimeState();
-      const mountedRecordKey = preserveMount ? state.mountedRecordKey : "";
-      runtime.state = {
-        mountedRecordKey,
-        activeRecordKey: "",
-        pending: false,
-        currentPanel: "",
-        launcherVisible: true,
-        lastUser: null,
-        lastMail: null,
-        lastDebugFields: null,
-        lastTemplateType: "",
-        locks: {}
-      };
-      try {
-        sessionStorage.removeItem(ns.CONFIG.STATE_STORAGE_KEY);
-        sessionStorage.removeItem(ns.CONFIG.STORAGE_KEY);
-      } catch (e) {
+    },
+    sc_req_item: {
+      label: "RITM",
+      userFieldCandidates: ["requested_for", "request.requested_for", "opened_by"],
+      emailFieldCandidates: ["requested_for.email", "email", "opened_by.email"],
+      cmdbCiSelectors: [
+        "#sys_display\\.sc_req_item\\.cmdb_ci",
+        'input[id="sys_display.sc_req_item.cmdb_ci"]',
+        "#sys_display\\.task\\.cmdb_ci"
+      ],
+      targets: {
+        comments: COMMENTS_TARGET,
+        work_notes: WORK_NOTES_TARGET
       }
-      utils.log("State cleared", { preserveMount, mountedRecordKey });
-      return runtime.state;
-    };
-    utils.persistRuntimeState = () => {
-      try {
-        const state = utils.getRuntimeState();
-        sessionStorage.setItem(
-          ns.CONFIG.STATE_STORAGE_KEY,
-          JSON.stringify({
-            activeRecordKey: state.activeRecordKey,
-            lastTemplateType: state.lastTemplateType,
-            pending: state.pending,
-            launcherVisible: state.launcherVisible !== false
-          })
-        );
-      } catch (e) {
+    },
+    sc_request: {
+      label: "Request",
+      userFieldCandidates: ["requested_for", "opened_by"],
+      emailFieldCandidates: ["requested_for.email", "email", "opened_by.email"],
+      cmdbCiSelectors: [
+        "#sys_display\\.sc_request\\.cmdb_ci",
+        'input[id="sys_display.sc_request.cmdb_ci"]',
+        "#sys_display\\.task\\.cmdb_ci"
+      ],
+      targets: {
+        comments: COMMENTS_TARGET,
+        work_notes: WORK_NOTES_TARGET
       }
-    };
-  })();
+    }
+  };
+  function isSupportedTable(table) {
+    return Boolean(TABLES[table]);
+  }
+  function getTableConfig(table) {
+    return TABLES[table] || null;
+  }
+  function getTableLabel(table) {
+    return TABLES[table]?.label || titleCase(table);
+  }
 
-  // servicenow.js
-  (function () {
-    const ns = window.__SN_SMART_EMAIL__ = window.__SN_SMART_EMAIL__ || {};
-    const { CONFIG } = ns;
-    const utils = ns.utils || {};
-    const servicenow = ns.servicenow = ns.servicenow || {};
-    servicenow.getAllDocs = () => {
-      const docs = [document];
-      for (let i = 0; i < window.frames.length; i++) {
-        try {
-          const frameDoc = window.frames[i].document;
-          if (frameDoc && !docs.includes(frameDoc)) docs.push(frameDoc);
-        } catch (e) {
-        }
-      }
-      return docs;
+  // Assistant/sn/fields.js
+  function parseDisplayName(displayValue) {
+    const text = cleanText(displayValue);
+    if (!text) return { firstName: "", lastName: "", fullName: "" };
+    if (text.includes(",")) {
+      const [lastName, firstName] = text.split(",").map((segment) => cleanText(segment));
+      return {
+        firstName,
+        lastName,
+        fullName: [firstName, lastName].filter(Boolean).join(" ").trim()
+      };
+    }
+    const parts = text.split(/\s+/).filter(Boolean);
+    return {
+      firstName: parts[0] || "",
+      lastName: parts.slice(1).join(" "),
+      fullName: text
     };
-    servicenow.getAllWindows = () => {
-      const wins = [window];
-      for (let i = 0; i < window.frames.length; i++) {
-        try {
-          const w = window.frames[i];
-          if (w && !wins.includes(w)) wins.push(w);
-        } catch (e) {
-        }
-      }
-      return wins;
-    };
-    servicenow.getBestGForm = () => {
-      const wins = servicenow.getAllWindows();
-      for (const w of wins) {
-        try {
-          if (!w.g_form || typeof w.g_form.getValue !== "function") continue;
-          const tableName = utils.cleanValue(w.g_form.getTableName && w.g_form.getTableName());
-          const number = utils.cleanValue(w.g_form.getValue("number"));
-          const shortDesc = utils.cleanValue(w.g_form.getValue("short_description"));
-          if (tableName || number || shortDesc) return w.g_form;
-        } catch (e) {
-        }
-      }
-      return null;
-    };
-    servicenow.safeGetField = (name) => {
-      try {
-        const gf = servicenow.getBestGForm();
-        if (gf && typeof gf.getValue === "function") {
-          return utils.cleanValue(gf.getValue(name));
-        }
-      } catch (e) {
-        utils.log(`safeGetField failed for ${name}`, e);
-      }
+  }
+  function safeGetValue(fieldName, rootWindow = getRootWindow()) {
+    try {
+      const bestGForm = getBestGForm(rootWindow);
+      if (!bestGForm?.gForm) return "";
+      return cleanText(bestGForm.gForm.getValue(fieldName));
+    } catch (error) {
       return "";
-    };
-    servicenow.safeGetDisplayValue = (name) => {
-      try {
-        const gf = servicenow.getBestGForm();
-        if (gf && typeof gf.getDisplayValue === "function") {
-          return utils.cleanValue(gf.getDisplayValue(name));
-        }
-      } catch (e) {
-        utils.log(`safeGetDisplayValue failed for ${name}`, e);
-      }
+    }
+  }
+  function safeGetDisplayValue(fieldName, rootWindow = getRootWindow()) {
+    try {
+      const bestGForm = getBestGForm(rootWindow);
+      if (!bestGForm?.gForm || typeof bestGForm.gForm.getDisplayValue !== "function") return "";
+      return cleanText(bestGForm.gForm.getDisplayValue(fieldName));
+    } catch (error) {
       return "";
-    };
-    servicenow.getFirstExistingValue = (selectors) => {
-      const docs = servicenow.getAllDocs();
-      for (const doc of docs) {
-        for (const selector of selectors) {
-          try {
-            const el = doc.querySelector(selector);
-            if (!el) continue;
-            const value = utils.cleanValue(el.value || el.innerText || el.textContent || "");
-            if (value) return value;
-          } catch (e) {
-          }
+    }
+  }
+  function getFirstValue(selectors, rootWindow = getRootWindow()) {
+    for (const documentRef of getAccessibleDocuments(rootWindow)) {
+      for (const selector of selectors) {
+        try {
+          const element = documentRef.querySelector(selector);
+          if (!element) continue;
+          const value = cleanText(element.value || element.textContent || element.innerText);
+          if (value) return value;
+        } catch (error) {
+          continue;
         }
       }
-      return "";
-    };
-    servicenow.getFieldDisplayValue = (fieldName) => {
-      const escaped = fieldName.replace(/\./g, "\\.");
-      return servicenow.getFirstExistingValue([
-        `#sys_display\\.${escaped}`,
-        `#${escaped}`,
+    }
+    return "";
+  }
+  function getFieldDisplayValue(fieldName, rootWindow = getRootWindow()) {
+    const escapedFieldName = escapeCssIdentifier(fieldName);
+    return getFirstValue(
+      [
+        `#sys_display\\.${escapedFieldName}`,
+        `#${escapedFieldName}`,
         `input[id="sys_display.${fieldName}"]`,
         `input[id="${fieldName}"]`,
         `input[name="${fieldName}"]`,
         `textarea[id="${fieldName}"]`,
         `textarea[name="${fieldName}"]`
-      ]);
-    };
-    servicenow.detectTable = () => {
-      const gf = servicenow.getBestGForm();
-      try {
-        const fromGForm = utils.cleanValue(gf && gf.getTableName && gf.getTableName());
-        if (fromGForm) return fromGForm;
-      } catch (e) {
-      }
-      const hrefs = servicenow.getAllWindows().map((w) => {
-        try {
-          return utils.extractUriFromLocation(w.location.href);
-        } catch (e) {
-          return "";
-        }
-      }).filter(Boolean);
-      for (const href of hrefs) {
-        const patterns = [
-          /(?:^|\/)(incident)\.do/i,
-          /(?:^|\/)(sc_task)\.do/i,
-          /(?:^|\/)(sc_req_item)\.do/i,
-          /(?:^|\/)(sc_request)\.do/i,
-          /(?:sysparm_table=)(incident|sc_task|sc_req_item|sc_request)/i,
-          /(?:table=)(incident|sc_task|sc_req_item|sc_request)/i
-        ];
-        for (const pattern of patterns) {
-          const match = href.match(pattern);
-          if (match) return utils.cleanValue(match[1]).toLowerCase();
-        }
-      }
-      const byDom = [
-        { table: "incident", selectors: ["#incident\\.number", 'input[id="incident.number"]'] },
-        { table: "sc_task", selectors: ["#sc_task\\.number", 'input[id="sc_task.number"]'] },
-        { table: "sc_req_item", selectors: ["#sc_req_item\\.number", 'input[id="sc_req_item.number"]'] },
-        { table: "sc_request", selectors: ["#sc_request\\.number", 'input[id="sc_request.number"]'] }
-      ];
-      for (const entry of byDom) {
-        if (servicenow.getFirstExistingValue(entry.selectors)) return entry.table;
-      }
-      return "generic";
-    };
-    servicenow.getSysId = () => {
-      const gf = servicenow.getBestGForm();
-      try {
-        const fromGForm = utils.cleanValue(gf && gf.getUniqueValue && gf.getUniqueValue());
-        if (fromGForm) return fromGForm;
-      } catch (e) {
-      }
-      const hrefs = servicenow.getAllWindows().map((w) => {
-        try {
-          return utils.extractUriFromLocation(w.location.href);
-        } catch (e) {
-          return "";
-        }
-      }).filter(Boolean);
-      for (const href of hrefs) {
-        const match = href.match(/[?&](?:sys_id|sysparm_sys_id)=([0-9a-f]{32})/i);
-        if (match) return utils.cleanValue(match[1]);
-      }
-      return "";
-    };
-    servicenow.getRecordContext = () => {
-      const table = servicenow.detectTable();
-      const sysId = servicenow.getSysId();
-      const recordKey = utils.createRecordKey({ table, sysId });
-      return { table, sysId, recordKey };
-    };
-    servicenow.waitForPreviewButtonInAnyFrame = async (id, timeoutMs = CONFIG.PREVIEW_WAIT_MS, intervalMs = 250) => {
-      const start = Date.now();
-      while (Date.now() - start < timeoutMs) {
-        const docs = servicenow.getAllDocs();
-        for (const doc of docs) {
-          try {
-            const el = doc.getElementById(id);
-            if (el) return { el, doc };
-          } catch (e) {
-          }
-        }
-        await utils.delay(intervalMs);
-      }
-      return null;
-    };
-    servicenow.findPopupInAnyFrame = () => {
-      const docs = servicenow.getAllDocs();
-      for (const doc of docs) {
-        try {
-          const pops = doc.querySelectorAll(
-            '.popover,[role="dialog"],div[id^="popover"],.modal,.glide_box'
-          );
-          for (const popup of pops) {
-            const html = popup.innerHTML || "";
-            if (html.includes("sys_user.email") || html.includes("sys_user.first_name") || html.includes("sys_user.last_name")) {
-              return { popup, doc };
-            }
-          }
-        } catch (e) {
-        }
-      }
-      return null;
-    };
-    servicenow.waitForPopupInAnyFrame = async (timeoutMs = CONFIG.POPUP_WAIT_MS, intervalMs = 150) => {
-      const start = Date.now();
-      while (Date.now() - start < timeoutMs) {
-        const found = servicenow.findPopupInAnyFrame();
-        if (found) return found;
-        await utils.delay(intervalMs);
-      }
-      return null;
-    };
-    servicenow.getPopupValue = (popup, selectors) => {
-      for (const selector of selectors) {
-        try {
-          const el = popup.querySelector(selector);
-          if (el && typeof el.value === "string" && el.value.trim()) {
-            return utils.cleanValue(el.value);
-          }
-        } catch (e) {
-        }
-      }
-      return "";
-    };
-    servicenow.getUserFromPopup = (popup) => {
-      return {
-        firstName: servicenow.getPopupValue(popup, [
-          "#sys_readonly\\.sys_user\\.first_name",
-          "#sys_user\\.first_name",
-          'input[id="sys_readonly.sys_user.first_name"]',
-          'input[id="sys_user.first_name"]'
-        ]),
-        lastName: servicenow.getPopupValue(popup, [
-          "#sys_readonly\\.sys_user\\.last_name",
-          "#sys_user\\.last_name",
-          'input[id="sys_readonly.sys_user.last_name"]',
-          'input[id="sys_user.last_name"]'
-        ]),
-        email: servicenow.getPopupValue(popup, [
-          "#sys_readonly\\.sys_user\\.email",
-          "#sys_user\\.email",
-          'input[id="sys_readonly.sys_user.email"]',
-          'input[id="sys_user.email"]'
-        ])
-      };
-    };
-    servicenow.hidePreview = (popup, popupDoc = document) => {
-      if (!popup) return false;
-      try {
-        popup.style.display = "none";
-        popup.style.visibility = "hidden";
-        popup.style.opacity = "0";
-        popup.style.pointerEvents = "none";
-        popup.setAttribute("aria-hidden", "true");
-        popup.classList.remove("in", "show", "active");
-      } catch (e) {
-      }
-      try {
-        const overlays = popupDoc.querySelectorAll(
-          '.modal-backdrop, .popover-backdrop, .glide_box_overlay, .sn-modal-backdrop, [class*="backdrop"], [class*="overlay"]'
-        );
-        overlays.forEach((el) => {
-          try {
-            el.style.display = "none";
-            el.style.visibility = "hidden";
-            el.style.opacity = "0";
-            el.style.pointerEvents = "none";
-          } catch (e) {
-          }
-        });
-      } catch (e) {
-      }
-      try {
-        popupDoc.body.classList.remove("modal-open");
-        popupDoc.body.style.overflow = "";
-        popupDoc.body.style.pointerEvents = "";
-      } catch (e) {
-      }
-      return true;
-    };
-    servicenow.getRequestedForFromPreview = async () => {
-      const foundButton = await servicenow.waitForPreviewButtonInAnyFrame(
-        CONFIG.PREVIEW_ID,
-        CONFIG.PREVIEW_WAIT_MS,
-        250
-      );
-      if (!foundButton) {
-        throw new Error(`Preview button not found: ${CONFIG.PREVIEW_ID}`);
-      }
-      foundButton.el.click();
-      const foundPopup = await servicenow.waitForPopupInAnyFrame(CONFIG.POPUP_WAIT_MS, 150);
-      if (!foundPopup) {
-        throw new Error("Popup not found after clicking preview");
-      }
-      const user = servicenow.getUserFromPopup(foundPopup.popup);
-      if (!utils.cleanValue(user.email)) {
-        throw new Error("Email field not found inside popup");
-      }
-      sessionStorage.setItem(CONFIG.STORAGE_KEY, JSON.stringify(user));
-      servicenow.hidePreview(foundPopup.popup, foundPopup.doc || document);
-      return user;
-    };
-    function splitDisplayName(displayValue) {
-      const parts = utils.cleanValue(displayValue).split(/\s+/).filter(Boolean);
-      if (!parts.length) return { firstName: "", lastName: "" };
-      if (parts.length === 1) return { firstName: parts[0], lastName: "" };
-      return { firstName: parts[0], lastName: parts.slice(1).join(" ") };
-    }
-    servicenow.getUserFromForm = (table) => {
-      const user = { firstName: "", lastName: "", email: "" };
-      const userFieldCandidates = {
-        incident: ["caller_id", "opened_for", "u_requested_for"],
-        sc_task: ["request_item.request.requested_for", "request.requested_for", "requested_for"],
-        sc_req_item: ["requested_for", "request.requested_for", "opened_by"],
-        sc_request: ["requested_for", "opened_by"]
-      };
-      const emailFieldCandidates = {
-        incident: ["u_email", "email", "caller_id.email", "opened_for.email"],
-        sc_task: ["requested_for.email", "request_item.request.requested_for.email", "email"],
-        sc_req_item: ["requested_for.email", "email", "opened_by.email"],
-        sc_request: ["requested_for.email", "email", "opened_by.email"]
-      };
-      for (const fieldName of userFieldCandidates[table] || ["requested_for", "caller_id"]) {
-        const displayValue = servicenow.safeGetDisplayValue(fieldName) || servicenow.getFieldDisplayValue(fieldName);
-        if (displayValue) {
-          const parsed = splitDisplayName(displayValue);
-          user.firstName = user.firstName || parsed.firstName;
-          user.lastName = user.lastName || parsed.lastName;
-          break;
-        }
-      }
-      for (const fieldName of emailFieldCandidates[table] || ["email"]) {
-        const value = servicenow.safeGetField(fieldName) || servicenow.getFieldDisplayValue(fieldName);
-        if (value && value.includes("@")) {
-          user.email = value;
-          break;
-        }
-      }
-      return user;
-    };
-    servicenow.getUserFromSession = () => {
-      try {
-        const raw = sessionStorage.getItem(CONFIG.STORAGE_KEY);
-        if (!raw) return null;
-        const user = JSON.parse(raw);
-        if (user && utils.cleanValue(user.email)) return user;
-      } catch (e) {
-      }
-      return null;
-    };
-    servicenow.resolveUserContext = async (table) => {
-      if (table === "incident") {
-        const directUser = servicenow.getUserFromForm("incident");
-        if (utils.cleanValue(directUser.email)) {
-          utils.log("User resolved from incident form");
-          sessionStorage.setItem(CONFIG.STORAGE_KEY, JSON.stringify(directUser));
-          return directUser;
-        }
-      }
-      if (table === "sc_task") {
-        try {
-          const previewUser = await servicenow.getRequestedForFromPreview();
-          utils.log("User resolved from sc_task preview");
-          return previewUser;
-        } catch (e) {
-          utils.log("sc_task preview unavailable, using form fallback");
-        }
-      }
-      const formUser = servicenow.getUserFromForm(table);
-      if (utils.cleanValue(formUser.email)) {
-        utils.log("User resolved from form fallback", { table });
-        sessionStorage.setItem(CONFIG.STORAGE_KEY, JSON.stringify(formUser));
-        return formUser;
-      }
-      const sessionUser = servicenow.getUserFromSession();
-      if (sessionUser) {
-        utils.log("User resolved from session fallback", { table });
-        return sessionUser;
-      }
-      utils.log("User unresolved, using empty fallback", { table });
-      return { firstName: "", lastName: "", email: "" };
-    };
-    servicenow.getShortDescription = () => {
-      const fromGForm = servicenow.safeGetField("short_description");
-      if (fromGForm) return fromGForm;
-      return servicenow.getFirstExistingValue([
-        "#incident\\.short_description",
-        "#sc_task\\.short_description",
-        "#sc_req_item\\.short_description",
-        "#sc_request\\.short_description",
+      ],
+      rootWindow
+    );
+  }
+  function getTicketNumber(table, rootWindow = getRootWindow()) {
+    return safeGetValue("number", rootWindow) || getFirstValue(
+      [
+        `#${escapeCssIdentifier(table)}\\.number`,
+        "#number",
+        'input[name="number"]',
+        'input[id="number"]'
+      ],
+      rootWindow
+    );
+  }
+  function getShortDescription(table, rootWindow = getRootWindow()) {
+    return safeGetValue("short_description", rootWindow) || getFirstValue(
+      [
+        `#${escapeCssIdentifier(table)}\\.short_description`,
         "#short_description",
         'input[name="short_description"]',
         'textarea[name="short_description"]'
-      ]);
-    };
-    servicenow.getDescription = () => {
-      return servicenow.safeGetField("description") || servicenow.getFirstExistingValue([
-        "#incident\\.description",
-        "#sc_task\\.description",
-        "#sc_req_item\\.description",
-        "#sc_request\\.description",
+      ],
+      rootWindow
+    );
+  }
+  function getDescription(table, rootWindow = getRootWindow()) {
+    return safeGetValue("description", rootWindow) || getFirstValue(
+      [
+        `#${escapeCssIdentifier(table)}\\.description`,
         "#description",
         'textarea[name="description"]'
-      ]);
+      ],
+      rootWindow
+    );
+  }
+  function getConfigurationItem(table, rootWindow = getRootWindow()) {
+    const config = getTableConfig(table);
+    if (!config) return "";
+    return safeGetDisplayValue("cmdb_ci", rootWindow) || getFirstValue(config.cmdbCiSelectors || [], rootWindow);
+  }
+  function resolveUserFromForm(table, rootWindow = getRootWindow()) {
+    const config = getTableConfig(table);
+    const user = {
+      firstName: "",
+      lastName: "",
+      fullName: "",
+      email: ""
     };
-    servicenow.getConfigurationItem = () => {
-      return servicenow.getFirstExistingValue(CONFIG.CI_SELECTORS || []);
-    };
-    servicenow.readContext = async () => {
-      const record = servicenow.getRecordContext();
-      const user = await servicenow.resolveUserContext(record.table);
-      const ticket = servicenow.safeGetField("number") || "Ticket";
-      const shortDesc = servicenow.getShortDescription();
-      const desc = servicenow.getDescription();
-      const ci = record.table === "incident" ? "" : servicenow.getConfigurationItem();
-      return {
-        ...record,
-        user,
-        ticket: utils.cleanValue(ticket) || "Ticket",
-        shortDesc: utils.cleanValue(shortDesc),
-        desc: utils.cleanValue(desc),
-        ci: utils.cleanValue(ci)
-      };
-    };
-    servicenow.composeWorkNote = ({ user, mail, ticket }) => {
-      const recipient = utils.cleanValue(user && user.email) || "the user";
-      const lines = [
-        `Email prepared for ${recipient}.`,
-        `Ticket: ${utils.cleanValue(ticket) || "Ticket"}`,
-        `Subject: ${utils.cleanValue(mail && mail.subject)}`,
-        "",
-        utils.cleanValue(mail && mail.body)
-      ];
-      return lines.filter((line, index) => line || index === 3).join("\n");
-    };
-    servicenow.setWorkNotesDraft = (text) => {
-      const value = utils.cleanValue(text);
-      if (!value) return false;
-      const gf = servicenow.getBestGForm();
-      try {
-        if (gf && typeof gf.setValue === "function") {
-          gf.setValue("work_notes", value);
-          return true;
-        }
-      } catch (e) {
-        utils.log("g_form.setValue(work_notes) failed", e);
+    if (!config) return user;
+    for (const fieldName of config.userFieldCandidates || []) {
+      const displayValue = safeGetDisplayValue(fieldName, rootWindow) || getFieldDisplayValue(fieldName, rootWindow);
+      if (!displayValue) continue;
+      const parsed = parseDisplayName(displayValue);
+      user.firstName = user.firstName || parsed.firstName;
+      user.lastName = user.lastName || parsed.lastName;
+      user.fullName = user.fullName || parsed.fullName;
+      break;
+    }
+    for (const fieldName of config.emailFieldCandidates || []) {
+      const emailValue = safeGetValue(fieldName, rootWindow) || getFieldDisplayValue(fieldName, rootWindow);
+      if (emailValue.includes("@")) {
+        user.email = emailValue;
+        break;
       }
-      const selectors = [
-        "#activity-stream-work_notes-textarea",
-        "#work_notes",
-        'textarea[id="work_notes"]',
-        'textarea[name="work_notes"]',
-        'textarea[id*="work_notes"]'
-      ];
-      const docs = servicenow.getAllDocs();
-      for (const doc of docs) {
-        for (const selector of selectors) {
-          try {
-            const el = doc.querySelector(selector);
-            if (!el) continue;
-            el.value = value;
-            el.dispatchEvent(new Event("input", { bubbles: true }));
-            el.dispatchEvent(new Event("change", { bubbles: true }));
-            return true;
-          } catch (e) {
-          }
-        }
-      }
-      return false;
-    };
-  })();
-
-  // templates.js
-  (function () {
-    const ns = window.__SN_SMART_EMAIL__ = window.__SN_SMART_EMAIL__ || {};
-    const utils = ns.utils || {};
-    const templates = ns.templates = ns.templates || {};
-    const TICKET_PATTERNS = {
-      incident: /^INC\d+$/i,
-      ritm: /^RITM\d+$/i,
-      sctask: /^SCTASK\d+$/i,
-      req: /^REQ\d+$/i
-    };
-    const REQUEST_CATEGORY_RULES = [
-      {
-        type: "schedule_smartphone_delivery_closure",
-        match: (text) => text.includes("schedule smartphone delivery, delivery and closure") || text.includes("schedule smartphone delivery") && text.includes("delivery and closure")
-      },
-      {
-        type: "iphone_replacement",
-        match: (text) => text.includes("iphone replacement") || text.includes("replacement plan")
-      },
-      {
-        type: "smartphone",
-        match: (text) => text.includes("smartphone") || text.includes("iphone") || text.includes("samsung")
-      },
-      {
-        type: "headset",
-        match: (text) => text.includes("headset")
-      },
-      {
-        type: "token",
-        match: (text) => text.includes("token") || text.includes("virtual token")
-      },
-      {
-        type: "mdm",
-        match: (text) => text.includes("mdm") || text.includes("mobile device management") || text.includes("intune")
-      },
-      {
-        type: "collection",
-        match: (text) => text.includes("collect") || text.includes("pickup") || text.includes("return old device")
-      },
-      {
-        type: "laptop",
-        match: (text) => text.includes("laptop") || text.includes("surface")
-      }
+    }
+    return user;
+  }
+  function getAgentName(rootWindow = getRootWindow()) {
+    const sources = [
+      rootWindow.NOW?.user_display_name,
+      rootWindow.NOW?.user?.displayName,
+      rootWindow.NOW?.user?.name,
+      rootWindow.g_user?.fullName,
+      [rootWindow.g_user?.firstName, rootWindow.g_user?.lastName].filter(Boolean).join(" ")
     ];
-    const INCIDENT_TEMPLATE_LIBRARY = {
-      incident_acknowledgement: {
-        label: "Incident Acknowledgement",
-        subject: (ctx) => `Incident acknowledged - ${ctx.ticketLabel}`,
-        body: (ctx) => `${ctx.salutation}
+    const directMatch = sources.map((entry) => cleanText(entry)).find(Boolean);
+    if (directMatch) return directMatch;
+    return getFirstValue(
+      [
+        "#user_info_dropdown .user-name",
+        "#user_info_dropdown .name",
+        "[data-user-display-name]",
+        ".navpage-header-content .name"
+      ],
+      rootWindow
+    ) || "IT Support";
+  }
 
-Thank you for contacting the IT Service Desk regarding the reported incident.
-
-This message confirms that your incident has been received and is currently under review by our support team. An initial assessment is in progress, and we will continue with the appropriate troubleshooting steps.
-
-${ctx.details}Should immediate action or additional coordination be required, we will contact you accordingly.
-
-${ctx.signature}`
-      },
-      incident_follow_up: {
-        label: "Incident Follow-up / Request for Information",
-        subject: (ctx) => `Additional information required - ${ctx.ticketLabel}`,
-        body: (ctx) => `${ctx.salutation}
-
-We are following up on the reported incident and require a few additional details in order to continue the investigation efficiently.
-
-${ctx.details}At your convenience, please share any relevant information such as the exact behaviour observed, the time of occurrence, screenshots, error messages, impacted users, or recent changes related to the issue.
-
-Once this information is received, we will continue our analysis without delay.
-
-${ctx.signature}`
-      },
-      incident_resolution_proposal: {
-        label: "Incident Resolution Proposal",
-        subject: (ctx) => `Proposed resolution for ${ctx.ticketLabel}`,
-        body: (ctx) => `${ctx.salutation}
-
-Following our review of the reported incident, we have identified a proposed resolution path.
-
-${ctx.details}Based on the information currently available, we are ready to proceed with the corrective action or validation step required to restore normal service.
-
-Please confirm whether we may proceed, or let us know if the issue has already been resolved from your side.
-
-${ctx.signature}`
-      },
-      incident_closure_confirmation: {
-        label: "Incident Closure Confirmation",
-        subject: (ctx) => `Closure confirmation - ${ctx.ticketLabel}`,
-        body: (ctx) => `${ctx.salutation}
-
-We are contacting you to confirm whether the reported incident can now be considered resolved.
-
-${ctx.details}If the service is operating as expected, we will proceed with the closure of the incident. If the issue persists, please reply with the current status so that we may continue our investigation.
-
-Unless we receive further information indicating that support is still required, the ticket may be closed accordingly.
-
-${ctx.signature}`
-      },
-      incident_generic: {
-        label: "Generic Incident Communication",
-        subject: (ctx) => templates.buildIncidentEmailTemplate(ctx).subject,
-        body: (ctx) => templates.buildIncidentEmailTemplate(ctx).body
-      }
-    };
-    function safeClean(value) {
-      return typeof utils.cleanValue === "function" ? utils.cleanValue(value) : String(value || "").trim();
+  // Assistant/core/context.js
+  function extractNestedUri(rawHref) {
+    const href = cleanText(rawHref);
+    if (!href) return "";
+    try {
+      const url = new URL(href, window.location.origin);
+      const nestedUri = url.searchParams.get("uri");
+      return nestedUri ? decodeURIComponent(nestedUri) : href;
+    } catch (error) {
+      const match = href.match(/[?&]uri=([^&]+)/i);
+      return match ? decodeURIComponent(match[1]) : href;
     }
-    function safeNormalize(value) {
-      if (typeof utils.normalize === "function") return utils.normalize(value);
-      return safeClean(value).toLowerCase();
-    }
-    function joinParagraphs(parts) {
-      return parts.filter(Boolean).join("\n\n");
-    }
-    function getTicketLabel(ticket) {
-      return safeClean(ticket) || "Ticket";
-    }
-    function stripTicketNoise(text) {
-      return safeClean(text).replace(/\b(?:inc|ritm|req|sctask)\d+\b/gi, "").replace(/\s+/g, " ").trim();
-    }
-    function createContext({ user, ticket, shortDesc, desc, ci, device, ticketType, requestType }) {
-      return {
-        salutation: templates.buildSalutation(user),
-        signature: templates.buildSignature(),
-        details: templates.buildDetailsBlock({ device, ci, shortDesc, ticket }),
-        ticketLabel: getTicketLabel(ticket),
-        shortDesc: safeClean(shortDesc),
-        desc: safeClean(desc),
-        ci: safeClean(ci),
-        device: safeClean(device),
-        ticketType: safeClean(ticketType),
-        requestType: safeClean(requestType)
-      };
-    }
-    templates.extractBestProblemLabel = ({ shortDesc, desc, device, ci }) => {
-      const cleanShort = stripTicketNoise(shortDesc);
-      const cleanDesc = stripTicketNoise(desc);
-      const cleanDevice = safeClean(device) || safeClean(ci);
-      const normalizedShort = safeNormalize(cleanShort);
-      const weakLabels = ["incident", "issue", "problem", "request", "support", "incident update"];
-      if (cleanShort && cleanShort.length >= 8 && !weakLabels.includes(normalizedShort)) {
-        return cleanShort.charAt(0).toLowerCase() + cleanShort.slice(1);
-      }
-      if (cleanDesc) {
-        const sentence = cleanDesc.split(/[\r\n.]+/).map((part) => part.trim()).find(Boolean);
-        if (sentence && sentence.length >= 8) {
-          return sentence.charAt(0).toLowerCase() + sentence.slice(1);
-        }
-      }
-      if (cleanDevice) return `the issue affecting your ${cleanDevice.toLowerCase()}`;
-      return "the issue you reported";
-    };
-    templates.buildIncidentEmailTemplate = (ctx) => {
-      const problemLabel = templates.extractBestProblemLabel({
-        shortDesc: ctx.shortDesc,
-        desc: ctx.desc,
-        device: ctx.device,
-        ci: ctx.ci
-      });
-      return {
-        label: "Incident Follow-up",
-        subject: `Incident update - ${ctx.ticketLabel}`,
-        body: joinParagraphs([
-          ctx.salutation,
-          `I am following up regarding ${problemLabel}.`,
-          "Could you please confirm whether you are still experiencing the problem, or if the situation has already been resolved?",
-          "If the issue persists, we can arrange an intervention, either on-site or remotely, to investigate further.",
-          "Please let me know your availability, including any suitable date and time slots, so we can schedule this accordingly.",
-          "Thank you in advance for your feedback.",
-          ctx.signature
-        ])
-      };
-    };
-    templates.buildSalutation = (user = {}) => {
-      const firstName = safeClean(user.firstName);
-      const lastName = safeClean(user.lastName);
-      const fullName = [firstName, lastName].filter(Boolean).join(" ").trim();
-      if (fullName) return `Dear ${fullName},`;
-      if (firstName) return `Dear ${firstName},`;
-      return "Dear colleague,";
-    };
-    templates.buildSignature = () => "Kind regards,";
-    templates.buildDetailsBlock = ({ device, ci, shortDesc, ticket }) => {
-      const lines = [
-        safeClean(ticket) ? `Ticket: ${safeClean(ticket)}` : "",
-        safeClean(device) ? `Device: ${safeClean(device)}` : "",
-        safeClean(ci) ? `Configuration item: ${safeClean(ci)}` : "",
-        safeClean(shortDesc) ? `Subject: ${safeClean(shortDesc)}` : ""
-      ].filter(Boolean);
-      return lines.length ? `${lines.join("\n")}
-` : "";
-    };
-    templates.detectDevice = (rawText, ciText) => {
-      const text = safeClean(`${safeClean(rawText)} ${safeClean(ciText)}`).replace(/\s+/g, " ").trim().toLowerCase();
-      const patterns = [
-        /\bapple iphone \d+(?:\s+\d+gb)?(?:\s+[a-z]+)?\b/i,
-        /\biphone \d+(?:\s+\d+gb)?(?:\s+[a-z]+)?\b/i,
-        /\bipad(?:\s+[a-z0-9]+)*\b/i,
-        /\bsamsung galaxy [a-z0-9+\- ]+\b/i,
-        /\bmicrosoft surface [a-z0-9+\- ]+\b/i
-      ];
-      for (const regex of patterns) {
-        const match = text.match(regex);
-        if (match) {
-          return safeClean(match[0]).replace(/\s+/g, " ").trim().toUpperCase();
-        }
-      }
-      if (text.includes("iphone")) return "APPLE IPHONE";
-      if (text.includes("ipad")) return "APPLE IPAD";
-      if (text.includes("samsung")) return "SAMSUNG SMARTPHONE";
-      if (text.includes("surface")) return "MICROSOFT SURFACE";
-      if (text.includes("headset")) return "HEADSET";
-      if (text.includes("laptop")) return "LAPTOP";
+  }
+  function detectTable(rootWindow = getRootWindow()) {
+    const bestGForm = getBestGForm(rootWindow);
+    try {
+      const tableName = cleanText(bestGForm?.gForm?.getTableName?.());
+      if (tableName) return tableName.toLowerCase();
+    } catch (error) {
       return "";
-    };
-    templates.detectTicketType = (ticket) => {
-      const cleanTicket = safeClean(ticket).toUpperCase();
-      if (TICKET_PATTERNS.incident.test(cleanTicket)) return "incident";
-      if (TICKET_PATTERNS.ritm.test(cleanTicket)) return "ritm";
-      if (TICKET_PATTERNS.sctask.test(cleanTicket)) return "sctask";
-      if (TICKET_PATTERNS.req.test(cleanTicket)) return "req";
-      return "generic";
-    };
-    templates.isIncidentTicket = (ticket) => templates.detectTicketType(ticket) === "incident";
-    templates.detectRequestType = (text) => {
-      const normalized = safeNormalize(text);
-      for (const rule of REQUEST_CATEGORY_RULES) {
-        if (rule.match(normalized)) return rule.type;
+    }
+    const patterns = [
+      /(?:^|\/)(incident|sc_task|sc_req_item|sc_request)\.do/i,
+      /(?:sysparm_table=)(incident|sc_task|sc_req_item|sc_request)/i,
+      /(?:table=)(incident|sc_task|sc_req_item|sc_request)/i
+    ];
+    for (const win of getAccessibleWindows(rootWindow)) {
+      let href = "";
+      try {
+        href = extractNestedUri(win.location.href);
+      } catch (error) {
+        href = "";
       }
-      return "generic";
-    };
-    templates.detectType = (text, ticket) => {
-      const ticketType = templates.detectTicketType(ticket);
-      if (ticketType === "incident") return "incident_generic";
-      return templates.detectRequestType(text);
-    };
-    templates.getCategoryFromShortDescription = (shortDesc) => {
-      const value = safeNormalize(shortDesc);
-      if (value === "any other request related to outlook email and calendar") {
-        return "outlook_calendar";
+      for (const pattern of patterns) {
+        const match = href.match(pattern);
+        if (match?.[1]) return cleanText(match[1]).toLowerCase();
       }
-      if (value.includes("outlook") || value.includes("calendar")) {
-        return "outlook_calendar";
+    }
+    return "";
+  }
+  function detectSysId(rootWindow = getRootWindow()) {
+    const bestGForm = getBestGForm(rootWindow);
+    try {
+      const sysId = cleanText(bestGForm?.gForm?.getUniqueValue?.());
+      if (sysId) return sysId;
+    } catch (error) {
+      return "";
+    }
+    for (const win of getAccessibleWindows(rootWindow)) {
+      try {
+        const href = extractNestedUri(win.location.href);
+        const match = href.match(/[?&](?:sys_id|sysparm_sys_id)=([0-9a-f]{32})/i);
+        if (match?.[1]) return cleanText(match[1]);
+      } catch (error) {
+        continue;
       }
-      return "default";
+    }
+    return "";
+  }
+  function getCurrentContext(rootWindow = getRootWindow()) {
+    const table = detectTable(rootWindow);
+    const ticketNumber = getTicketNumber(table, rootWindow);
+    const sysId = detectSysId(rootWindow);
+    const recordKey = createRecordKey({ table, sysId, ticketNumber });
+    const supported = isSupportedTable(table);
+    return {
+      ready: Boolean(table || ticketNumber || sysId),
+      supported,
+      table,
+      tableLabel: getTableLabel(table),
+      tableConfig: getTableConfig(table),
+      sysId,
+      recordKey,
+      ticketNumber,
+      recordNumber: ticketNumber,
+      shortDescription: getShortDescription(table, rootWindow),
+      description: getDescription(table, rootWindow),
+      configurationItem: getConfigurationItem(table, rootWindow),
+      user: resolveUserFromForm(table, rootWindow),
+      agentName: getAgentName(rootWindow)
     };
-    templates.buildSuggestedTemplate = (templateId, ctx) => {
-      const template = INCIDENT_TEMPLATE_LIBRARY[templateId];
-      if (!template) return null;
-      return {
-        id: templateId,
-        label: template.label,
-        subject: safeClean(template.subject(ctx)),
-        body: safeClean(template.body(ctx))
-      };
-    };
-    templates.getSuggestedTemplates = ({ user, ticket, shortDesc, desc, ci, device, ticketType }) => {
-      const ctx = createContext({
-        user,
-        ticket,
-        shortDesc,
-        desc,
-        ci,
-        device,
-        ticketType,
-        requestType: templates.detectRequestType(`${safeClean(shortDesc)} ${safeClean(desc)} ${safeClean(ci)}`)
-      });
-      const category = templates.getCategoryFromShortDescription(shortDesc);
-      const suggestions = [];
-      if (category === "outlook_calendar") {
-        suggestions.push(
-          {
-            id: "outlook_calendar_generic",
-            label: "Generic Outlook / Calendar Request",
-            subject: `Outlook and calendar service request - ${ctx.ticketLabel}`,
-            body: joinParagraphs([
-              ctx.salutation,
-              "We are contacting you regarding your request related to Outlook email and calendar services.",
-              "Your request has been received and is currently under review by the support team.",
-              `${ctx.details}If any clarification, approval, or additional detail is required, we will contact you accordingly.`,
-              ctx.signature
-            ])
-          },
-          {
-            id: "outlook_distribution_list",
-            label: "Distribution List / Mail Group Request",
-            subject: `Distribution list request - ${ctx.ticketLabel}`,
-            body: joinParagraphs([
-              ctx.salutation,
-              "We are contacting you regarding your request related to a distribution list or mail-enabled group.",
-              "The request is currently being reviewed so that the required change can be processed accurately and in line with the defined access model.",
-              `${ctx.details}If needed, we may contact you to confirm the list name, requested action, ownership, or target recipients.`,
-              ctx.signature
-            ])
-          },
-          {
-            id: "outlook_shared_mailbox_access",
-            label: "Shared Mailbox / Access / Delegation Request",
-            subject: `Shared mailbox or delegation request - ${ctx.ticketLabel}`,
-            body: joinParagraphs([
-              ctx.salutation,
-              "We are contacting you regarding your request for shared mailbox access, mailbox delegation, or calendar permission changes.",
-              "The request has been received and is currently under assessment by the support team.",
-              `${ctx.details}If required, we may follow up to confirm the mailbox name, requested permission level, approver, or business justification.`,
-              ctx.signature
-            ])
-          }
-        );
-      }
-      if (ticketType === "incident") {
-        Object.keys(INCIDENT_TEMPLATE_LIBRARY).forEach((templateId) => {
-          const template = templates.buildSuggestedTemplate(templateId, ctx);
-          if (template) suggestions.push(template);
-        });
-      }
-      return suggestions;
-    };
-    templates.emailTemplate = (type, device, ci, user, ticket, shortDesc, desc, ticketType) => {
-      const ctx = createContext({
-        user,
-        ticket,
-        shortDesc,
-        desc,
-        ci,
-        device,
-        ticketType,
-        requestType: type
-      });
-      if (ticketType === "incident") {
-        return templates.buildSuggestedTemplate("incident_generic", ctx);
-      }
-      const map = {
-        schedule_smartphone_delivery_closure: () => ({
-          subject: `Corporate smartphone handover scheduling - ${ctx.ticketLabel}`,
-          body: joinParagraphs([
-            ctx.salutation,
-            `We are contacting you regarding the handover of your corporate smartphone${ctx.device ? ` (${ctx.device})` : ""}.`,
-            "The device is prepared and ready for delivery. To complete the fulfilment process and close the related activity, we kindly ask you to confirm your availability.",
-            "Once your availability is confirmed, we will arrange the handover accordingly.",
-            ctx.signature
-          ])
-        }),
-        iphone_replacement: () => ({
-          subject: `iPhone replacement coordination - ${ctx.ticketLabel}`,
-          body: joinParagraphs([
-            ctx.salutation,
-            `We are contacting you regarding your corporate smartphone replacement${ctx.device ? ` (${ctx.device})` : ""}.`,
-            "The replacement device is ready, and the request can proceed to the delivery stage.",
-            "Please share your availability so that we may coordinate the handover and complete the related request.",
-            ctx.signature
-          ])
-        }),
-        smartphone: () => ({
-          subject: `Corporate smartphone request update - ${ctx.ticketLabel}`,
-          body: joinParagraphs([
-            ctx.salutation,
-            `We are contacting you regarding your corporate smartphone request${ctx.device ? ` (${ctx.device})` : ""}.`,
-            "The required action is ready to move forward.",
-            "Please let us know your availability so that we may arrange the handover or next operational step.",
-            ctx.signature
-          ])
-        }),
-        laptop: () => ({
-          subject: `Corporate laptop request update - ${ctx.ticketLabel}`,
-          body: joinParagraphs([
-            ctx.salutation,
-            `We are contacting you regarding your corporate laptop request${ctx.device ? ` (${ctx.device})` : ""}.`,
-            "The device is prepared and ready for the next fulfilment step.",
-            "Please confirm your availability so that we may arrange the handover.",
-            ctx.signature
-          ])
-        }),
-        headset: () => ({
-          subject: `Headset request update - ${ctx.ticketLabel}`,
-          body: joinParagraphs([
-            ctx.salutation,
-            "We are contacting you regarding your headset request.",
-            "The equipment is available and ready for handover or collection.",
-            "Please let us know your availability so that we may coordinate the next step.",
-            ctx.signature
-          ])
-        }),
-        token: () => ({
-          subject: `Authentication token support - ${ctx.ticketLabel}`,
-          body: joinParagraphs([
-            ctx.salutation,
-            "We are contacting you regarding the setup or activation of your authentication token.",
-            "The support team is ready to assist with the required configuration and validation steps.",
-            "Please let us know your availability so that we may continue.",
-            ctx.signature
-          ])
-        }),
-        mdm: () => ({
-          subject: `Mobile device management request - ${ctx.ticketLabel}`,
-          body: joinParagraphs([
-            ctx.salutation,
-            `We are contacting you regarding the Mobile Device Management configuration of your device${ctx.device ? ` (${ctx.device})` : ""}.`,
-            "The request is ready to proceed with the required configuration actions.",
-            "Please let us know your availability so that we may continue.",
-            ctx.signature
-          ])
-        }),
-        collection: () => ({
-          subject: `Previous device collection - ${ctx.ticketLabel}`,
-          body: joinParagraphs([
-            ctx.salutation,
-            "We would like to coordinate the collection of the previous device related to your request.",
-            "Please let us know your availability so that we may organise the pickup or handover.",
-            ctx.signature
-          ])
-        }),
-        generic: () => ({
-          subject: `IT service request follow-up - ${ctx.ticketLabel}`,
-          body: joinParagraphs([
-            ctx.salutation,
-            "We are contacting you regarding your IT service request.",
-            "Please share any additional information or confirmation required so that we may proceed with the next step.",
-            ctx.signature
-          ])
-        })
-      };
-      return (map[type] || map.generic)();
-    };
-    templates.buildMail = ({ user, ticket, shortDesc, desc, ci }) => {
-      const fullText = `${safeClean(shortDesc)} ${safeClean(desc)} ${safeClean(ci)}`;
-      const device = safeClean(templates.detectDevice(fullText, ci));
-      const ticketType = templates.detectTicketType(ticket);
-      const type = safeClean(templates.detectType(fullText, ticket)) || "generic";
-      const mail = templates.emailTemplate(type, device, ci, user, ticket, shortDesc, desc, ticketType);
-      const recipient = safeClean(user && user.email);
-      return {
-        ...mail,
-        type,
-        ticketType,
-        device,
-        ci: safeClean(ci),
-        shortDesc: safeClean(shortDesc),
-        desc: safeClean(desc),
-        ticket: getTicketLabel(ticket),
-        suggestedTemplates: templates.getSuggestedTemplates({
-          user,
-          ticket,
-          shortDesc,
-          desc,
-          ci,
-          device,
-          ticketType
-        }),
-        mailto: `mailto:${encodeURIComponent(recipient)}?subject=${encodeURIComponent(safeClean(mail.subject))}&body=${encodeURIComponent(safeClean(mail.body))}`
-      };
-    };
-  })();
+  }
+  function isContextChanged(previousContext, nextContext) {
+    if (!previousContext && nextContext) return true;
+    if (previousContext && !nextContext) return true;
+    if (!previousContext && !nextContext) return false;
+    return previousContext.recordKey !== nextContext.recordKey;
+  }
 
-  // ui.js
-  (function () {
-    const ns = window.__SN_SMART_EMAIL__ = window.__SN_SMART_EMAIL__ || {};
-    const CONFIG = ns.CONFIG || {};
-    const utils = ns.utils || {};
-    const servicenow = ns.servicenow || {};
-    const ui = ns.ui = ns.ui || {};
-    const UI_CONTAINER_ID = "sn-smart-email-ui-container";
-    const UI_CLOSE_BUTTON_ID = "sn-smart-email-close-btn";
-    function getAllDocs() {
-      if (servicenow && typeof servicenow.getAllDocs === "function") return servicenow.getAllDocs();
-      return [document];
-    }
-    function clamp(value, min, max) {
-      return Math.min(Math.max(value, min), max);
-    }
-    function findPrimaryDoc() {
-      const docs = getAllDocs();
-      for (const doc of docs) {
-        try {
-          const w = doc.defaultView;
-          if (w && w.g_form && typeof w.g_form.getValue === "function") return doc;
-        } catch (e) {
-        }
-      }
-      return document;
-    }
-    function findFormRoot(doc) {
-      const selectors = ["#sys_form", 'form[name="sys_form"]', "#sysparm_form", "form"];
-      for (const selector of selectors) {
-        try {
-          const el = doc.querySelector(selector);
-          if (!el) continue;
-          const rect = el.getBoundingClientRect && el.getBoundingClientRect();
-          if (rect && rect.width && rect.width > 600) return el;
-        } catch (e) {
-        }
-      }
-      return doc.body || doc.documentElement || null;
-    }
-    function getSavedPosition() {
-      try {
-        const raw = localStorage.getItem(CONFIG.POSITION_STORAGE_KEY);
-        return raw ? JSON.parse(raw) : null;
-      } catch (e) {
-        return null;
-      }
-    }
-    function savePosition(position) {
-      try {
-        localStorage.setItem(CONFIG.POSITION_STORAGE_KEY, JSON.stringify(position));
-      } catch (e) {
-      }
-    }
-    function positionContainer(container) {
-      if (!container) return;
-      const saved = getSavedPosition();
-      if (saved && Number.isFinite(saved.left) && Number.isFinite(saved.top)) {
-        container.style.left = `${saved.left}px`;
-        container.style.top = `${saved.top}px`;
-        container.style.right = "auto";
-        return;
-      }
-      try {
-        const doc = container.ownerDocument || document;
-        const w = doc.defaultView || window;
-        const formRoot = findFormRoot(doc);
-        if (!w || !formRoot || typeof formRoot.getBoundingClientRect !== "function") return;
-        const rect = formRoot.getBoundingClientRect();
-        const rightPx = Math.max((w.innerWidth || 0) - rect.right + 14, 12);
-        const topPx = Math.max(rect.top + 12, 68);
-        container.style.right = `${rightPx}px`;
-        container.style.top = `${topPx}px`;
-        container.style.left = "auto";
-      } catch (e) {
-      }
-    }
-    function createBaseButton(doc) {
-      const button = doc.createElement("button");
-      button.type = "button";
-      Object.assign(button.style, {
-        border: "none",
-        borderRadius: "999px",
-        fontFamily: "'Segoe UI', Arial, sans-serif",
-        cursor: "pointer",
-        transition: "transform 120ms ease, box-shadow 180ms ease, background 180ms ease, opacity 180ms ease",
-        willChange: "transform"
-      });
-      return button;
-    }
-    function setLauncherLabel(button, label) {
-      if (button) button.textContent = label;
-    }
-    function attachButtonMotion(button) {
-      if (!button || button.__snMotionBound) return;
-      button.__snMotionBound = true;
-      button.addEventListener("mouseenter", () => {
-        button.style.transform = "translateY(-1px)";
-        button.style.boxShadow = "0 10px 22px rgba(11, 79, 138, 0.22)";
-      });
-      button.addEventListener("mouseleave", () => {
-        button.style.transform = "translateY(0)";
-        button.style.boxShadow = "0 8px 18px rgba(15, 23, 42, 0.16)";
-      });
-      button.addEventListener("mousedown", () => {
-        button.style.transform = "translateY(0) scale(0.98)";
-      });
-      button.addEventListener("mouseup", () => {
-        button.style.transform = "translateY(-1px)";
-      });
-    }
-    function createDraftLauncher(onDraftClick) {
-      const container = ensureContainer();
-      const doc = container.ownerDocument || document;
-      container.replaceChildren();
-      Object.assign(container.style, {
-        display: "flex",
-        alignItems: "center",
-        gap: "6px",
-        background: "rgba(255,255,255,0.92)",
-        backdropFilter: "blur(10px)",
-        border: "1px solid rgba(208, 213, 221, 0.9)",
-        borderRadius: "999px",
-        padding: "6px",
-        boxShadow: "0 10px 24px rgba(15, 23, 42, 0.14)"
-      });
-      const draftButton = createBaseButton(doc);
-      draftButton.id = CONFIG.BUTTON_ID;
-      setLauncherLabel(draftButton, "Draft");
-      Object.assign(draftButton.style, {
-        minWidth: "64px",
-        height: "34px",
-        padding: "0 14px",
-        background: "linear-gradient(135deg, #0b4f8a 0%, #1463a5 100%)",
-        color: "#ffffff",
-        fontSize: "12px",
-        fontWeight: "700",
-        boxShadow: "0 8px 18px rgba(15, 23, 42, 0.16)"
-      });
-      attachButtonMotion(draftButton);
-      draftButton.addEventListener("click", onDraftClick);
-      const closeButton = createBaseButton(doc);
-      closeButton.id = UI_CLOSE_BUTTON_ID;
-      closeButton.textContent = "X";
-      Object.assign(closeButton.style, {
-        width: "24px",
-        height: "24px",
-        padding: "0",
-        background: "#fff1f2",
-        color: "#b42318",
-        border: "1px solid #fda29b",
-        fontSize: "11px",
-        fontWeight: "800",
-        boxShadow: "none"
-      });
-      closeButton.addEventListener("mouseenter", () => {
-        closeButton.style.background = "#ffe4e8";
-      });
-      closeButton.addEventListener("mouseleave", () => {
-        closeButton.style.background = "#fff1f2";
-      });
-      closeButton.addEventListener("click", (event) => {
-        event.preventDefault();
-        event.stopPropagation();
-        closeDraftLauncher();
-      });
-      container.appendChild(draftButton);
-      container.appendChild(closeButton);
-      makeLauncherDraggable(container, draftButton, closeButton);
-      return { container, draftButton, closeButton };
-    }
-    function makeLauncherDraggable(container, draftButton, closeButton) {
-      if (!container || container.__snDragBound) return;
-      container.__snDragBound = true;
-      let dragState = null;
-      const doc = container.ownerDocument || document;
-      const w = doc.defaultView || window;
-      const onPointerMove = (event) => {
-        if (!dragState) return;
-        const nextLeft = clamp(event.clientX - dragState.offsetX, 8, Math.max((w.innerWidth || 0) - dragState.width - 8, 8));
-        const nextTop = clamp(event.clientY - dragState.offsetY, 8, Math.max((w.innerHeight || 0) - dragState.height - 8, 8));
-        container.style.left = `${nextLeft}px`;
-        container.style.top = `${nextTop}px`;
-        container.style.right = "auto";
-        savePosition({ left: nextLeft, top: nextTop });
-      };
-      const onPointerUp = () => {
-        dragState = null;
-        container.style.cursor = "grab";
-        w.removeEventListener("pointermove", onPointerMove);
-        w.removeEventListener("pointerup", onPointerUp);
-      };
-      const onPointerDown = (event) => {
-        const target = event.target;
-        if (!target || target === closeButton || target.closest(`#${UI_CLOSE_BUTTON_ID}`)) return;
-        if (target !== draftButton && !target.closest(`#${CONFIG.BUTTON_ID}`)) return;
-        const rect = container.getBoundingClientRect();
-        dragState = {
-          offsetX: event.clientX - rect.left,
-          offsetY: event.clientY - rect.top,
-          width: rect.width,
-          height: rect.height
-        };
-        container.style.cursor = "grabbing";
-        w.addEventListener("pointermove", onPointerMove);
-        w.addEventListener("pointerup", onPointerUp);
-      };
-      container.style.cursor = "grab";
-      container.addEventListener("pointerdown", onPointerDown);
-    }
-    function ensureContainer() {
-      for (const doc of getAllDocs()) {
-        try {
-          const existing = doc.getElementById(UI_CONTAINER_ID);
-          if (existing) return existing;
-        } catch (e) {
-        }
-      }
-      const primaryDoc = findPrimaryDoc();
-      const container = primaryDoc.createElement("div");
-      container.id = UI_CONTAINER_ID;
-      Object.assign(container.style, {
-        position: "fixed",
-        top: "72px",
-        right: "18px",
-        zIndex: "999999",
-        userSelect: "none"
-      });
-      (primaryDoc.body || primaryDoc.documentElement).appendChild(container);
-      positionContainer(container);
-      try {
-        const w = primaryDoc.defaultView;
-        if (w && !container.__snSmartEmailBound) {
-          container.__snSmartEmailBound = true;
-          w.addEventListener("resize", () => positionContainer(container), { passive: true });
-        }
-      } catch (e) {
-      }
-      return container;
-    }
-    function showToast(message, tone = "success") {
-      const container = ensureContainer();
-      const doc = container.ownerDocument || document;
-      ui.purgeToasts();
-      const toast = doc.createElement("div");
-      toast.id = CONFIG.TOAST_ID;
-      toast.textContent = utils.cleanValue(message);
-      Object.assign(toast.style, {
-        marginTop: "8px",
-        padding: "8px 10px",
-        borderRadius: "10px",
-        fontSize: "12px",
-        fontFamily: "'Segoe UI', Arial, sans-serif",
-        color: tone === "error" ? "#b42318" : "#0f5132",
-        background: tone === "error" ? "#fff1f2" : "#ecfdf3",
-        border: tone === "error" ? "1px solid #fda29b" : "1px solid #abefc6",
-        boxShadow: "0 8px 18px rgba(15, 23, 42, 0.1)"
-      });
-      container.appendChild(toast);
-      setTimeout(() => {
-        if (toast.isConnected) toast.remove();
-      }, 1600);
-    }
-    function closeDraftLauncher() {
-      const state = utils.getRuntimeState();
-      state.launcherVisible = false;
-      utils.persistRuntimeState();
-      ui.closeControls();
-    }
-    ui.toast = showToast;
-    ui.purgeToasts = () => {
-      for (const doc of getAllDocs()) {
-        try {
-          const old = doc.getElementById(CONFIG.TOAST_ID);
-          if (old) old.remove();
-        } catch (e) {
-        }
-      }
-    };
-    ui.closeControls = () => {
-      for (const doc of getAllDocs()) {
-        try {
-          const container = doc.getElementById(UI_CONTAINER_ID);
-          if (container) container.remove();
-        } catch (e) {
-        }
-      }
-    };
-    ui.openMailto = (mailto) => {
-      window.location.href = mailto;
-    };
-    ui.setLauncherState = (label, status) => {
-      for (const doc of getAllDocs()) {
-        try {
-          const button = doc.getElementById(CONFIG.BUTTON_ID);
-          if (!button) continue;
-          setLauncherLabel(button, label || "Draft");
-          if (status === "busy") {
-            button.style.opacity = "0.9";
-            button.style.background = "linear-gradient(135deg, #1d4f91 0%, #0b4f8a 100%)";
-          } else if (status === "success") {
-            button.style.background = "linear-gradient(135deg, #127243 0%, #1f9d61 100%)";
-          } else if (status === "error") {
-            button.style.background = "linear-gradient(135deg, #b42318 0%, #d92d20 100%)";
-          } else {
-            button.style.opacity = "1";
-            button.style.background = "linear-gradient(135deg, #0b4f8a 0%, #1463a5 100%)";
-          }
-        } catch (e) {
-        }
-      }
-    };
-    ui.hideLauncher = () => {
-      for (const doc of getAllDocs()) {
-        try {
-          const container = doc.getElementById(UI_CONTAINER_ID);
-          if (container) container.style.display = "none";
-        } catch (e) {
-        }
-      }
-    };
-    ui.showLauncher = () => {
-      for (const doc of getAllDocs()) {
-        try {
-          const container = doc.getElementById(UI_CONTAINER_ID);
-          if (container) container.style.display = "flex";
-        } catch (e) {
-        }
-      }
-    };
-    ui.createDraftLauncher = (onDraftClick) => createDraftLauncher(onDraftClick);
-    ui.makeLauncherDraggable = makeLauncherDraggable;
-    ui.closeDraftLauncher = closeDraftLauncher;
-    ui.injectMainButton = (onClick) => {
-      createDraftLauncher(onClick);
-    };
-  })();
+  // Assistant/ui/ids.js
+  var ROOT_ATTRIBUTE = "data-sn-assistant-root";
+  var ROOT_VALUE = "true";
+  var UI_IDS = {
+    style: "sn-assistant-styles",
+    launcher: "sn-assistant-launcher",
+    panel: "sn-assistant-panel",
+    settings: "sn-assistant-settings",
+    toastViewport: "sn-assistant-toasts"
+  };
 
-  // core.js
-  (function () {
-    const ns = window.__SN_SMART_EMAIL__ = window.__SN_SMART_EMAIL__ || {};
-    const utils = ns.utils || {};
-    const ui = ns.ui || {};
-    const servicenow = ns.servicenow || {};
-    const templates = ns.templates || {};
-    const core = ns.core = ns.core || {};
-    function getState() {
-      return utils.getRuntimeState();
+  // Assistant/core/observer.js
+  function isAssistantNode(node) {
+    if (!node || typeof node !== "object") return false;
+    if (node.nodeType !== Node.ELEMENT_NODE) {
+      return isAssistantNode(node.parentElement || node.parentNode);
     }
-    function cleanupDraftState(reason) {
-      const state = getState();
-      utils.log("Cleanup draft state", { reason, recordKey: state.activeRecordKey });
-      ui.purgeToasts && ui.purgeToasts();
-      utils.clearRuntimeState({ preserveMount: true });
-    }
-    function getReporterEmail(ticketData) {
-      return utils.cleanValue(ticketData && ticketData.user && ticketData.user.email);
-    }
-    function fillComposerFields(payload) {
-      const docs = servicenow.getAllDocs ? servicenow.getAllDocs() : [document];
-      const selectors = {
-        to: ['input[name="recipients"]', 'input[id*="to"]', 'input[placeholder*="To"]'],
-        subject: ['input[name="subject"]', 'input[id*="subject"]'],
-        body: ['textarea[name="body"]', 'textarea[id*="body"]', '[contenteditable="true"]']
-      };
-      for (const doc of docs) {
-        try {
-          const toField = selectors.to.map((s) => doc.querySelector(s)).find(Boolean);
-          const subjectField = selectors.subject.map((s) => doc.querySelector(s)).find(Boolean);
-          const bodyField = selectors.body.map((s) => doc.querySelector(s)).find(Boolean);
-          if (toField && payload.to) {
-            toField.value = payload.to;
-            toField.dispatchEvent(new Event("input", { bubbles: true }));
-            toField.dispatchEvent(new Event("change", { bubbles: true }));
-            toField.dispatchEvent(new Event("blur", { bubbles: true }));
-          }
-          if (subjectField && payload.subject) {
-            subjectField.value = payload.subject;
-            subjectField.dispatchEvent(new Event("input", { bubbles: true }));
-            subjectField.dispatchEvent(new Event("change", { bubbles: true }));
-          }
-          if (bodyField && payload.body) {
-            if ("value" in bodyField) {
-              bodyField.value = payload.body;
-            } else {
-              bodyField.textContent = payload.body;
-            }
-            bodyField.dispatchEvent(new Event("input", { bubbles: true }));
-            bodyField.dispatchEvent(new Event("change", { bubbles: true }));
-          }
-          if (toField || subjectField || bodyField) return true;
-        } catch (e) {
-        }
-      }
-      return false;
-    }
-    async function copyEmailToClipboard(mail) {
-      const text = [utils.cleanValue(mail.subject), "", utils.cleanValue(mail.body)].join("\n");
-      if (navigator.clipboard && typeof navigator.clipboard.writeText === "function") {
-        try {
-          await navigator.clipboard.writeText(text);
-          return true;
-        } catch (e) {
-        }
-      }
-      try {
-        const ta = document.createElement("textarea");
-        ta.value = text;
-        ta.setAttribute("readonly", "true");
-        ta.style.position = "fixed";
-        ta.style.opacity = "0";
-        document.body.appendChild(ta);
-        ta.select();
-        const ok = document.execCommand("copy");
-        ta.remove();
-        return Boolean(ok);
-      } catch (e) {
+    return Boolean(node.closest?.(`[${ROOT_ATTRIBUTE}]`));
+  }
+  function shouldReactToMutations(mutations) {
+    return mutations.some((mutation) => {
+      if (!isAssistantNode(mutation.target)) return true;
+      const addedOutside = Array.from(mutation.addedNodes || []).some((node) => !isAssistantNode(node));
+      const removedOutside = Array.from(mutation.removedNodes || []).some((node) => !isAssistantNode(node));
+      return addedOutside || removedOutside;
+    });
+  }
+  function syncObservers({ state, onMutation, logger }) {
+    const documents = getAccessibleDocuments();
+    state.lifecycle.observers = state.lifecycle.observers.filter((entry) => {
+      if (!documents.includes(entry.documentRef) || !entry.documentRef.body) {
+        entry.observer.disconnect();
         return false;
       }
-    }
-    function openEmailComposer(mail, ticketData, composerBridge) {
-      const to = getReporterEmail(ticketData);
-      const payload = {
-        to,
-        subject: utils.cleanValue(mail.subject),
-        body: utils.cleanValue(mail.body),
-        mailto: `mailto:${encodeURIComponent(to)}?subject=${encodeURIComponent(utils.cleanValue(mail.subject))}&body=${encodeURIComponent(utils.cleanValue(mail.body))}`
-      };
-      fillComposerFields(payload);
-      if (composerBridge && !composerBridge.closed) {
-        try {
-          composerBridge.document.title = "Opening draft...";
-          composerBridge.location.href = payload.mailto;
-          setTimeout(() => {
-            try {
-              composerBridge.close();
-            } catch (e) {
-            }
-          }, 800);
-        } catch (e) {
-          ui.openMailto(payload.mailto);
-        }
-      } else {
-        ui.openMailto(payload.mailto);
-      }
-      return payload;
-    }
-    function captureDebugFields(context, mail) {
-      return {
-        table: context.table,
-        recordKey: context.recordKey,
-        ticket: context.ticket,
-        short_description: context.shortDesc,
-        description: context.desc,
-        ci: context.ci,
-        template: mail.type
-      };
-    }
-    function restoreLauncherAfterComposer() {
-      let restored = false;
-      const restore = () => {
-        if (restored) return;
-        restored = true;
-        ui.showLauncher && ui.showLauncher();
-        ui.setLauncherState && ui.setLauncherState("Opened", "success");
-        setTimeout(() => {
-          ui.setLauncherState && ui.setLauncherState("Draft", "idle");
-        }, 900);
-        window.removeEventListener("focus", restore);
-      };
-      window.addEventListener("focus", restore, { once: true });
-      setTimeout(restore, 2500);
-    }
-    core.run = async () => {
-      const state = getState();
-      const record = servicenow.getRecordContext();
-      let composerBridge = null;
-      if (state.pending && state.activeRecordKey === record.recordKey) {
-        utils.log("Run skipped: pending flow already active", { recordKey: record.recordKey });
-        return;
-      }
-      if (state.locks[record.recordKey]) {
-        utils.log("Run skipped: record lock already set", { recordKey: record.recordKey });
-        return;
-      }
-      try {
-        try {
-          composerBridge = window.open("", "_blank");
-          if (composerBridge && composerBridge.document) {
-            composerBridge.document.write("<title>Opening draft...</title><p style='font-family:Arial,sans-serif;padding:16px'>Opening draft...</p>");
-          }
-        } catch (e) {
-        }
-        state.pending = true;
-        state.activeRecordKey = record.recordKey;
-        state.locks[record.recordKey] = true;
-        state.launcherVisible = true;
-        utils.persistRuntimeState();
-        ui.setLauncherState && ui.setLauncherState("Generating...", "busy");
-        const ticketData = await servicenow.readContext();
-        const mail = templates.buildMail({
-          user: ticketData.user,
-          ticket: ticketData.ticket,
-          shortDesc: ticketData.shortDesc,
-          desc: ticketData.desc,
-          ci: ticketData.ci
-        });
-        state.lastUser = ticketData.user;
-        state.lastMail = mail;
-        state.lastTemplateType = mail.type;
-        state.lastDebugFields = captureDebugFields(ticketData, mail);
-        const workNoteDraft = servicenow.composeWorkNote({
-          user: ticketData.user,
-          mail,
-          ticket: ticketData.ticket
-        });
-        servicenow.setWorkNotesDraft(workNoteDraft);
-        const copied = await copyEmailToClipboard(mail);
-        ui.toast && ui.toast(copied ? "Copied" : "Copy unavailable", copied ? "success" : "error");
-        ui.setLauncherState && ui.setLauncherState(copied ? "Copied" : "Opening...", copied ? "success" : "busy");
-        const composerPayload = openEmailComposer(mail, ticketData, composerBridge);
-        utils.log("Composer opened", {
-          recordKey: ticketData.recordKey,
-          table: ticketData.table,
-          to: composerPayload.to,
-          template: mail.type
-        });
-        ui.hideLauncher && ui.hideLauncher();
-        restoreLauncherAfterComposer();
-        cleanupDraftState("draft-opened");
-      } catch (err) {
-        utils.log("Run failed", err);
-        if (composerBridge && !composerBridge.closed) {
-          try {
-            composerBridge.close();
-          } catch (e) {
-          }
-        }
-        ui.setLauncherState && ui.setLauncherState("Retry", "error");
-        ui.toast && ui.toast("Draft generation failed", "error");
-        cleanupDraftState("run-error");
-      } finally {
-        const currentState = getState();
-        currentState.pending = false;
-        delete currentState.locks[record.recordKey];
-        utils.persistRuntimeState();
-      }
-    };
-    core.init = () => {
-      const state = getState();
-      const record = servicenow.getRecordContext();
-      const launcherAlreadyInDom = (servicenow.getAllDocs ? servicenow.getAllDocs() : [document]).some(
-        (doc) => {
-          try {
-            return Boolean(doc.getElementById((ns.CONFIG || {}).BUTTON_ID));
-          } catch (e) {
-            return false;
-          }
-        }
-      );
-      if (state.mountedRecordKey && state.mountedRecordKey === record.recordKey && launcherAlreadyInDom) {
-        utils.log("Init skipped: launcher already mounted", { recordKey: record.recordKey });
-        return;
-      }
-      if (state.mountedRecordKey && state.mountedRecordKey !== record.recordKey) {
-        utils.log("Record changed, resetting runtime", {
-          from: state.mountedRecordKey,
-          to: record.recordKey
-        });
-        ui.closeControls && ui.closeControls();
-        utils.clearRuntimeState({ preserveMount: false });
-      }
-      const freshState = getState();
-      freshState.mountedRecordKey = record.recordKey;
-      freshState.launcherVisible = true;
-      utils.log("Init", {
-        table: record.table,
-        recordKey: record.recordKey
+      return true;
+    });
+    documents.forEach((documentRef) => {
+      const alreadyObserved = state.lifecycle.observers.some((entry) => entry.documentRef === documentRef);
+      if (alreadyObserved || !documentRef.body) return;
+      const observer = new MutationObserver((mutations) => {
+        if (!shouldReactToMutations(mutations)) return;
+        onMutation("dom-mutation");
       });
-      ui.purgeToasts && ui.purgeToasts();
-      ui.injectMainButton && ui.injectMainButton(core.run);
+      observer.observe(documentRef.body, {
+        childList: true,
+        subtree: true
+      });
+      state.lifecycle.observers.push({ documentRef, observer });
+      logger?.info("observer attached");
+    });
+  }
+  function startHeartbeat({ state, onTick, intervalMs = 1500 }) {
+    if (state.lifecycle.heartbeatId) return;
+    state.lifecycle.heartbeatId = window.setInterval(onTick, intervalMs);
+  }
+  function stopObserverSystem(state) {
+    state.lifecycle.observers.forEach((entry) => entry.observer.disconnect());
+    state.lifecycle.observers = [];
+    if (state.lifecycle.heartbeatId) {
+      window.clearInterval(state.lifecycle.heartbeatId);
+      state.lifecycle.heartbeatId = 0;
+    }
+  }
+
+  // Assistant/core/storage.js
+  var STORAGE_KEYS = {
+    settings: "sn_assistant_settings_v2"
+  };
+  var OFFICE_PRESETS = {
+    kohl: {
+      id: "kohl",
+      label: "Kohl",
+      officeName: "Kohl",
+      officeLabel: "IT Welcome Desk at Kohl"
+    },
+    spinelli: {
+      id: "spinelli",
+      label: "Spinelli",
+      officeName: "Spinelli",
+      officeLabel: "IT Welcome Desk at Spinelli"
+    },
+    strasbourg_pflimlin: {
+      id: "strasbourg_pflimlin",
+      label: "Strasbourg / Pflimlin",
+      officeName: "Strasbourg / Pflimlin",
+      officeLabel: "IT Welcome Desk at Strasbourg / Pflimlin"
+    },
+    custom: {
+      id: "custom",
+      label: "Custom",
+      officeName: "",
+      officeLabel: ""
+    }
+  };
+  var LANGUAGE_OPTIONS = [
+    { value: "en", label: "English" },
+    { value: "fr", label: "Francais" }
+  ];
+  function getSessionStorage(rootWindow) {
+    try {
+      return rootWindow.sessionStorage || window.sessionStorage;
+    } catch (error) {
+      return null;
+    }
+  }
+  function sanitizeTemplateOverrideEntry(value) {
+    const entry = value && typeof value === "object" ? value : {};
+    return {
+      subject: cleanText(entry.subject),
+      body: cleanText(entry.body),
+      label: cleanText(entry.label),
+      target: cleanText(entry.target)
     };
-  })();
+  }
+  function sanitizeTemplateOverrides(rawValue) {
+    const categories = ["email", "work_note", "internal"];
+    const output = {};
+    categories.forEach((category) => {
+      output[category] = {};
+      const rawCategory = rawValue && typeof rawValue === "object" ? rawValue[category] : null;
+      if (!rawCategory || typeof rawCategory !== "object") return;
+      Object.entries(rawCategory).forEach(([templateId, override]) => {
+        output[category][templateId] = sanitizeTemplateOverrideEntry(override);
+      });
+    });
+    return output;
+  }
+  function getDefaultSettings() {
+    return {
+      officeProfile: "",
+      officeName: "",
+      officeRoom: "",
+      officeLabel: "",
+      defaultLanguage: "en",
+      toggles: {
+        autoCopyToClipboard: true,
+        autoOpenDraft: false,
+        autoFillUserEmail: true
+      },
+      templateOverrides: {
+        email: {},
+        work_note: {},
+        internal: {}
+      }
+    };
+  }
+  function sanitizeSettings(input = {}) {
+    const defaults = getDefaultSettings();
+    const merged = deepMerge(defaults, input);
+    const toggles = merged.toggles || {};
+    return {
+      officeProfile: cleanText(merged.officeProfile).toLowerCase(),
+      officeName: cleanText(merged.officeName),
+      officeRoom: cleanText(merged.officeRoom),
+      officeLabel: cleanText(merged.officeLabel),
+      defaultLanguage: cleanText(merged.defaultLanguage) || defaults.defaultLanguage,
+      toggles: {
+        autoCopyToClipboard: toggles.autoCopyToClipboard !== false,
+        autoOpenDraft: toggles.autoOpenDraft === true,
+        autoFillUserEmail: toggles.autoFillUserEmail !== false
+      },
+      templateOverrides: sanitizeTemplateOverrides(merged.templateOverrides)
+    };
+  }
+  function hasRequiredSettings(settings) {
+    const safeSettings = sanitizeSettings(settings);
+    return Boolean(
+      safeSettings.officeProfile && safeSettings.officeName && safeSettings.officeRoom && safeSettings.officeLabel && safeSettings.defaultLanguage
+    );
+  }
+  function applyOfficePreset(profile, baseSettings = getDefaultSettings()) {
+    const safeBase = sanitizeSettings(baseSettings);
+    const preset = OFFICE_PRESETS[cleanText(profile).toLowerCase()];
+    if (!preset || preset.id === "custom") {
+      return sanitizeSettings({
+        ...safeBase,
+        officeProfile: cleanText(profile).toLowerCase() || "custom"
+      });
+    }
+    return sanitizeSettings({
+      ...safeBase,
+      officeProfile: preset.id,
+      officeName: preset.officeName,
+      officeLabel: preset.officeLabel
+    });
+  }
+  function loadSettings(rootWindow, logger) {
+    const storage = getSessionStorage(rootWindow);
+    if (!storage) {
+      logger?.warn("sessionStorage unavailable, using defaults");
+      return getDefaultSettings();
+    }
+    const rawValue = storage.getItem(STORAGE_KEYS.settings);
+    const parsed = parseJson(rawValue, getDefaultSettings());
+    return sanitizeSettings(parsed);
+  }
+  function saveSettings(rootWindow, settings, logger) {
+    const storage = getSessionStorage(rootWindow);
+    const safeSettings = sanitizeSettings(settings);
+    if (!storage) {
+      logger?.warn("sessionStorage unavailable, settings kept only in memory");
+      return safeSettings;
+    }
+    storage.setItem(STORAGE_KEYS.settings, JSON.stringify(safeSettings));
+    return safeSettings;
+  }
+  function resetSettings(rootWindow) {
+    const storage = getSessionStorage(rootWindow);
+    if (!storage) return;
+    storage.removeItem(STORAGE_KEYS.settings);
+  }
+  function cloneSettings(settings) {
+    return deepClone(sanitizeSettings(settings));
+  }
+
+  // Assistant/core/state.js
+  function createPendingActions() {
+    return {
+      copy: false,
+      insert: false,
+      draft: false,
+      piSearch: false
+    };
+  }
+  function createState(settings) {
+    return {
+      settings,
+      context: null,
+      host: {
+        document: null
+      },
+      ui: {
+        launcherPosition: null,
+        panelPosition: null,
+        panelOpen: false,
+        panelCollapsed: false,
+        settingsOpen: false,
+        settingsMandatory: false,
+        activeCategory: "email",
+        selectedTemplates: {
+          email: "",
+          work_note: "",
+          internal: ""
+        },
+        templateManagerCategory: "email",
+        settingsDraft: null
+      },
+      lifecycle: {
+        started: false,
+        recovering: false,
+        queuedReason: "",
+        recoveryTimer: 0,
+        heartbeatId: 0,
+        observers: []
+      },
+      caches: {
+        userByRecord: {},
+        piByRecord: {}
+      },
+      pendingActions: createPendingActions(),
+      flags: {
+        missingSettingsLogged: false
+      }
+    };
+  }
+  function handleRecordChange(state, nextContext) {
+    state.context = nextContext;
+    state.pendingActions = createPendingActions();
+  }
+  function setSettings(state, settings) {
+    state.settings = deepClone(settings);
+  }
+  function ensureSettingsDraft(state) {
+    if (!state.ui.settingsDraft) {
+      state.ui.settingsDraft = deepClone(state.settings);
+    }
+    return state.ui.settingsDraft;
+  }
+  function setSettingsDraft(state, draft) {
+    state.ui.settingsDraft = deepClone(draft);
+  }
+  function discardSettingsDraft(state) {
+    state.ui.settingsDraft = null;
+  }
+  function openSettings(state, mandatory = false) {
+    state.ui.settingsOpen = true;
+    state.ui.settingsMandatory = mandatory || state.ui.settingsMandatory;
+    ensureSettingsDraft(state);
+  }
+  function closeSettings(state) {
+    if (state.ui.settingsMandatory) return false;
+    state.ui.settingsOpen = false;
+    state.ui.settingsDraft = null;
+    return true;
+  }
+  function setActiveCategory(state, category) {
+    state.ui.activeCategory = category;
+  }
+  function setSelectedTemplate(state, category, templateId) {
+    state.ui.selectedTemplates[category] = templateId;
+  }
+  function getSelectedTemplate(state, category) {
+    return state.ui.selectedTemplates[category] || "";
+  }
+
+  // Assistant/sn/actions.js
+  var USER_POPUP_SELECTORS = [
+    ".popover",
+    '[role="dialog"]',
+    'div[id^="popover"]',
+    ".modal",
+    ".glide_box"
+  ];
+  function dispatchInputEvents(element) {
+    ["input", "change", "blur"].forEach((eventName) => {
+      element.dispatchEvent(new Event(eventName, { bubbles: true }));
+    });
+  }
+  function setElementValue(element, value) {
+    if (!element) return false;
+    try {
+      element.focus();
+    } catch (error) {
+    }
+    element.value = value;
+    dispatchInputEvents(element);
+    return true;
+  }
+  async function waitFor(predicate, timeoutMs = 5e3, intervalMs = 150) {
+    const startedAt = Date.now();
+    while (Date.now() - startedAt < timeoutMs) {
+      const result = await predicate();
+      if (result) return result;
+      await delay(intervalMs);
+    }
+    return null;
+  }
+  function getPopupValue(popup, selectors) {
+    for (const selector of selectors) {
+      try {
+        const element = popup.querySelector(selector);
+        if (!element) continue;
+        const value = cleanText(element.value || element.textContent);
+        if (value) return value;
+      } catch (error) {
+        continue;
+      }
+    }
+    return "";
+  }
+  function findUserPopup(rootWindow = getRootWindow()) {
+    for (const documentRef of getAccessibleDocuments(rootWindow)) {
+      for (const selector of USER_POPUP_SELECTORS) {
+        try {
+          const popups = Array.from(documentRef.querySelectorAll(selector));
+          const popup = popups.find((entry) => {
+            const html = entry.innerHTML || "";
+            return html.includes("sys_user.email") || html.includes("sys_user.first_name");
+          });
+          if (popup) return { popup, documentRef };
+        } catch (error) {
+          continue;
+        }
+      }
+    }
+    return null;
+  }
+  function hidePopup(popup, documentRef) {
+    if (!popup) return;
+    try {
+      popup.style.display = "none";
+      popup.style.visibility = "hidden";
+      popup.style.opacity = "0";
+      popup.style.pointerEvents = "none";
+      popup.setAttribute("aria-hidden", "true");
+    } catch (error) {
+    }
+    try {
+      const overlays = documentRef.querySelectorAll(
+        '.modal-backdrop, .popover-backdrop, .glide_box_overlay, .sn-modal-backdrop, [class*="backdrop"], [class*="overlay"]'
+      );
+      overlays.forEach((entry) => {
+        entry.style.display = "none";
+        entry.style.opacity = "0";
+        entry.style.pointerEvents = "none";
+      });
+    } catch (error) {
+    }
+  }
+  async function getRequestedForPreviewButton(previewButtonId, rootWindow = getRootWindow()) {
+    return waitFor(
+      () => findElementByIdAcrossDocuments(previewButtonId, rootWindow),
+      7e3,
+      200
+    );
+  }
+  async function readUserFromPreview(previewButtonId, logger, rootWindow = getRootWindow()) {
+    const previewButton = await getRequestedForPreviewButton(previewButtonId, rootWindow);
+    if (!previewButton?.element) {
+      throw new Error("Requested For preview button not found");
+    }
+    previewButton.element.click();
+    const popupContext = await waitFor(() => findUserPopup(rootWindow), 5e3, 150);
+    if (!popupContext?.popup) {
+      throw new Error("Requested For preview popup not found");
+    }
+    const user = {
+      firstName: getPopupValue(popupContext.popup, [
+        "#sys_readonly\\.sys_user\\.first_name",
+        "#sys_user\\.first_name",
+        'input[id="sys_readonly.sys_user.first_name"]',
+        'input[id="sys_user.first_name"]'
+      ]),
+      lastName: getPopupValue(popupContext.popup, [
+        "#sys_readonly\\.sys_user\\.last_name",
+        "#sys_user\\.last_name",
+        'input[id="sys_readonly.sys_user.last_name"]',
+        'input[id="sys_user.last_name"]'
+      ]),
+      email: getPopupValue(popupContext.popup, [
+        "#sys_readonly\\.sys_user\\.email",
+        "#sys_user\\.email",
+        'input[id="sys_readonly.sys_user.email"]',
+        'input[id="sys_user.email"]'
+      ])
+    };
+    user.fullName = [user.firstName, user.lastName].filter(Boolean).join(" ").trim();
+    hidePopup(popupContext.popup, popupContext.documentRef);
+    logger?.info("user resolved from Requested For preview");
+    return user;
+  }
+  function createHiddenFrame(hostDocument, frameId, url) {
+    const previousFrame = hostDocument.getElementById(frameId);
+    if (previousFrame) previousFrame.remove();
+    const frame = hostDocument.createElement("iframe");
+    frame.id = frameId;
+    frame.src = url;
+    Object.assign(frame.style, {
+      position: "fixed",
+      width: "1200px",
+      height: "800px",
+      right: "-4000px",
+      top: "0",
+      opacity: "0.01",
+      pointerEvents: "none",
+      border: "0",
+      zIndex: "-1"
+    });
+    (hostDocument.body || hostDocument.documentElement).appendChild(frame);
+    return frame;
+  }
+  async function getRequestedForUrl(previewButtonId, rootWindow = getRootWindow()) {
+    const previewButton = await getRequestedForPreviewButton(previewButtonId, rootWindow);
+    if (!previewButton?.element) {
+      throw new Error("Requested For preview button not found");
+    }
+    previewButton.element.click();
+    await delay(350);
+    const openRecordLink = await waitFor(() => {
+      for (const documentRef of getAccessibleDocuments(rootWindow)) {
+        try {
+          const link = documentRef.querySelector('a[data-type="reference_clickthrough"]');
+          if (link) return link;
+        } catch (error) {
+          continue;
+        }
+      }
+      return null;
+    }, 5e3, 150);
+    if (!openRecordLink) {
+      throw new Error("Requested For record link not found");
+    }
+    const href = openRecordLink.getAttribute("href") || openRecordLink.href;
+    if (!href) {
+      throw new Error("Requested For URL not available");
+    }
+    return new URL(href, window.location.href).href;
+  }
+  async function extractPiFromUserRecord({ hostDocument, userUrl, assetPrefix }) {
+    const frameId = "sn-assistant-hidden-pi-frame";
+    const hiddenFrame = createHiddenFrame(hostDocument, frameId, userUrl);
+    try {
+      const frameDocument = await waitFor(() => {
+        try {
+          const currentDocument = hiddenFrame.contentDocument || hiddenFrame.contentWindow?.document;
+          if (currentDocument?.readyState === "complete") return currentDocument;
+        } catch (error) {
+          return null;
+        }
+        return null;
+      }, 1e4, 200);
+      if (!frameDocument) {
+        throw new Error("Requested For record did not load");
+      }
+      const configurationTab = await waitFor(() => {
+        try {
+          const nodes = Array.from(frameDocument.querySelectorAll("span.tab_caption_text, a, button"));
+          return nodes.find(
+            (entry) => normalizeText(entry.textContent).includes("configuration items")
+          );
+        } catch (error) {
+          return null;
+        }
+      }, 8e3, 200);
+      if (!configurationTab) {
+        throw new Error("Configuration Items tab not found");
+      }
+      configurationTab.click();
+      await delay(600);
+      const piValue = await waitFor(() => {
+        try {
+          const links = Array.from(
+            frameDocument.querySelectorAll(
+              "tbody.list2_body a.linked.formlink, a.linked.formlink, a[data-popover-title], a"
+            )
+          );
+          const match = links.find(
+            (entry) => cleanText(entry.textContent).startsWith(assetPrefix)
+          );
+          return match ? cleanText(match.textContent) : null;
+        } catch (error) {
+          return null;
+        }
+      }, 1e4, 200);
+      if (!piValue) {
+        throw new Error(`No asset starting with ${assetPrefix} was found`);
+      }
+      return piValue;
+    } finally {
+      hiddenFrame.remove();
+    }
+  }
+  function insertWithTargetDefinition(targetDefinition, value) {
+    const bestGForm = getBestGForm();
+    for (const fieldName of targetDefinition.fieldNames || []) {
+      try {
+        if (bestGForm?.gForm?.setValue) {
+          bestGForm.gForm.setValue(fieldName, value);
+          return { ok: true, targetField: fieldName };
+        }
+      } catch (error) {
+        continue;
+      }
+    }
+    for (const documentRef of getAccessibleDocuments()) {
+      for (const selector of targetDefinition.selectors || []) {
+        try {
+          const element = documentRef.querySelector(selector);
+          if (!element) continue;
+          if (setElementValue(element, value)) {
+            return { ok: true, targetField: selector };
+          }
+        } catch (error) {
+          continue;
+        }
+      }
+    }
+    return { ok: false, targetField: "" };
+  }
+  async function copyToClipboard(text, hostDocument = document) {
+    const value = cleanText(text);
+    if (!value) return false;
+    try {
+      if (navigator.clipboard?.writeText) {
+        await navigator.clipboard.writeText(value);
+        return true;
+      }
+    } catch (error) {
+    }
+    try {
+      const textarea = hostDocument.createElement("textarea");
+      textarea.value = value;
+      textarea.setAttribute("readonly", "true");
+      textarea.style.position = "fixed";
+      textarea.style.opacity = "0";
+      textarea.style.pointerEvents = "none";
+      (hostDocument.body || hostDocument.documentElement).appendChild(textarea);
+      textarea.select();
+      const copied = hostDocument.execCommand("copy");
+      textarea.remove();
+      return Boolean(copied);
+    } catch (error) {
+      return false;
+    }
+  }
+  function insertRenderedTemplate(renderedTemplate, context) {
+    const config = getTableConfig(context.table);
+    if (!config) {
+      return { ok: false, targetField: "" };
+    }
+    const targetKey = cleanText(renderedTemplate?.target) || (renderedTemplate?.category === "email" ? "comments" : "work_notes");
+    const targetDefinition = config.targets?.[targetKey] || config.targets?.work_notes;
+    if (!targetDefinition) {
+      return { ok: false, targetField: "" };
+    }
+    return insertWithTargetDefinition(targetDefinition, cleanText(renderedTemplate?.body));
+  }
+  function openDraft(renderedTemplate) {
+    if (!renderedTemplate || renderedTemplate.category !== "email") {
+      return { ok: false, mailto: "" };
+    }
+    const recipient = cleanText(renderedTemplate.recipient);
+    const subject = cleanText(renderedTemplate.subject);
+    const body = cleanText(renderedTemplate.body);
+    const mailto = `mailto:${encodeURIComponent(recipient)}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
+    try {
+      window.location.href = mailto;
+      return { ok: true, mailto };
+    } catch (error) {
+      return { ok: false, mailto };
+    }
+  }
+  async function resolveUserForContext(context, state, settings, logger) {
+    const cachedUser = state.caches.userByRecord[context.recordKey];
+    if (cachedUser?.email) {
+      return cachedUser;
+    }
+    if (context.user?.email || settings?.toggles?.autoFillUserEmail === false) {
+      return context.user;
+    }
+    const tableConfig = getTableConfig(context.table);
+    if (!tableConfig?.previewButtonId) {
+      return context.user;
+    }
+    try {
+      const resolvedUser = await readUserFromPreview(tableConfig.previewButtonId, logger);
+      if (resolvedUser?.email) {
+        state.caches.userByRecord[context.recordKey] = resolvedUser;
+        return resolvedUser;
+      }
+    } catch (error) {
+      logger?.warn("Requested For preview resolution failed", error);
+    }
+    return context.user;
+  }
+  async function runPiSearch({ context, hostDocument, logger }) {
+    const tableConfig = getTableConfig(context.table);
+    if (!tableConfig?.previewButtonId) {
+      throw new Error("PI search is only available for sc_task");
+    }
+    const userUrl = await getRequestedForUrl(tableConfig.previewButtonId);
+    logger?.info("Requested For URL resolved for PI search");
+    const piValue = await extractPiFromUserRecord({
+      hostDocument,
+      userUrl,
+      assetPrefix: tableConfig.piAssetPrefix || "MUSTBRUN"
+    });
+    const displayField = hostDocument.querySelector("#sys_display\\.sc_task\\.cmdb_ci") || hostDocument.querySelector('input[id="sys_display.sc_task.cmdb_ci"]') || hostDocument.querySelector('input[id*="cmdb_ci"]');
+    if (!displayField || !setElementValue(displayField, piValue)) {
+      throw new Error("Could not write the PI into sc_task.cmdb_ci");
+    }
+    return piValue;
+  }
+
+  // Assistant/templates/emailTemplates.js
+  var EMAIL_TEMPLATES = [
+    {
+      id: "incident_follow_up",
+      category: "email",
+      label: "Incident Follow-up",
+      target: "comments",
+      subject: "Follow-up on {{ticket_number}}",
+      body: 'Hello {{user_name}},\n\nI am following up on {{ticket_number}} regarding "{{short_description}}".\n\nCould you please confirm whether the issue is still happening and share any useful update so we can continue?\n\nKind regards,\n{{agent_name}}'
+    },
+    {
+      id: "request_to_visit_office",
+      category: "email",
+      label: "Request To Visit Office",
+      target: "comments",
+      subject: "Visit requested for {{ticket_number}}",
+      body: "Hello {{user_name}},\n\nTo continue with {{ticket_number}}, please visit the {{office_label}} {{office_room}}.\n\nReply if you need another slot or if remote support is preferable.\n\nKind regards,\n{{agent_name}}"
+    },
+    {
+      id: "appointment_proposal",
+      category: "email",
+      label: "Appointment Proposal",
+      target: "comments",
+      subject: "Appointment proposal for {{ticket_number}}",
+      body: "Hello {{user_name}},\n\nI can propose an appointment for {{ticket_number}} at the {{office_label}} {{office_room}}.\n\nPlease reply with your preferred slot and we will confirm the meeting.\n\nKind regards,\n{{agent_name}}"
+    },
+    {
+      id: "user_unavailable",
+      category: "email",
+      label: "User Unavailable",
+      target: "comments",
+      subject: "Unable to reach you for {{ticket_number}}",
+      body: "Hello {{user_name}},\n\nWe tried to contact you regarding {{ticket_number}}, but we could not reach you.\n\nPlease reply with your availability so we can continue without delay.\n\nKind regards,\n{{agent_name}}"
+    },
+    {
+      id: "device_ready_for_collection",
+      category: "email",
+      label: "Device Ready For Collection",
+      target: "comments",
+      subject: "Device ready for collection - {{ticket_number}}",
+      body: "Hello {{user_name}},\n\nYour device linked to {{ticket_number}} is ready for collection.\n\nPlease visit the {{office_label}} {{office_room}} and bring your badge if needed.\n\nKind regards,\n{{agent_name}}"
+    },
+    {
+      id: "smartphone_handover",
+      category: "email",
+      label: "Smartphone Handover",
+      target: "comments",
+      subject: "Smartphone handover for {{ticket_number}}",
+      body: "Hello {{user_name}},\n\nYour smartphone request is ready to move to handover.\n\nPlease confirm your availability to collect it at the {{office_label}} {{office_room}}.\n\nKind regards,\n{{agent_name}}"
+    },
+    {
+      id: "battery_issue",
+      category: "email",
+      label: "Battery Issue",
+      target: "comments",
+      subject: "Battery troubleshooting - {{ticket_number}}",
+      body: "Hello {{user_name}},\n\nI am reviewing the battery issue reported in {{ticket_number}}.\n\nPlease let me know whether the device is available for testing and if the issue is constant or intermittent.\n\nKind regards,\n{{agent_name}}"
+    },
+    {
+      id: "sound_issue",
+      category: "email",
+      label: "Sound Issue",
+      target: "comments",
+      subject: "Sound issue follow-up - {{ticket_number}}",
+      body: "Hello {{user_name}},\n\nI am following up on the sound issue recorded in {{ticket_number}}.\n\nPlease confirm whether the issue affects speakers, headset or both, and whether it happens in every application.\n\nKind regards,\n{{agent_name}}"
+    },
+    {
+      id: "laptop_swap",
+      category: "email",
+      label: "Laptop Swap",
+      target: "comments",
+      subject: "Laptop swap coordination - {{ticket_number}}",
+      body: "Hello {{user_name}},\n\nWe are ready to coordinate the laptop swap related to {{ticket_number}}.\n\nPlease confirm your availability to visit the {{office_label}} {{office_room}} so we can complete the exchange.\n\nKind regards,\n{{agent_name}}"
+    },
+    {
+      id: "backup_needed",
+      category: "email",
+      label: "Backup Needed",
+      target: "comments",
+      subject: "Backup required before intervention - {{ticket_number}}",
+      body: "Hello {{user_name}},\n\nBefore we continue with {{ticket_number}}, please confirm whether a backup of your data is required.\n\nIf needed, let us know so we can factor it into the intervention plan.\n\nKind regards,\n{{agent_name}}"
+    },
+    {
+      id: "closure_confirmation",
+      category: "email",
+      label: "Closure Confirmation",
+      target: "comments",
+      subject: "Closure confirmation for {{ticket_number}}",
+      body: "Hello {{user_name}},\n\nI am checking whether {{ticket_number}} can now be closed.\n\nIf everything is working as expected, please confirm and I will close the record. If not, reply with the current status.\n\nKind regards,\n{{agent_name}}"
+    }
+  ];
+
+  // Assistant/templates/internalTemplates.js
+  var INTERNAL_TEMPLATES = [
+    {
+      id: "ask_team_recommendation",
+      category: "internal",
+      label: "Ask Team For Recommendation",
+      target: "work_notes",
+      body: "Team, please review {{ticket_number}} and advise on the best next step. Current summary: {{short_description}}."
+    },
+    {
+      id: "logistics_follow_up",
+      category: "internal",
+      label: "Logistics Follow-up",
+      target: "work_notes",
+      body: "Following up on logistics for {{ticket_number}}. Office context: {{office_name}} {{office_room}}."
+    },
+    {
+      id: "ask_colleague_bring_device",
+      category: "internal",
+      label: "Ask Colleague To Bring Device",
+      target: "work_notes",
+      body: "Could someone bring the required device for {{ticket_number}} to {{office_label}} {{office_room}}?"
+    },
+    {
+      id: "handover_coordination",
+      category: "internal",
+      label: "Handover Coordination",
+      target: "work_notes",
+      body: "Coordinating handover for {{ticket_number}} with {{user_name}}. Please align stock and room availability at {{office_label}} {{office_room}}."
+    }
+  ];
+
+  // Assistant/templates/workNoteTemplates.js
+  var WORK_NOTE_TEMPLATES = [
+    {
+      id: "user_contacted",
+      category: "work_note",
+      label: "User Contacted",
+      target: "work_notes",
+      body: "{{today}} - Contacted {{user_name}} ({{user_email}}) regarding {{ticket_number}}. Awaiting reply."
+    },
+    {
+      id: "email_sent",
+      category: "work_note",
+      label: "Email Sent",
+      target: "work_notes",
+      body: "{{today}} - Email sent to {{user_name}} for {{ticket_number}}. Subject context: {{short_description}}."
+    },
+    {
+      id: "appointment_proposed",
+      category: "work_note",
+      label: "Appointment Proposed",
+      target: "work_notes",
+      body: "{{today}} - Proposed an appointment to {{user_name}} at {{office_label}} {{office_room}} for {{ticket_number}}."
+    },
+    {
+      id: "user_visited_office",
+      category: "work_note",
+      label: "User Visited Office",
+      target: "work_notes",
+      body: "{{today}} - {{user_name}} visited {{office_label}} {{office_room}} regarding {{ticket_number}}."
+    },
+    {
+      id: "device_delivered",
+      category: "work_note",
+      label: "Device Delivered",
+      target: "work_notes",
+      body: "{{today}} - Device delivered to {{user_name}} for {{ticket_number}}."
+    },
+    {
+      id: "device_collected",
+      category: "work_note",
+      label: "Device Collected",
+      target: "work_notes",
+      body: "{{today}} - Device collected from {{user_name}} for {{ticket_number}}."
+    },
+    {
+      id: "backup_required",
+      category: "work_note",
+      label: "Backup Required",
+      target: "work_notes",
+      body: "{{today}} - Backup confirmed as required before continuing work on {{ticket_number}}."
+    },
+    {
+      id: "waiting_for_feedback",
+      category: "work_note",
+      label: "Waiting For Feedback",
+      target: "work_notes",
+      body: "{{today}} - Waiting for user feedback on {{ticket_number}} after latest communication."
+    },
+    {
+      id: "ticket_updated",
+      category: "work_note",
+      label: "Ticket Updated",
+      target: "work_notes",
+      body: "{{today}} - {{ticket_number}} updated internally. Current summary: {{short_description}}."
+    }
+  ];
+
+  // Assistant/templates/registry.js
+  var CATEGORY_META = [
+    { id: "email", label: "Emails" },
+    { id: "work_note", label: "Work Notes" },
+    { id: "internal", label: "Internal" }
+  ];
+  var DEFAULT_GROUPS = {
+    email: EMAIL_TEMPLATES,
+    work_note: WORK_NOTE_TEMPLATES,
+    internal: INTERNAL_TEMPLATES
+  };
+  function applyTemplateOverride(template, override) {
+    if (!override) return deepClone(template);
+    return {
+      ...deepClone(template),
+      label: override.label || template.label,
+      subject: override.subject || template.subject,
+      body: override.body || template.body,
+      target: override.target || template.target
+    };
+  }
+  function getCategories() {
+    return CATEGORY_META.map((entry) => ({ ...entry }));
+  }
+  function getTemplateGroups(settings) {
+    const overrides = settings?.templateOverrides || {};
+    return Object.fromEntries(
+      Object.entries(DEFAULT_GROUPS).map(([category, templates]) => [
+        category,
+        templates.map((template) => applyTemplateOverride(template, overrides[category]?.[template.id]))
+      ])
+    );
+  }
+  function getTemplatesForCategory(category, settings) {
+    return getTemplateGroups(settings)[category] || [];
+  }
+  function getFirstTemplateId(category, settings) {
+    return getTemplatesForCategory(category, settings)[0]?.id || "";
+  }
+
+  // Assistant/templates/renderer.js
+  function finalizeTemplateText(value) {
+    return String(value || "").replace(/\r\n/g, "\n").replace(/[ \t]+\n/g, "\n").replace(/\n{3,}/g, "\n\n").replace(/[ \t]{2,}/g, " ").replace(/\s+([,.;:!?])/g, "$1").trim();
+  }
+  function buildPlaceholderMap({ context, settings }) {
+    const userName = cleanText(context?.user?.fullName) || [cleanText(context?.user?.firstName), cleanText(context?.user?.lastName)].filter(Boolean).join(" ") || "colleague";
+    return {
+      user_name: userName,
+      user_email: cleanText(context?.user?.email),
+      ticket_number: cleanText(context?.ticketNumber) || cleanText(context?.recordNumber),
+      record_number: cleanText(context?.recordNumber) || cleanText(context?.ticketNumber),
+      table_name: cleanText(context?.tableLabel) || cleanText(context?.table),
+      office_name: cleanText(settings?.officeName),
+      office_room: cleanText(settings?.officeRoom),
+      office_label: cleanText(settings?.officeLabel),
+      agent_name: cleanText(context?.agentName) || "IT Support",
+      today: formatToday(settings?.defaultLanguage),
+      short_description: cleanText(context?.shortDescription),
+      configuration_item: cleanText(context?.configurationItem)
+    };
+  }
+  function replacePlaceholders(value, placeholders) {
+    return String(value || "").replace(/\{\{\s*([a-z0-9_]+)\s*\}\}/gi, (_, key) => {
+      const lookupKey = String(key || "").toLowerCase();
+      return placeholders[lookupKey] ?? "";
+    });
+  }
+  function renderTemplate(template, { context, settings }) {
+    if (!template) return null;
+    const placeholders = buildPlaceholderMap({ context, settings });
+    const subject = finalizeTemplateText(replacePlaceholders(template.subject, placeholders));
+    const body = finalizeTemplateText(replacePlaceholders(template.body, placeholders));
+    const clipboardText = template.category === "email" ? finalizeTemplateText(`Subject: ${subject}
+
+${body}`) : body;
+    return {
+      ...template,
+      subject,
+      body,
+      clipboardText,
+      recipient: settings?.toggles?.autoFillUserEmail !== false ? cleanText(context?.user?.email) : "",
+      target: cleanText(template.target)
+    };
+  }
+
+  // Assistant/ui/drag.js
+  function applyPosition(node, position) {
+    if (!position) return;
+    node.style.left = `${position.left}px`;
+    node.style.top = `${position.top}px`;
+  }
+  function resolveDefaultPosition(node, defaultPosition) {
+    return typeof defaultPosition === "function" ? defaultPosition(node) : defaultPosition;
+  }
+  function makeDraggable({ node, handleSelector, state, positionKey, defaultPosition }) {
+    if (!node) return;
+    const ownerWindow = node.ownerDocument.defaultView || window;
+    const storedPosition = state.ui[positionKey];
+    const fallbackPosition = resolveDefaultPosition(node, defaultPosition);
+    applyPosition(node, storedPosition || fallbackPosition);
+    if (node.dataset.snAssistantDragBound === "true") return;
+    node.dataset.snAssistantDragBound = "true";
+    let dragState = null;
+    let suppressClickUntil = 0;
+    const onPointerMove = (event) => {
+      if (!dragState) return;
+      const deltaX = event.clientX - dragState.startX;
+      const deltaY = event.clientY - dragState.startY;
+      const distance = Math.abs(deltaX) + Math.abs(deltaY);
+      if (distance < 4 && !dragState.moved) return;
+      dragState.moved = true;
+      event.preventDefault();
+      const nextLeft = clamp(
+        event.clientX - dragState.offsetX,
+        8,
+        Math.max(ownerWindow.innerWidth - dragState.width - 8, 8)
+      );
+      const nextTop = clamp(
+        event.clientY - dragState.offsetY,
+        8,
+        Math.max(ownerWindow.innerHeight - dragState.height - 8, 8)
+      );
+      state.ui[positionKey] = { left: nextLeft, top: nextTop };
+      applyPosition(node, state.ui[positionKey]);
+    };
+    const onPointerUp = () => {
+      if (dragState?.moved) {
+        suppressClickUntil = Date.now() + 120;
+      }
+      dragState = null;
+      ownerWindow.removeEventListener("pointermove", onPointerMove);
+      ownerWindow.removeEventListener("pointerup", onPointerUp);
+    };
+    node.addEventListener("pointerdown", (event) => {
+      if (event.button !== 0) return;
+      if (!event.target.closest(handleSelector)) return;
+      const rect = node.getBoundingClientRect();
+      dragState = {
+        startX: event.clientX,
+        startY: event.clientY,
+        offsetX: event.clientX - rect.left,
+        offsetY: event.clientY - rect.top,
+        width: rect.width,
+        height: rect.height,
+        moved: false
+      };
+      ownerWindow.addEventListener("pointermove", onPointerMove, { passive: false });
+      ownerWindow.addEventListener("pointerup", onPointerUp);
+    });
+    node.addEventListener(
+      "click",
+      (event) => {
+        if (Date.now() < suppressClickUntil) {
+          event.preventDefault();
+          event.stopPropagation();
+        }
+      },
+      true
+    );
+  }
+
+  // Assistant/ui/launcher.js
+  function getDefaultLauncherPosition(node) {
+    const ownerWindow = node.ownerDocument.defaultView || window;
+    return {
+      left: Math.max(ownerWindow.innerWidth - 190, 14),
+      top: 88
+    };
+  }
+  function bindLauncher(root, handlers) {
+    if (root.dataset.snAssistantBound === "true") return;
+    root.dataset.snAssistantBound = "true";
+    root.addEventListener("click", (event) => {
+      const button = event.target.closest("[data-action]");
+      if (!button) return;
+      const { action } = button.dataset;
+      if (action === "toggle-panel") handlers.onTogglePanel();
+      if (action === "open-settings") handlers.onOpenSettings();
+    });
+  }
+  function ensureLauncher({ hostDocument, state, context, handlers }) {
+    let root = hostDocument.getElementById(UI_IDS.launcher);
+    if (!root) {
+      root = hostDocument.createElement("div");
+      root.id = UI_IDS.launcher;
+      root.className = "sn-assistant-floating";
+      root.setAttribute(ROOT_ATTRIBUTE, ROOT_VALUE);
+      (hostDocument.body || hostDocument.documentElement).appendChild(root);
+    }
+    root.innerHTML = `
+    <div class="sn-assistant-launcher__shell" data-drag-handle="launcher" title="${escapeHtml(
+      `${context.ticketNumber || context.tableLabel} | ${context.recordKey}`
+    )}">
+      <button type="button" class="sn-assistant-launcher__primary" data-action="toggle-panel">
+        <span class="sn-assistant-launcher__dot" aria-hidden="true"></span>
+        <span>Assistant</span>
+      </button>
+      <button type="button" class="sn-assistant-launcher__icon" data-action="open-settings" title="Settings">
+        \u2699
+      </button>
+    </div>
+  `;
+    bindLauncher(root, handlers);
+    makeDraggable({
+      node: root,
+      handleSelector: '[data-drag-handle="launcher"]',
+      state,
+      positionKey: "launcherPosition",
+      defaultPosition: getDefaultLauncherPosition
+    });
+    return root;
+  }
+  function removeLauncher(hostDocument) {
+    const root = hostDocument?.getElementById(UI_IDS.launcher);
+    if (root) root.remove();
+  }
+
+  // Assistant/ui/preview.js
+  function renderMeta(label, value) {
+    return `
+    <div class="sn-assistant-preview__meta-block">
+      <span class="sn-assistant-preview__meta-label">${escapeHtml(label)}</span>
+      <div class="sn-assistant-preview__meta-value">${escapeHtml(value || "Not available")}</div>
+    </div>
+  `;
+  }
+  function renderPreview(renderedTemplate) {
+    if (!renderedTemplate) {
+      return `<div class="sn-assistant-preview__empty">Select a template to generate a preview.</div>`;
+    }
+    const metaBlocks = renderedTemplate.category === "email" ? `
+          <div class="sn-assistant-preview__meta">
+            ${renderMeta("Recipient", renderedTemplate.recipient || "Not detected")}
+            ${renderMeta("Subject", renderedTemplate.subject)}
+          </div>
+        ` : `
+          <div class="sn-assistant-preview__meta">
+            ${renderMeta("Target", renderedTemplate.target || "work_notes")}
+            ${renderMeta("Template", renderedTemplate.label)}
+          </div>
+        `;
+    return `
+    ${metaBlocks}
+    <div class="sn-assistant-preview__body">${escapeHtml(renderedTemplate.body)}</div>
+  `;
+  }
+
+  // Assistant/ui/templates.js
+  function renderTemplateSelector({
+    categories,
+    activeCategory,
+    templates,
+    selectedTemplateId
+  }) {
+    const tabs = categories.map(
+      (category) => `
+        <button
+          type="button"
+          class="sn-assistant-tab ${category.id === activeCategory ? "is-active" : ""}"
+          data-action="select-category"
+          data-category="${escapeHtml(category.id)}"
+        >
+          ${escapeHtml(category.label)}
+        </button>
+      `
+    ).join("");
+    const options = templates.map(
+      (template) => `
+        <option value="${escapeHtml(template.id)}" ${template.id === selectedTemplateId ? "selected" : ""}>
+          ${escapeHtml(template.label)}
+        </option>
+      `
+    ).join("");
+    return `
+    <div class="sn-assistant-tabs">${tabs}</div>
+    <div class="sn-assistant-field">
+      <span class="sn-assistant-field__label">Template</span>
+      <select class="sn-assistant-select" data-action="select-template">
+        ${options}
+      </select>
+    </div>
+  `;
+  }
+
+  // Assistant/ui/panel.js
+  function getDefaultPanelPosition(node) {
+    const ownerWindow = node.ownerDocument.defaultView || window;
+    return {
+      left: Math.max(ownerWindow.innerWidth - 404, 12),
+      top: 136
+    };
+  }
+  function bindPanel(root, handlers) {
+    if (root.dataset.snAssistantBound === "true") return;
+    root.dataset.snAssistantBound = "true";
+    root.addEventListener("click", (event) => {
+      const button = event.target.closest("[data-action]");
+      if (!button) return;
+      const { action, category } = button.dataset;
+      if (action === "close-panel") handlers.onClosePanel();
+      if (action === "toggle-collapse") handlers.onToggleCollapse();
+      if (action === "open-settings") handlers.onOpenSettings();
+      if (action === "select-category") handlers.onSelectCategory(category);
+      if (action === "copy-template") handlers.onCopy();
+      if (action === "insert-template") handlers.onInsert();
+      if (action === "open-draft") handlers.onDraft();
+      if (action === "run-pi-search") handlers.onPiSearch();
+    });
+    root.addEventListener("change", (event) => {
+      const select = event.target.closest('select[data-action="select-template"]');
+      if (!select) return;
+      handlers.onSelectTemplate(select.value);
+    });
+  }
+  function ensurePanel({
+    hostDocument,
+    state,
+    context,
+    categories,
+    templates,
+    selectedTemplateId,
+    renderedTemplate,
+    handlers
+  }) {
+    let root = hostDocument.getElementById(UI_IDS.panel);
+    if (!root) {
+      root = hostDocument.createElement("div");
+      root.id = UI_IDS.panel;
+      root.className = "sn-assistant-floating";
+      root.setAttribute(ROOT_ATTRIBUTE, ROOT_VALUE);
+      (hostDocument.body || hostDocument.documentElement).appendChild(root);
+    }
+    const collapsed = state.ui.panelCollapsed;
+    const pending = Object.values(state.pendingActions).some(Boolean);
+    const showPiSearch = context.table === "sc_task";
+    const selectorMarkup = renderTemplateSelector({
+      categories,
+      activeCategory: state.ui.activeCategory,
+      templates,
+      selectedTemplateId
+    });
+    root.innerHTML = `
+    <div class="sn-assistant-panel">
+      <div class="sn-assistant-panel__header" data-drag-handle="panel">
+        <div class="sn-assistant-panel__title">
+          <span class="sn-assistant-panel__eyebrow">SN Assistant</span>
+          <div class="sn-assistant-panel__heading">${escapeHtml(context.ticketNumber || context.tableLabel || "Record")}</div>
+          <div class="sn-assistant-panel__subheading">${escapeHtml(context.tableLabel)} \xB7 ${escapeHtml(
+      context.recordKey
+    )}</div>
+        </div>
+        <div class="sn-assistant-panel__header-actions">
+          <button type="button" class="sn-assistant-mini-button" data-action="toggle-collapse" title="Collapse">
+            ${collapsed ? "+" : "\u2212"}
+          </button>
+          <button type="button" class="sn-assistant-mini-button" data-action="open-settings" title="Settings">
+            \u2699
+          </button>
+          <button type="button" class="sn-assistant-mini-button" data-action="close-panel" title="Close">
+            \xD7
+          </button>
+        </div>
+      </div>
+      ${collapsed ? "" : `
+            <div class="sn-assistant-panel__body">
+              <div class="sn-assistant-chip-row">
+                <span class="sn-assistant-chip"><strong>Office</strong> ${escapeHtml(state.settings.officeName)}</span>
+                <span class="sn-assistant-chip"><strong>User</strong> ${escapeHtml(
+      context.user.fullName || context.user.email || "Not detected"
+    )}</span>
+              </div>
+              ${selectorMarkup}
+              ${showPiSearch ? '<div class="sn-assistant-row"><button type="button" class="sn-assistant-button sn-assistant-button--secondary" data-action="run-pi-search">Find PI</button></div>' : ""}
+              <div class="sn-assistant-preview">${renderPreview(renderedTemplate)}</div>
+              <div class="sn-assistant-panel__footer">
+                <button type="button" class="sn-assistant-button sn-assistant-button--secondary" data-action="copy-template" ${pending ? "disabled" : ""}>Copy</button>
+                <button type="button" class="sn-assistant-button sn-assistant-button--secondary" data-action="insert-template" ${pending || !renderedTemplate ? "disabled" : ""}>Insert</button>
+                <button type="button" class="sn-assistant-button sn-assistant-button--primary" data-action="open-draft" ${pending || renderedTemplate?.category !== "email" ? "disabled" : ""}>Draft</button>
+                <button type="button" class="sn-assistant-button sn-assistant-button--secondary" data-action="open-settings" ${pending ? "disabled" : ""}>Settings</button>
+              </div>
+            </div>
+          `}
+    </div>
+  `;
+    bindPanel(root, handlers);
+    makeDraggable({
+      node: root,
+      handleSelector: '[data-drag-handle="panel"]',
+      state,
+      positionKey: "panelPosition",
+      defaultPosition: getDefaultPanelPosition
+    });
+    return root;
+  }
+  function removePanel(hostDocument) {
+    const root = hostDocument?.getElementById(UI_IDS.panel);
+    if (root) root.remove();
+  }
+
+  // Assistant/ui/settings.js
+  function renderOfficeOptions(currentValue) {
+    return Object.values(OFFICE_PRESETS).map(
+      (preset) => `
+        <option value="${escapeHtml(preset.id)}" ${preset.id === currentValue ? "selected" : ""}>
+          ${escapeHtml(preset.label)}
+        </option>
+      `
+    ).join("");
+  }
+  function renderLanguageOptions(currentValue) {
+    return LANGUAGE_OPTIONS.map(
+      (option) => `
+      <option value="${escapeHtml(option.value)}" ${option.value === currentValue ? "selected" : ""}>
+        ${escapeHtml(option.label)}
+      </option>
+    `
+    ).join("");
+  }
+  function renderTemplateCards(category, templates) {
+    return templates.map(
+      (template) => `
+        <div class="sn-assistant-template-card">
+          <div class="sn-assistant-template-card__header">
+            <div class="sn-assistant-template-card__title">${escapeHtml(template.label)}</div>
+            <button
+              type="button"
+              class="sn-assistant-mini-button"
+              data-action="restore-template"
+              data-category="${escapeHtml(category)}"
+              data-template-id="${escapeHtml(template.id)}"
+              title="Restore default"
+            >
+              \u21BA
+            </button>
+          </div>
+          ${category === "email" ? `
+                <div class="sn-assistant-field">
+                  <span class="sn-assistant-field__label">Subject</span>
+                  <textarea
+                    class="sn-assistant-textarea"
+                    name="tpl:${escapeHtml(category)}:${escapeHtml(template.id)}:subject"
+                  >${escapeHtml(template.subject || "")}</textarea>
+                </div>
+              ` : ""}
+          <div class="sn-assistant-field">
+            <span class="sn-assistant-field__label">Body</span>
+            <textarea
+              class="sn-assistant-textarea"
+              name="tpl:${escapeHtml(category)}:${escapeHtml(template.id)}:body"
+            >${escapeHtml(template.body || "")}</textarea>
+          </div>
+          <div class="sn-assistant-template-card__hint">Placeholders supported: {{user_name}}, {{user_email}}, {{ticket_number}}, {{office_name}}, {{office_room}}, {{office_label}}, {{agent_name}}, {{today}}, {{short_description}}</div>
+        </div>
+      `
+    ).join("");
+  }
+  function bindSettings(root, handlers) {
+    if (root.dataset.snAssistantBound === "true") return;
+    root.dataset.snAssistantBound = "true";
+    root.addEventListener("click", (event) => {
+      const button = event.target.closest("[data-action]");
+      if (!button) return;
+      const { action, category, templateId } = button.dataset;
+      if (action === "close-settings") handlers.onCloseSettings();
+      if (action === "save-settings") handlers.onSaveSettings();
+      if (action === "reset-session") handlers.onResetSession();
+      if (action === "template-category") handlers.onTemplateManagerCategory(category);
+      if (action === "restore-template") handlers.onRestoreTemplate(category, templateId);
+    });
+    const onFieldMutation = (event) => {
+      const field = event.target.closest("[name]");
+      if (!field) return;
+      const value = field.type === "checkbox" ? field.checked : field.value;
+      handlers.onFieldChange(field.name, value);
+    };
+    root.addEventListener("input", onFieldMutation);
+    root.addEventListener("change", onFieldMutation);
+  }
+  function ensureSettingsModal({
+    hostDocument,
+    state,
+    draftSettings,
+    templateGroups,
+    handlers
+  }) {
+    let root = hostDocument.getElementById(UI_IDS.settings);
+    if (!root) {
+      root = hostDocument.createElement("div");
+      root.id = UI_IDS.settings;
+      root.setAttribute(ROOT_ATTRIBUTE, ROOT_VALUE);
+      (hostDocument.body || hostDocument.documentElement).appendChild(root);
+    }
+    const activeCategory = state.ui.templateManagerCategory;
+    const categoryTabs = [
+      { id: "email", label: "Emails" },
+      { id: "work_note", label: "Work Notes" },
+      { id: "internal", label: "Internal" }
+    ].map(
+      (category) => `
+        <button
+          type="button"
+          class="sn-assistant-tab ${category.id === activeCategory ? "is-active" : ""}"
+          data-action="template-category"
+          data-category="${escapeHtml(category.id)}"
+        >
+          ${escapeHtml(category.label)}
+        </button>
+      `
+    ).join("");
+    root.innerHTML = `
+    <div class="sn-assistant-modal">
+      <div class="sn-assistant-modal__backdrop"></div>
+      <div class="sn-assistant-modal__dialog">
+        <div class="sn-assistant-modal__header">
+          <div class="sn-assistant-modal__title">
+            <span class="sn-assistant-panel__eyebrow">Session Settings</span>
+            <div class="sn-assistant-panel__heading">Configure the assistant</div>
+            <div class="sn-assistant-panel__subheading">Session-scoped settings stored in sessionStorage.</div>
+          </div>
+          ${state.ui.settingsMandatory ? "" : '<button type="button" class="sn-assistant-mini-button" data-action="close-settings" title="Close">\xD7</button>'}
+        </div>
+        <div class="sn-assistant-modal__body">
+          ${state.ui.settingsMandatory ? '<div class="sn-assistant-note">The assistant needs the minimum office profile before the launcher can appear. Save these values to continue.</div>' : ""}
+          <div class="sn-assistant-settings-grid">
+            <div class="sn-assistant-field">
+              <span class="sn-assistant-field__label">Office profile</span>
+              <select class="sn-assistant-select" name="officeProfile">
+                ${renderOfficeOptions(draftSettings.officeProfile)}
+              </select>
+            </div>
+            <div class="sn-assistant-field">
+              <span class="sn-assistant-field__label">Default language</span>
+              <select class="sn-assistant-select" name="defaultLanguage">
+                ${renderLanguageOptions(draftSettings.defaultLanguage)}
+              </select>
+            </div>
+            <div class="sn-assistant-field">
+              <span class="sn-assistant-field__label">Office name</span>
+              <input class="sn-assistant-input" name="officeName" value="${escapeHtml(draftSettings.officeName)}" />
+            </div>
+            <div class="sn-assistant-field">
+              <span class="sn-assistant-field__label">Office room</span>
+              <input class="sn-assistant-input" name="officeRoom" value="${escapeHtml(draftSettings.officeRoom)}" />
+            </div>
+            <div class="sn-assistant-field" style="grid-column: 1 / -1;">
+              <span class="sn-assistant-field__label">Display office text</span>
+              <input class="sn-assistant-input" name="officeLabel" value="${escapeHtml(draftSettings.officeLabel)}" />
+            </div>
+          </div>
+          <div class="sn-assistant-checkbox-list">
+            <label class="sn-assistant-checkbox">
+              <input type="checkbox" name="toggle:autoCopyToClipboard" ${draftSettings.toggles.autoCopyToClipboard ? "checked" : ""} />
+              <div>
+                <strong>Auto copy to clipboard</strong>
+                <span>Also copy rendered text when using Insert or Draft.</span>
+              </div>
+            </label>
+            <label class="sn-assistant-checkbox">
+              <input type="checkbox" name="toggle:autoOpenDraft" ${draftSettings.toggles.autoOpenDraft ? "checked" : ""} />
+              <div>
+                <strong>Auto open draft after Copy</strong>
+                <span>If the active template is an email, Copy will also launch a draft.</span>
+              </div>
+            </label>
+            <label class="sn-assistant-checkbox">
+              <input type="checkbox" name="toggle:autoFillUserEmail" ${draftSettings.toggles.autoFillUserEmail ? "checked" : ""} />
+              <div>
+                <strong>Auto-fill user email when detected</strong>
+                <span>Uses form values or Requested For preview when needed.</span>
+              </div>
+            </label>
+          </div>
+          <div class="sn-assistant-template-manager">
+            <div class="sn-assistant-row">
+              <div class="sn-assistant-panel__heading" style="font-size:14px;">Template manager</div>
+            </div>
+            <div class="sn-assistant-tabs">${categoryTabs}</div>
+            <div class="sn-assistant-template-list">${renderTemplateCards(activeCategory, templateGroups[activeCategory] || [])}</div>
+          </div>
+        </div>
+        <div class="sn-assistant-modal__footer">
+          <button type="button" class="sn-assistant-button sn-assistant-button--danger" data-action="reset-session">Reset Session</button>
+          <div class="sn-assistant-row">
+            ${state.ui.settingsMandatory ? "" : '<button type="button" class="sn-assistant-button sn-assistant-button--secondary" data-action="close-settings">Close</button>'}
+            <button type="button" class="sn-assistant-button sn-assistant-button--primary" data-action="save-settings">Save Settings</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  `;
+    bindSettings(root, handlers);
+    return root;
+  }
+  function removeSettingsModal(hostDocument) {
+    const root = hostDocument?.getElementById(UI_IDS.settings);
+    if (root) root.remove();
+  }
+
+  // Assistant/ui/styles.css
+  var styles_default = ':root {\n  --sn-assistant-surface: rgba(249, 246, 239, 0.98);\n  --sn-assistant-panel: rgba(255, 252, 247, 0.96);\n  --sn-assistant-ink: #19232c;\n  --sn-assistant-muted: #5f6d78;\n  --sn-assistant-accent: #0d5a6d;\n  --sn-assistant-accent-strong: #084557;\n  --sn-assistant-border: rgba(25, 35, 44, 0.12);\n  --sn-assistant-shadow: 0 18px 40px rgba(20, 27, 35, 0.18);\n  --sn-assistant-danger: #b5473f;\n  --sn-assistant-radius: 18px;\n  --sn-assistant-font: "IBM Plex Sans", "Segoe UI", sans-serif;\n}\n\n#sn-assistant-launcher,\n#sn-assistant-panel,\n#sn-assistant-settings,\n#sn-assistant-toasts {\n  font-family: var(--sn-assistant-font);\n  color: var(--sn-assistant-ink);\n}\n\n.sn-assistant-floating {\n  position: fixed;\n  z-index: 2147483000;\n  user-select: none;\n}\n\n.sn-assistant-launcher__shell {\n  display: flex;\n  align-items: center;\n  gap: 8px;\n  padding: 7px;\n  border-radius: 999px;\n  background:\n    radial-gradient(circle at top left, rgba(255, 255, 255, 0.96), transparent 55%),\n    linear-gradient(145deg, rgba(253, 251, 247, 0.98), rgba(240, 235, 226, 0.96));\n  border: 1px solid rgba(16, 34, 41, 0.12);\n  box-shadow: 0 14px 32px rgba(17, 24, 39, 0.18);\n  backdrop-filter: blur(12px);\n}\n\n.sn-assistant-launcher__primary,\n.sn-assistant-launcher__icon,\n.sn-assistant-button,\n.sn-assistant-tab,\n.sn-assistant-mini-button {\n  border: 0;\n  cursor: pointer;\n  transition:\n    transform 120ms ease,\n    box-shadow 120ms ease,\n    background 180ms ease,\n    color 180ms ease,\n    opacity 180ms ease;\n  font-family: inherit;\n}\n\n.sn-assistant-launcher__primary {\n  display: inline-flex;\n  align-items: center;\n  gap: 10px;\n  min-width: 132px;\n  height: 38px;\n  padding: 0 16px;\n  border-radius: 999px;\n  background: linear-gradient(135deg, var(--sn-assistant-accent), #1f7b8e);\n  color: #ffffff;\n  font-size: 12px;\n  font-weight: 700;\n  letter-spacing: 0.02em;\n  box-shadow: 0 10px 20px rgba(10, 68, 85, 0.2);\n}\n\n.sn-assistant-launcher__primary:hover,\n.sn-assistant-launcher__icon:hover,\n.sn-assistant-button:hover,\n.sn-assistant-tab:hover,\n.sn-assistant-mini-button:hover {\n  transform: translateY(-1px);\n}\n\n.sn-assistant-launcher__dot {\n  width: 9px;\n  height: 9px;\n  border-radius: 999px;\n  background: #c8fff3;\n  box-shadow: 0 0 0 4px rgba(200, 255, 243, 0.18);\n}\n\n.sn-assistant-launcher__icon {\n  width: 34px;\n  height: 34px;\n  border-radius: 999px;\n  background: rgba(255, 255, 255, 0.84);\n  color: var(--sn-assistant-accent-strong);\n  font-size: 16px;\n  box-shadow: inset 0 0 0 1px rgba(13, 90, 109, 0.12);\n}\n\n.sn-assistant-panel {\n  width: 380px;\n  max-width: calc(100vw - 24px);\n  max-height: calc(100vh - 32px);\n  border-radius: var(--sn-assistant-radius);\n  background:\n    radial-gradient(circle at top right, rgba(255, 255, 255, 0.94), transparent 38%),\n    linear-gradient(180deg, rgba(255, 252, 248, 0.98), rgba(244, 239, 231, 0.96));\n  border: 1px solid var(--sn-assistant-border);\n  box-shadow: var(--sn-assistant-shadow);\n  overflow: hidden;\n  backdrop-filter: blur(14px);\n}\n\n.sn-assistant-panel__header {\n  display: flex;\n  align-items: flex-start;\n  justify-content: space-between;\n  gap: 14px;\n  padding: 16px 16px 10px;\n  cursor: grab;\n  background: linear-gradient(180deg, rgba(255, 255, 255, 0.52), rgba(255, 255, 255, 0));\n}\n\n.sn-assistant-panel__title {\n  display: flex;\n  flex-direction: column;\n  gap: 4px;\n}\n\n.sn-assistant-panel__eyebrow {\n  font-size: 11px;\n  font-weight: 700;\n  color: var(--sn-assistant-accent);\n  letter-spacing: 0.08em;\n  text-transform: uppercase;\n}\n\n.sn-assistant-panel__heading {\n  font-size: 15px;\n  font-weight: 700;\n  line-height: 1.2;\n}\n\n.sn-assistant-panel__subheading {\n  font-size: 12px;\n  color: var(--sn-assistant-muted);\n}\n\n.sn-assistant-panel__header-actions,\n.sn-assistant-panel__footer,\n.sn-assistant-row {\n  display: flex;\n  align-items: center;\n  gap: 8px;\n}\n\n.sn-assistant-panel__body {\n  display: flex;\n  flex-direction: column;\n  gap: 14px;\n  padding: 0 16px 16px;\n}\n\n.sn-assistant-chip-row {\n  display: flex;\n  flex-wrap: wrap;\n  gap: 6px;\n}\n\n.sn-assistant-chip {\n  display: inline-flex;\n  align-items: center;\n  gap: 6px;\n  padding: 5px 10px;\n  border-radius: 999px;\n  font-size: 11px;\n  color: var(--sn-assistant-muted);\n  background: rgba(255, 255, 255, 0.78);\n  border: 1px solid rgba(25, 35, 44, 0.08);\n}\n\n.sn-assistant-chip strong {\n  color: var(--sn-assistant-ink);\n}\n\n.sn-assistant-tabs {\n  display: flex;\n  gap: 6px;\n  flex-wrap: wrap;\n}\n\n.sn-assistant-tab {\n  padding: 8px 12px;\n  border-radius: 999px;\n  background: rgba(255, 255, 255, 0.84);\n  color: var(--sn-assistant-muted);\n  font-size: 12px;\n  font-weight: 700;\n  box-shadow: inset 0 0 0 1px rgba(25, 35, 44, 0.07);\n}\n\n.sn-assistant-tab.is-active {\n  background: linear-gradient(135deg, var(--sn-assistant-accent), #1f7b8e);\n  color: #ffffff;\n  box-shadow: 0 10px 22px rgba(10, 68, 85, 0.18);\n}\n\n.sn-assistant-field {\n  display: flex;\n  flex-direction: column;\n  gap: 6px;\n}\n\n.sn-assistant-field__label {\n  font-size: 12px;\n  font-weight: 700;\n  color: var(--sn-assistant-ink);\n}\n\n.sn-assistant-input,\n.sn-assistant-select,\n.sn-assistant-textarea {\n  width: 100%;\n  border-radius: 12px;\n  border: 1px solid rgba(25, 35, 44, 0.11);\n  background: rgba(255, 255, 255, 0.9);\n  color: var(--sn-assistant-ink);\n  font: inherit;\n  box-sizing: border-box;\n}\n\n.sn-assistant-input,\n.sn-assistant-select {\n  height: 40px;\n  padding: 0 12px;\n}\n\n.sn-assistant-textarea {\n  min-height: 96px;\n  padding: 10px 12px;\n  resize: vertical;\n}\n\n.sn-assistant-input:focus,\n.sn-assistant-select:focus,\n.sn-assistant-textarea:focus {\n  outline: none;\n  border-color: rgba(13, 90, 109, 0.35);\n  box-shadow: 0 0 0 4px rgba(13, 90, 109, 0.1);\n}\n\n.sn-assistant-preview {\n  border-radius: 16px;\n  border: 1px solid rgba(25, 35, 44, 0.1);\n  background:\n    linear-gradient(180deg, rgba(255, 255, 255, 0.92), rgba(249, 245, 239, 0.88));\n  padding: 14px;\n}\n\n.sn-assistant-preview__empty {\n  font-size: 12px;\n  color: var(--sn-assistant-muted);\n}\n\n.sn-assistant-preview__meta {\n  display: grid;\n  grid-template-columns: repeat(2, minmax(0, 1fr));\n  gap: 10px;\n  margin-bottom: 12px;\n}\n\n.sn-assistant-preview__meta-block {\n  padding: 10px 12px;\n  border-radius: 12px;\n  background: rgba(255, 255, 255, 0.84);\n  border: 1px solid rgba(25, 35, 44, 0.08);\n}\n\n.sn-assistant-preview__meta-label {\n  display: block;\n  margin-bottom: 4px;\n  font-size: 10px;\n  font-weight: 700;\n  color: var(--sn-assistant-muted);\n  letter-spacing: 0.08em;\n  text-transform: uppercase;\n}\n\n.sn-assistant-preview__meta-value {\n  font-size: 12px;\n  line-height: 1.4;\n}\n\n.sn-assistant-preview__body {\n  max-height: 240px;\n  overflow: auto;\n  padding: 12px;\n  border-radius: 12px;\n  background: rgba(20, 27, 35, 0.04);\n  font-size: 12px;\n  line-height: 1.55;\n  white-space: pre-wrap;\n}\n\n.sn-assistant-button {\n  display: inline-flex;\n  align-items: center;\n  justify-content: center;\n  gap: 6px;\n  min-width: 86px;\n  height: 38px;\n  padding: 0 14px;\n  border-radius: 12px;\n  font-size: 12px;\n  font-weight: 700;\n}\n\n.sn-assistant-button--primary {\n  background: linear-gradient(135deg, var(--sn-assistant-accent), #1f7b8e);\n  color: #ffffff;\n  box-shadow: 0 10px 20px rgba(10, 68, 85, 0.18);\n}\n\n.sn-assistant-button--secondary {\n  background: rgba(255, 255, 255, 0.86);\n  color: var(--sn-assistant-ink);\n  box-shadow: inset 0 0 0 1px rgba(25, 35, 44, 0.09);\n}\n\n.sn-assistant-button--danger {\n  background: rgba(255, 241, 239, 0.95);\n  color: var(--sn-assistant-danger);\n  box-shadow: inset 0 0 0 1px rgba(181, 71, 63, 0.16);\n}\n\n.sn-assistant-button[disabled],\n.sn-assistant-mini-button[disabled],\n.sn-assistant-launcher__primary[disabled] {\n  cursor: not-allowed;\n  opacity: 0.52;\n  transform: none;\n  box-shadow: none;\n}\n\n.sn-assistant-mini-button {\n  width: 32px;\n  height: 32px;\n  border-radius: 10px;\n  background: rgba(255, 255, 255, 0.84);\n  color: var(--sn-assistant-muted);\n  box-shadow: inset 0 0 0 1px rgba(25, 35, 44, 0.08);\n  font-size: 15px;\n}\n\n.sn-assistant-modal {\n  position: fixed;\n  inset: 0;\n  z-index: 2147483200;\n  display: grid;\n  place-items: center;\n  padding: 18px;\n}\n\n.sn-assistant-modal__backdrop {\n  position: absolute;\n  inset: 0;\n  background:\n    radial-gradient(circle at top left, rgba(13, 90, 109, 0.22), transparent 48%),\n    rgba(15, 23, 42, 0.32);\n  backdrop-filter: blur(8px);\n}\n\n.sn-assistant-modal__dialog {\n  position: relative;\n  width: min(920px, calc(100vw - 24px));\n  max-height: calc(100vh - 36px);\n  overflow: hidden;\n  display: flex;\n  flex-direction: column;\n  border-radius: 24px;\n  background:\n    radial-gradient(circle at top right, rgba(255, 255, 255, 0.96), transparent 34%),\n    linear-gradient(180deg, rgba(255, 252, 248, 0.98), rgba(244, 239, 231, 0.98));\n  border: 1px solid rgba(255, 255, 255, 0.28);\n  box-shadow: 0 24px 60px rgba(15, 23, 42, 0.28);\n}\n\n.sn-assistant-modal__header,\n.sn-assistant-modal__footer {\n  display: flex;\n  align-items: center;\n  justify-content: space-between;\n  gap: 12px;\n  padding: 18px 20px;\n}\n\n.sn-assistant-modal__header {\n  border-bottom: 1px solid rgba(25, 35, 44, 0.08);\n}\n\n.sn-assistant-modal__footer {\n  border-top: 1px solid rgba(25, 35, 44, 0.08);\n  background: rgba(255, 255, 255, 0.5);\n}\n\n.sn-assistant-modal__title {\n  display: flex;\n  flex-direction: column;\n  gap: 5px;\n}\n\n.sn-assistant-modal__body {\n  overflow: auto;\n  padding: 18px 20px 20px;\n  display: flex;\n  flex-direction: column;\n  gap: 18px;\n}\n\n.sn-assistant-note {\n  padding: 12px 14px;\n  border-radius: 14px;\n  background: rgba(13, 90, 109, 0.08);\n  color: var(--sn-assistant-accent-strong);\n  font-size: 12px;\n  line-height: 1.5;\n}\n\n.sn-assistant-settings-grid {\n  display: grid;\n  grid-template-columns: repeat(2, minmax(0, 1fr));\n  gap: 14px;\n}\n\n.sn-assistant-checkbox-list {\n  display: grid;\n  gap: 10px;\n}\n\n.sn-assistant-checkbox {\n  display: flex;\n  align-items: flex-start;\n  gap: 10px;\n  padding: 12px;\n  border-radius: 14px;\n  background: rgba(255, 255, 255, 0.72);\n  border: 1px solid rgba(25, 35, 44, 0.08);\n}\n\n.sn-assistant-checkbox input {\n  margin-top: 3px;\n}\n\n.sn-assistant-checkbox strong {\n  display: block;\n  font-size: 12px;\n  margin-bottom: 2px;\n}\n\n.sn-assistant-checkbox span {\n  display: block;\n  color: var(--sn-assistant-muted);\n  font-size: 11px;\n  line-height: 1.45;\n}\n\n.sn-assistant-template-manager {\n  display: flex;\n  flex-direction: column;\n  gap: 14px;\n}\n\n.sn-assistant-template-list {\n  display: grid;\n  gap: 12px;\n}\n\n.sn-assistant-template-card {\n  padding: 14px;\n  border-radius: 16px;\n  background: rgba(255, 255, 255, 0.76);\n  border: 1px solid rgba(25, 35, 44, 0.08);\n}\n\n.sn-assistant-template-card__header {\n  display: flex;\n  align-items: center;\n  justify-content: space-between;\n  gap: 8px;\n  margin-bottom: 12px;\n}\n\n.sn-assistant-template-card__title {\n  font-size: 13px;\n  font-weight: 700;\n}\n\n.sn-assistant-template-card__hint {\n  margin-top: 8px;\n  font-size: 11px;\n  color: var(--sn-assistant-muted);\n}\n\n.sn-assistant-toast-viewport {\n  position: fixed;\n  right: 18px;\n  bottom: 18px;\n  display: grid;\n  gap: 10px;\n  z-index: 2147483300;\n  pointer-events: none;\n}\n\n.sn-assistant-toast {\n  min-width: 220px;\n  max-width: 360px;\n  padding: 12px 14px;\n  border-radius: 14px;\n  color: #ffffff;\n  font-size: 12px;\n  line-height: 1.45;\n  box-shadow: 0 16px 34px rgba(15, 23, 42, 0.22);\n  animation: sn-assistant-toast-in 180ms ease;\n}\n\n.sn-assistant-toast--success {\n  background: linear-gradient(135deg, #166b46, #20915f);\n}\n\n.sn-assistant-toast--error {\n  background: linear-gradient(135deg, #a23633, #c2514b);\n}\n\n.sn-assistant-toast--info {\n  background: linear-gradient(135deg, var(--sn-assistant-accent-strong), #1f7b8e);\n}\n\n@keyframes sn-assistant-toast-in {\n  from {\n    opacity: 0;\n    transform: translateY(8px);\n  }\n\n  to {\n    opacity: 1;\n    transform: translateY(0);\n  }\n}\n\n@media (max-width: 768px) {\n  .sn-assistant-panel {\n    width: min(92vw, 380px);\n  }\n\n  .sn-assistant-settings-grid {\n    grid-template-columns: 1fr;\n  }\n\n  .sn-assistant-modal {\n    padding: 12px;\n  }\n\n  .sn-assistant-modal__dialog {\n    width: calc(100vw - 12px);\n    max-height: calc(100vh - 12px);\n  }\n\n  .sn-assistant-preview__meta {\n    grid-template-columns: 1fr;\n  }\n}\n';
+
+  // Assistant/ui/styles.js
+  function ensureStyles(hostDocument) {
+    if (!hostDocument || hostDocument.getElementById(UI_IDS.style)) return;
+    const styleTag = hostDocument.createElement("style");
+    styleTag.id = UI_IDS.style;
+    styleTag.textContent = styles_default;
+    (hostDocument.head || hostDocument.documentElement).appendChild(styleTag);
+  }
+
+  // Assistant/ui/toasts.js
+  function ensureViewport(hostDocument) {
+    let viewport = hostDocument.getElementById(UI_IDS.toastViewport);
+    if (viewport) return viewport;
+    viewport = hostDocument.createElement("div");
+    viewport.id = UI_IDS.toastViewport;
+    viewport.setAttribute(ROOT_ATTRIBUTE, ROOT_VALUE);
+    viewport.className = "sn-assistant-toast-viewport";
+    (hostDocument.body || hostDocument.documentElement).appendChild(viewport);
+    return viewport;
+  }
+  function showToast(hostDocument, { message, tone = "success", duration = 2400 }) {
+    if (!hostDocument) return;
+    const viewport = ensureViewport(hostDocument);
+    const toast = hostDocument.createElement("div");
+    toast.className = `sn-assistant-toast sn-assistant-toast--${tone}`;
+    toast.textContent = String(message || "");
+    viewport.appendChild(toast);
+    window.setTimeout(() => {
+      if (toast.isConnected) {
+        toast.remove();
+      }
+    }, duration);
+  }
+  function purgeToasts(hostDocument) {
+    const viewport = hostDocument?.getElementById(UI_IDS.toastViewport);
+    if (viewport) viewport.remove();
+  }
+
+  // Assistant/core/bootstrap.js
+  function removeUiFromDocument(documentRef) {
+    removeLauncher(documentRef);
+    removePanel(documentRef);
+    removeSettingsModal(documentRef);
+    purgeToasts(documentRef);
+  }
+  function removeUiFromOtherDocuments(hostDocument) {
+    getAccessibleDocuments().forEach((documentRef) => {
+      if (documentRef !== hostDocument) {
+        removeUiFromDocument(documentRef);
+      }
+    });
+  }
+  function ensureTemplateSelection(state, settings) {
+    const groups = getTemplateGroups(settings);
+    const categories = getCategories();
+    if (!groups[state.ui.activeCategory]?.length) {
+      setActiveCategory(state, categories[0]?.id || "email");
+    }
+    const activeCategory = state.ui.activeCategory;
+    const templates = groups[activeCategory] || [];
+    let selectedTemplateId = getSelectedTemplate(state, activeCategory);
+    if (!templates.some((template) => template.id === selectedTemplateId)) {
+      selectedTemplateId = getFirstTemplateId(activeCategory, settings);
+      setSelectedTemplate(state, activeCategory, selectedTemplateId);
+    }
+    const selectedTemplate = templates.find((template) => template.id === selectedTemplateId) || null;
+    return {
+      groups,
+      categories,
+      activeCategory,
+      templates,
+      selectedTemplateId,
+      selectedTemplate
+    };
+  }
+  function applyDraftFieldChange(state, name, value) {
+    const draft = cloneSettings(ensureSettingsDraft(state));
+    if (name === "officeProfile") {
+      setSettingsDraft(state, applyOfficePreset(value, draft));
+      return { rerender: true };
+    }
+    if (name.startsWith("toggle:")) {
+      const toggleKey = name.split(":")[1];
+      draft.toggles[toggleKey] = Boolean(value);
+      setSettingsDraft(state, sanitizeSettings(draft));
+      return { rerender: false };
+    }
+    if (name.startsWith("tpl:")) {
+      const [, category, templateId, fieldName] = name.split(":");
+      draft.templateOverrides[category] = draft.templateOverrides[category] || {};
+      draft.templateOverrides[category][templateId] = draft.templateOverrides[category][templateId] || {};
+      draft.templateOverrides[category][templateId][fieldName] = String(value || "");
+      setSettingsDraft(state, sanitizeSettings(draft));
+      return { rerender: false };
+    }
+    draft[name] = String(value || "");
+    setSettingsDraft(state, sanitizeSettings(draft));
+    return { rerender: false };
+  }
+  function createBootstrap({ rootWindow, state, logger }) {
+    const api = {
+      start,
+      destroy,
+      scheduleRecovery
+    };
+    function getEffectiveSettings() {
+      return state.settings;
+    }
+    function getDraftSettings() {
+      return sanitizeSettings(state.ui.settingsDraft || state.settings);
+    }
+    async function getRenderedSelection({ hydrateUser = false } = {}) {
+      if (!state.context?.supported) {
+        return { renderedTemplate: null, selection: ensureTemplateSelection(state, getEffectiveSettings()) };
+      }
+      let context = state.context;
+      if (hydrateUser) {
+        const resolvedUser = await resolveUserForContext(context, state, getEffectiveSettings(), logger);
+        if (resolvedUser?.email && resolvedUser.email !== context.user.email) {
+          context = { ...context, user: resolvedUser };
+          state.context = context;
+        }
+      }
+      const selection = ensureTemplateSelection(state, getEffectiveSettings());
+      const renderedTemplate = selection.selectedTemplate ? renderTemplate(selection.selectedTemplate, {
+        context,
+        settings: getEffectiveSettings()
+      }) : null;
+      return { renderedTemplate, selection };
+    }
+    function scheduleRecovery(reason = "manual", delayMs = 80) {
+      state.lifecycle.queuedReason = reason;
+      if (state.lifecycle.recoveryTimer) {
+        window.clearTimeout(state.lifecycle.recoveryTimer);
+      }
+      state.lifecycle.recoveryTimer = window.setTimeout(() => {
+        state.lifecycle.recoveryTimer = 0;
+        recover(state.lifecycle.queuedReason || reason);
+      }, delayMs);
+    }
+    async function runAction(actionKey, actionHandler) {
+      if (state.pendingActions[actionKey]) return;
+      state.pendingActions[actionKey] = true;
+      scheduleRecovery(`action:${actionKey}:start`, 0);
+      try {
+        await actionHandler();
+      } catch (error) {
+        logger.error(`${actionKey} failed`, error);
+        showToast(state.host.document, {
+          message: error?.message || `${actionKey} failed`,
+          tone: "error"
+        });
+      } finally {
+        state.pendingActions[actionKey] = false;
+        scheduleRecovery(`action:${actionKey}:end`, 0);
+      }
+    }
+    const handlers = {
+      onTogglePanel() {
+        state.ui.panelOpen = !state.ui.panelOpen;
+        state.ui.panelCollapsed = false;
+        scheduleRecovery("panel-toggle", 0);
+      },
+      onClosePanel() {
+        state.ui.panelOpen = false;
+        scheduleRecovery("panel-close", 0);
+      },
+      onToggleCollapse() {
+        state.ui.panelCollapsed = !state.ui.panelCollapsed;
+        scheduleRecovery("panel-collapse", 0);
+      },
+      onOpenSettings() {
+        openSettings(state, false);
+        scheduleRecovery("settings-open", 0);
+      },
+      onCloseSettings() {
+        if (closeSettings(state)) {
+          scheduleRecovery("settings-close", 0);
+        }
+      },
+      onSelectCategory(category) {
+        setActiveCategory(state, category);
+        scheduleRecovery("template-category", 0);
+      },
+      onSelectTemplate(templateId) {
+        setSelectedTemplate(state, state.ui.activeCategory, templateId);
+        scheduleRecovery("template-select", 0);
+      },
+      onCopy() {
+        runAction("copy", async () => {
+          const { renderedTemplate, selection } = await getRenderedSelection({ hydrateUser: false });
+          if (!renderedTemplate) {
+            throw new Error("No template selected");
+          }
+          const copied = await copyToClipboard(renderedTemplate.clipboardText, state.host.document);
+          if (!copied) {
+            throw new Error("Clipboard copy failed");
+          }
+          logger.info("template rendered successfully", { templateId: selection.selectedTemplateId });
+          if (state.settings.toggles.autoOpenDraft && renderedTemplate.category === "email") {
+            const result = openDraft(renderedTemplate);
+            if (!result.ok) {
+              throw new Error("Draft could not be opened");
+            }
+            showToast(state.host.document, {
+              message: "Template copied and draft opened",
+              tone: "info"
+            });
+            return;
+          }
+          showToast(state.host.document, { message: "Template copied" });
+        });
+      },
+      onInsert() {
+        runAction("insert", async () => {
+          const { renderedTemplate, selection } = await getRenderedSelection({ hydrateUser: false });
+          if (!renderedTemplate) {
+            throw new Error("No template selected");
+          }
+          if (state.settings.toggles.autoCopyToClipboard) {
+            await copyToClipboard(renderedTemplate.clipboardText, state.host.document);
+          }
+          const result = insertRenderedTemplate(renderedTemplate, state.context);
+          if (!result.ok) {
+            throw new Error("No compatible target field was found");
+          }
+          logger.info("template rendered successfully", { templateId: selection.selectedTemplateId });
+          showToast(state.host.document, {
+            message: `Inserted into ${result.targetField}`
+          });
+        });
+      },
+      onDraft() {
+        runAction("draft", async () => {
+          const { renderedTemplate, selection } = await getRenderedSelection({ hydrateUser: true });
+          if (!renderedTemplate || renderedTemplate.category !== "email") {
+            throw new Error("Draft is only available for email templates");
+          }
+          if (state.settings.toggles.autoCopyToClipboard) {
+            await copyToClipboard(renderedTemplate.clipboardText, state.host.document);
+          }
+          const result = openDraft(renderedTemplate);
+          if (!result.ok) {
+            throw new Error("Draft could not be opened");
+          }
+          logger.info("template rendered successfully", { templateId: selection.selectedTemplateId });
+          showToast(state.host.document, {
+            message: "Draft opened",
+            tone: "info"
+          });
+        });
+      },
+      onPiSearch() {
+        runAction("piSearch", async () => {
+          if (!state.context?.supported) {
+            throw new Error("No supported context available");
+          }
+          const piValue = await runPiSearch({
+            context: state.context,
+            hostDocument: state.host.document,
+            logger
+          });
+          state.context = {
+            ...state.context,
+            configurationItem: piValue
+          };
+          state.caches.piByRecord[state.context.recordKey] = piValue;
+          showToast(state.host.document, {
+            message: `PI inserted: ${piValue}`
+          });
+        });
+      },
+      onFieldChange(name, value) {
+        const result = applyDraftFieldChange(state, name, value);
+        if (result.rerender) {
+          scheduleRecovery("settings-field-change", 0);
+        }
+      },
+      onTemplateManagerCategory(category) {
+        state.ui.templateManagerCategory = category;
+        scheduleRecovery("settings-template-category", 0);
+      },
+      onRestoreTemplate(category, templateId) {
+        const draft = cloneSettings(ensureSettingsDraft(state));
+        if (draft.templateOverrides?.[category]) {
+          delete draft.templateOverrides[category][templateId];
+        }
+        setSettingsDraft(state, sanitizeSettings(draft));
+        scheduleRecovery("settings-template-restore", 0);
+      },
+      onSaveSettings() {
+        const safeSettings = sanitizeSettings(state.ui.settingsDraft || state.settings);
+        if (!hasRequiredSettings(safeSettings)) {
+          openSettings(state, true);
+          showToast(state.host.document, {
+            message: "Office profile, room, label and language are required",
+            tone: "error"
+          });
+          scheduleRecovery("settings-invalid", 0);
+          return;
+        }
+        const persistedSettings = saveSettings(rootWindow, safeSettings, logger);
+        setSettings(state, persistedSettings);
+        discardSettingsDraft(state);
+        state.ui.settingsOpen = false;
+        state.ui.settingsMandatory = false;
+        state.flags.missingSettingsLogged = false;
+        logger.info("settings loaded");
+        showToast(state.host.document, {
+          message: "Settings saved"
+        });
+        scheduleRecovery("settings-saved", 0);
+      },
+      onResetSession() {
+        resetSettings(rootWindow);
+        const defaults = getDefaultSettings();
+        setSettings(state, defaults);
+        setSettingsDraft(state, defaults);
+        state.ui.settingsMandatory = true;
+        state.ui.settingsOpen = true;
+        state.ui.panelOpen = false;
+        showToast(state.host.document, {
+          message: "Session reset",
+          tone: "info"
+        });
+        scheduleRecovery("settings-reset", 0);
+      }
+    };
+    async function recover(reason = "recover") {
+      if (state.lifecycle.recovering) {
+        state.lifecycle.queuedReason = reason;
+        return;
+      }
+      state.lifecycle.recovering = true;
+      try {
+        const hostDocument = getHostDocument(rootWindow);
+        state.host.document = hostDocument;
+        ensureStyles(hostDocument);
+        removeUiFromOtherDocuments(hostDocument);
+        syncObservers({ state, onMutation: scheduleRecovery, logger });
+        const nextContext = getCurrentContext(rootWindow);
+        const contextDidChange = isContextChanged(state.context, nextContext);
+        if (contextDidChange) {
+          handleRecordChange(state, nextContext);
+          logger.info(
+            `record changed ${nextContext.table || "unknown"}::${nextContext.sysId || nextContext.ticketNumber || "unknown"}`
+          );
+        } else {
+          state.context = nextContext;
+        }
+        if (reason === "dom-mutation") {
+          logger.info("re-render detected, restoring UI");
+        }
+        if (!nextContext.ready || !nextContext.supported) {
+          removeLauncher(hostDocument);
+          removePanel(hostDocument);
+          removeSettingsModal(hostDocument);
+          return;
+        }
+        const settingsValid = hasRequiredSettings(state.settings);
+        if (!settingsValid) {
+          if (!state.flags.missingSettingsLogged) {
+            logger.info("first-run settings required");
+            state.flags.missingSettingsLogged = true;
+          }
+          openSettings(state, true);
+          removeLauncher(hostDocument);
+          removePanel(hostDocument);
+          const shouldRefreshMissingSettings = !hostDocument.getElementById(UI_IDS.settings) || contextDidChange || reason.startsWith("settings-") || reason === "initial-start" || reason === "dom-mutation";
+          if (shouldRefreshMissingSettings) {
+            const draftSettings = getDraftSettings();
+            const templateGroups = getTemplateGroups(draftSettings);
+            ensureSettingsModal({
+              hostDocument,
+              state,
+              draftSettings,
+              templateGroups,
+              handlers
+            });
+          }
+          return;
+        }
+        state.flags.missingSettingsLogged = false;
+        state.ui.settingsMandatory = false;
+        const passiveReason = ["heartbeat", "window-focus", "visibility-change"].includes(reason);
+        const launcherMissing = !hostDocument.getElementById(UI_IDS.launcher);
+        const panelMissing = !hostDocument.getElementById(UI_IDS.panel);
+        const settingsMissing = !hostDocument.getElementById(UI_IDS.settings);
+        if (launcherMissing || contextDidChange || !passiveReason) {
+          ensureLauncher({
+            hostDocument,
+            state,
+            context: nextContext,
+            handlers
+          });
+        }
+        const { renderedTemplate, selection } = await getRenderedSelection({
+          hydrateUser: false
+        });
+        if (state.ui.panelOpen && (panelMissing || contextDidChange || !passiveReason)) {
+          ensurePanel({
+            hostDocument,
+            state,
+            context: state.context,
+            categories: selection.categories,
+            templates: selection.templates,
+            selectedTemplateId: selection.selectedTemplateId,
+            renderedTemplate,
+            handlers
+          });
+        } else if (!state.ui.panelOpen) {
+          removePanel(hostDocument);
+        }
+        const shouldRefreshSettings = settingsMissing || contextDidChange || reason.startsWith("settings-") || reason === "initial-start" || reason === "dom-mutation";
+        if (state.ui.settingsOpen && shouldRefreshSettings) {
+          const draftSettings = getDraftSettings();
+          const templateGroups = getTemplateGroups(draftSettings);
+          ensureSettingsModal({
+            hostDocument,
+            state,
+            draftSettings,
+            templateGroups,
+            handlers
+          });
+        } else if (!state.ui.settingsOpen) {
+          removeSettingsModal(hostDocument);
+        }
+      } finally {
+        state.lifecycle.recovering = false;
+        if (state.lifecycle.queuedReason && state.lifecycle.queuedReason !== reason) {
+          const nextReason = state.lifecycle.queuedReason;
+          state.lifecycle.queuedReason = "";
+          scheduleRecovery(nextReason, 0);
+        } else {
+          state.lifecycle.queuedReason = "";
+        }
+      }
+    }
+    function start() {
+      if (state.lifecycle.started) {
+        scheduleRecovery("start-reentry", 0);
+        return;
+      }
+      state.lifecycle.started = true;
+      state.lifecycle.focusHandler = () => scheduleRecovery("window-focus", 0);
+      state.lifecycle.visibilityHandler = () => {
+        if (!document.hidden) {
+          scheduleRecovery("visibility-change", 0);
+        }
+      };
+      rootWindow.addEventListener("focus", state.lifecycle.focusHandler);
+      rootWindow.document.addEventListener("visibilitychange", state.lifecycle.visibilityHandler);
+      syncObservers({ state, onMutation: scheduleRecovery, logger });
+      startHeartbeat({
+        state,
+        onTick: () => scheduleRecovery("heartbeat", 0)
+      });
+      scheduleRecovery("initial-start", 0);
+    }
+    function destroy(reason = "destroy") {
+      if (!state.lifecycle.started) return;
+      stopObserverSystem(state);
+      if (state.lifecycle.recoveryTimer) {
+        window.clearTimeout(state.lifecycle.recoveryTimer);
+        state.lifecycle.recoveryTimer = 0;
+      }
+      rootWindow.removeEventListener("focus", state.lifecycle.focusHandler);
+      rootWindow.document.removeEventListener("visibilitychange", state.lifecycle.visibilityHandler);
+      getAccessibleDocuments().forEach(removeUiFromDocument);
+      state.lifecycle.started = false;
+      logger.info("bootstrap destroyed", { reason });
+    }
+    return api;
+  }
+
+  // Assistant/core/logger.js
+  var PREFIX = "[SN Assistant]";
+  function write(method, args) {
+    const logger = console[method] || console.log;
+    logger.call(console, PREFIX, ...args);
+  }
+  function createLogger() {
+    return {
+      info: (...args) => write("log", args),
+      warn: (...args) => write("warn", args),
+      error: (...args) => write("error", args)
+    };
+  }
+
+  // Assistant/version.js
+  var VERSION = "2.0.0";
+
+  // Assistant/assistant.js
+  var GLOBAL_KEY = "__SN_ASSISTANT__";
+  function startAssistant() {
+    const rootWindow = getRootWindow();
+    const globalStore = rootWindow[GLOBAL_KEY] = rootWindow[GLOBAL_KEY] || {};
+    if (globalStore.instance?.version === VERSION) {
+      globalStore.instance.logger.info("loader already active");
+      globalStore.instance.bootstrap.scheduleRecovery("duplicate-loader", 0);
+      return globalStore.instance;
+    }
+    if (globalStore.instance?.destroy) {
+      globalStore.instance.destroy("version-reload");
+    }
+    const logger = createLogger();
+    logger.info("loader started", { version: VERSION });
+    const settings = loadSettings(rootWindow, logger);
+    logger.info("settings loaded", { valid: hasRequiredSettings(settings) });
+    const state = createState(settings);
+    const bootstrap = createBootstrap({
+      rootWindow,
+      state,
+      logger
+    });
+    const instance = {
+      version: VERSION,
+      logger,
+      state,
+      bootstrap,
+      destroy: bootstrap.destroy
+    };
+    globalStore.instance = instance;
+    bootstrap.start();
+    return instance;
+  }
 
   // entry.js
-  (function () {
-    const ns = window.__SN_SMART_EMAIL__;
-    if (!ns || !ns.core || typeof ns.core.init !== "function") {
-      console.error("[SN Smart Email] core.init not found");
-      return;
-    }
-    ns.core.init();
-  })();
+  startAssistant();
 })();
