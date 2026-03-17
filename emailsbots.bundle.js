@@ -538,6 +538,7 @@
     launcher: "sn-assistant-launcher",
     panel: "sn-assistant-panel",
     settings: "sn-assistant-settings",
+    settingsImportInput: "sn-assistant-settings-import",
     toastViewport: "sn-assistant-toasts"
   };
 
@@ -595,33 +596,56 @@
   }
 
   // Assistant/core/storage.js
+  var TEMP_WORKSPACE = "temp/sn-assistant";
   var STORAGE_KEYS = {
-    settings: "sn_assistant_settings_v2"
+    settings: "sn_assistant_temp_workspace_v3/settings"
   };
+  var LEGACY_STORAGE_KEYS = ["sn_assistant_settings_v2"];
+  var DEFAULT_SETTINGS = Object.freeze({
+    officeProfile: "custom",
+    officeName: "IT Office",
+    officeRoom: "Front Desk",
+    officeLabel: "IT Welcome Desk",
+    defaultLanguage: "en",
+    toggles: {
+      autoCopyToClipboard: true,
+      autoOpenDraft: false,
+      autoFillUserEmail: true
+    },
+    templateOverrides: {
+      email: {},
+      work_note: {},
+      internal: {}
+    }
+  });
   var OFFICE_PRESETS = {
     kohl: {
       id: "kohl",
       label: "Kohl",
       officeName: "Kohl",
+      officeRoom: "",
       officeLabel: "IT Welcome Desk at Kohl"
     },
     spinelli: {
       id: "spinelli",
       label: "Spinelli",
       officeName: "Spinelli",
+      officeRoom: "",
       officeLabel: "IT Welcome Desk at Spinelli"
     },
     strasbourg_pflimlin: {
       id: "strasbourg_pflimlin",
       label: "Strasbourg / Pflimlin",
       officeName: "Strasbourg / Pflimlin",
+      officeRoom: "",
       officeLabel: "IT Welcome Desk at Strasbourg / Pflimlin"
     },
     custom: {
       id: "custom",
       label: "Custom",
-      officeName: "",
-      officeLabel: ""
+      officeName: DEFAULT_SETTINGS.officeName,
+      officeRoom: DEFAULT_SETTINGS.officeRoom,
+      officeLabel: DEFAULT_SETTINGS.officeLabel
     }
   };
   var LANGUAGE_OPTIONS = [
@@ -634,6 +658,28 @@
     } catch (error) {
       return null;
     }
+  }
+  function getLocalStorage(rootWindow) {
+    try {
+      return rootWindow.localStorage || window.localStorage;
+    } catch (error) {
+      return null;
+    }
+  }
+  function getPersistentStorage(rootWindow) {
+    return getLocalStorage(rootWindow) || getSessionStorage(rootWindow);
+  }
+  function getLegacySettings(rootWindow) {
+    const storages = [getLocalStorage(rootWindow), getSessionStorage(rootWindow)].filter(Boolean);
+    for (const storage of storages) {
+      for (const key of LEGACY_STORAGE_KEYS) {
+        const rawValue = storage.getItem(key);
+        if (rawValue) {
+          return rawValue;
+        }
+      }
+    }
+    return "";
   }
   function sanitizeTemplateOverrideEntry(value) {
     const entry = value && typeof value === "object" ? value : {};
@@ -658,30 +704,14 @@
     return output;
   }
   function getDefaultSettings() {
-    return {
-      officeProfile: "",
-      officeName: "",
-      officeRoom: "",
-      officeLabel: "",
-      defaultLanguage: "en",
-      toggles: {
-        autoCopyToClipboard: true,
-        autoOpenDraft: false,
-        autoFillUserEmail: true
-      },
-      templateOverrides: {
-        email: {},
-        work_note: {},
-        internal: {}
-      }
-    };
+    return deepClone(DEFAULT_SETTINGS);
   }
   function sanitizeSettings(input = {}) {
     const defaults = getDefaultSettings();
     const merged = deepMerge(defaults, input);
     const toggles = merged.toggles || {};
     return {
-      officeProfile: cleanText(merged.officeProfile).toLowerCase(),
+      officeProfile: cleanText(merged.officeProfile).toLowerCase() || defaults.officeProfile,
       officeName: cleanText(merged.officeName),
       officeRoom: cleanText(merged.officeRoom),
       officeLabel: cleanText(merged.officeLabel),
@@ -702,47 +732,125 @@
   }
   function applyOfficePreset(profile, baseSettings = getDefaultSettings()) {
     const safeBase = sanitizeSettings(baseSettings);
-    const preset = OFFICE_PRESETS[cleanText(profile).toLowerCase()];
+    const normalizedProfile = cleanText(profile).toLowerCase();
+    const preset = OFFICE_PRESETS[normalizedProfile];
     if (!preset || preset.id === "custom") {
       return sanitizeSettings({
         ...safeBase,
-        officeProfile: cleanText(profile).toLowerCase() || "custom"
+        officeProfile: normalizedProfile || "custom"
       });
     }
     return sanitizeSettings({
       ...safeBase,
       officeProfile: preset.id,
-      officeName: preset.officeName,
-      officeLabel: preset.officeLabel
+      officeName: cleanText(preset.officeName) || safeBase.officeName,
+      officeRoom: cleanText(preset.officeRoom) || safeBase.officeRoom,
+      officeLabel: cleanText(preset.officeLabel) || safeBase.officeLabel
     });
   }
   function loadSettings(rootWindow, logger) {
-    const storage = getSessionStorage(rootWindow);
+    const storage = getPersistentStorage(rootWindow);
     if (!storage) {
-      logger?.warn("sessionStorage unavailable, using defaults");
+      logger?.warn("browser storage unavailable, using defaults");
       return getDefaultSettings();
     }
-    const rawValue = storage.getItem(STORAGE_KEYS.settings);
+    const rawValue = storage.getItem(STORAGE_KEYS.settings) || getLegacySettings(rootWindow);
     const parsed = parseJson(rawValue, getDefaultSettings());
     return sanitizeSettings(parsed);
   }
   function saveSettings(rootWindow, settings, logger) {
-    const storage = getSessionStorage(rootWindow);
+    const storage = getPersistentStorage(rootWindow);
     const safeSettings = sanitizeSettings(settings);
     if (!storage) {
-      logger?.warn("sessionStorage unavailable, settings kept only in memory");
+      logger?.warn("browser storage unavailable, settings kept only in memory");
       return safeSettings;
     }
     storage.setItem(STORAGE_KEYS.settings, JSON.stringify(safeSettings));
     return safeSettings;
   }
-  function resetSettings(rootWindow) {
-    const storage = getSessionStorage(rootWindow);
-    if (!storage) return;
-    storage.removeItem(STORAGE_KEYS.settings);
-  }
   function cloneSettings(settings) {
     return deepClone(sanitizeSettings(settings));
+  }
+  function buildPackageFilename() {
+    const stamp = (/* @__PURE__ */ new Date()).toISOString().replace(/[:.]/g, "-");
+    return `sn-assistant-templates-${stamp}.json`;
+  }
+  function buildSettingsPackage(settings) {
+    return {
+      schema: "sn-assistant-template-package",
+      version: 1,
+      workspace: TEMP_WORKSPACE,
+      exportedAt: (/* @__PURE__ */ new Date()).toISOString(),
+      settings: sanitizeSettings(settings)
+    };
+  }
+  async function tryWritePackageToTempFolder(rootWindow, fileName, payloadText) {
+    if (typeof rootWindow?.showDirectoryPicker !== "function") {
+      return null;
+    }
+    const baseDirectoryHandle = await rootWindow.showDirectoryPicker({ mode: "readwrite" });
+    const tempDirectoryHandle = await baseDirectoryHandle.getDirectoryHandle("temp", { create: true });
+    const assistantDirectoryHandle = await tempDirectoryHandle.getDirectoryHandle("sn-assistant", { create: true });
+    const fileHandle = await assistantDirectoryHandle.getFileHandle(fileName, { create: true });
+    const writable = await fileHandle.createWritable();
+    await writable.write(payloadText);
+    await writable.close();
+    return {
+      mode: "filesystem",
+      fileName,
+      path: `${TEMP_WORKSPACE}/${fileName}`
+    };
+  }
+  function downloadPackage(rootWindow, fileName, payloadText) {
+    const blob = new Blob([payloadText], { type: "application/json" });
+    const objectUrl = rootWindow.URL.createObjectURL(blob);
+    const anchor = rootWindow.document.createElement("a");
+    anchor.href = objectUrl;
+    anchor.download = fileName;
+    anchor.style.display = "none";
+    (rootWindow.document.body || rootWindow.document.documentElement).appendChild(anchor);
+    anchor.click();
+    anchor.remove();
+    rootWindow.setTimeout(() => rootWindow.URL.revokeObjectURL(objectUrl), 0);
+    return {
+      mode: "download",
+      fileName
+    };
+  }
+  async function exportSettingsPackage(rootWindow, settings) {
+    const fileName = buildPackageFilename();
+    const payloadText = JSON.stringify(buildSettingsPackage(settings), null, 2);
+    if (typeof rootWindow?.showDirectoryPicker === "function") {
+      try {
+        const fileResult = await tryWritePackageToTempFolder(rootWindow, fileName, payloadText);
+        if (fileResult) {
+          return {
+            ok: true,
+            ...fileResult
+          };
+        }
+      } catch (error) {
+        if (error?.name === "AbortError") {
+          return { ok: false, canceled: true };
+        }
+      }
+    }
+    return {
+      ok: true,
+      ...downloadPackage(rootWindow, fileName, payloadText)
+    };
+  }
+  async function importSettingsPackage(file) {
+    if (!file) {
+      throw new Error("No file selected");
+    }
+    const rawText = await file.text();
+    const parsed = parseJson(rawText, null);
+    if (!parsed || typeof parsed !== "object") {
+      throw new Error("Invalid settings file");
+    }
+    const rawSettings = parsed.settings && typeof parsed.settings === "object" ? parsed.settings : parsed;
+    return sanitizeSettings(rawSettings);
   }
 
   // Assistant/core/state.js
@@ -817,6 +925,7 @@
   function openSettings(state, mandatory = false) {
     state.ui.settingsOpen = true;
     state.ui.settingsMandatory = mandatory || state.ui.settingsMandatory;
+    state.ui.panelOpen = false;
     ensureSettingsDraft(state);
   }
   function closeSettings(state) {
@@ -1540,7 +1649,7 @@ ${body}`) : body;
   function getDefaultLauncherPosition(node) {
     const ownerWindow = node.ownerDocument.defaultView || window;
     return {
-      left: Math.max(ownerWindow.innerWidth - 190, 14),
+      left: Math.max(ownerWindow.innerWidth - 290, 14),
       top: 88
     };
   }
@@ -1551,6 +1660,7 @@ ${body}`) : body;
       const button = event.target.closest("[data-action]");
       if (!button) return;
       const { action } = button.dataset;
+      if (action === "quick-draft") handlers.onQuickDraft();
       if (action === "toggle-panel") handlers.onTogglePanel();
       if (action === "open-settings") handlers.onOpenSettings();
     });
@@ -1568,12 +1678,15 @@ ${body}`) : body;
     <div class="sn-assistant-launcher__shell" data-drag-handle="launcher" title="${escapeHtml(
       `${context.ticketNumber || context.tableLabel} | ${context.recordKey}`
     )}">
-      <button type="button" class="sn-assistant-launcher__primary" data-action="toggle-panel">
+      <button type="button" class="sn-assistant-launcher__primary" data-action="quick-draft">
         <span class="sn-assistant-launcher__dot" aria-hidden="true"></span>
-        <span>Assistant</span>
+        <span>Draft</span>
+      </button>
+      <button type="button" class="sn-assistant-launcher__secondary" data-action="toggle-panel">
+        <span>Templates</span>
       </button>
       <button type="button" class="sn-assistant-launcher__icon" data-action="open-settings" title="Settings">
-        \u2699
+        <span class="sn-assistant-icon sn-assistant-icon--gear" aria-hidden="true"></span>
       </button>
     </div>
   `;
@@ -1722,19 +1835,19 @@ ${body}`) : body;
         <div class="sn-assistant-panel__title">
           <span class="sn-assistant-panel__eyebrow">SN Assistant</span>
           <div class="sn-assistant-panel__heading">${escapeHtml(context.ticketNumber || context.tableLabel || "Record")}</div>
-          <div class="sn-assistant-panel__subheading">${escapeHtml(context.tableLabel)} \xB7 ${escapeHtml(
+          <div class="sn-assistant-panel__subheading">${escapeHtml(context.tableLabel)} | ${escapeHtml(
       context.recordKey
     )}</div>
         </div>
         <div class="sn-assistant-panel__header-actions">
           <button type="button" class="sn-assistant-mini-button" data-action="toggle-collapse" title="Collapse">
-            ${collapsed ? "+" : "\u2212"}
+            ${collapsed ? "+" : "-"}
           </button>
           <button type="button" class="sn-assistant-mini-button" data-action="open-settings" title="Settings">
-            \u2699
+            <span class="sn-assistant-icon sn-assistant-icon--gear" aria-hidden="true"></span>
           </button>
           <button type="button" class="sn-assistant-mini-button" data-action="close-panel" title="Close">
-            \xD7
+            x
           </button>
         </div>
       </div>
@@ -1753,7 +1866,6 @@ ${body}`) : body;
                 <button type="button" class="sn-assistant-button sn-assistant-button--secondary" data-action="copy-template" ${pending ? "disabled" : ""}>Copy</button>
                 <button type="button" class="sn-assistant-button sn-assistant-button--secondary" data-action="insert-template" ${pending || !renderedTemplate ? "disabled" : ""}>Insert</button>
                 <button type="button" class="sn-assistant-button sn-assistant-button--primary" data-action="open-draft" ${pending || renderedTemplate?.category !== "email" ? "disabled" : ""}>Draft</button>
-                <button type="button" class="sn-assistant-button sn-assistant-button--secondary" data-action="open-settings" ${pending ? "disabled" : ""}>Settings</button>
               </div>
             </div>
           `}
@@ -1798,7 +1910,10 @@ ${body}`) : body;
       (template) => `
         <div class="sn-assistant-template-card">
           <div class="sn-assistant-template-card__header">
-            <div class="sn-assistant-template-card__title">${escapeHtml(template.label)}</div>
+            <div>
+              <div class="sn-assistant-template-card__title">${escapeHtml(template.id)}</div>
+              <div class="sn-assistant-template-card__meta">${escapeHtml(category)}</div>
+            </div>
             <button
               type="button"
               class="sn-assistant-mini-button"
@@ -1807,8 +1922,27 @@ ${body}`) : body;
               data-template-id="${escapeHtml(template.id)}"
               title="Restore default"
             >
-              \u21BA
+              R
             </button>
+          </div>
+          <div class="sn-assistant-settings-grid sn-assistant-settings-grid--compact">
+            <div class="sn-assistant-field">
+              <span class="sn-assistant-field__label">Template name</span>
+              <input
+                class="sn-assistant-input"
+                name="tpl:${escapeHtml(category)}:${escapeHtml(template.id)}:label"
+                value="${escapeHtml(template.label || "")}"
+              />
+            </div>
+            <div class="sn-assistant-field">
+              <span class="sn-assistant-field__label">Target field</span>
+              <input
+                class="sn-assistant-input"
+                name="tpl:${escapeHtml(category)}:${escapeHtml(template.id)}:target"
+                value="${escapeHtml(template.target || "")}"
+                placeholder="comments or work_notes"
+              />
+            </div>
           </div>
           ${category === "email" ? `
                 <div class="sn-assistant-field">
@@ -1826,7 +1960,7 @@ ${body}`) : body;
               name="tpl:${escapeHtml(category)}:${escapeHtml(template.id)}:body"
             >${escapeHtml(template.body || "")}</textarea>
           </div>
-          <div class="sn-assistant-template-card__hint">Placeholders supported: {{user_name}}, {{user_email}}, {{ticket_number}}, {{office_name}}, {{office_room}}, {{office_label}}, {{agent_name}}, {{today}}, {{short_description}}</div>
+          <div class="sn-assistant-template-card__hint">Empty values fall back to the built-in default. Placeholders: {{user_name}}, {{user_email}}, {{ticket_number}}, {{record_number}}, {{table_name}}, {{office_name}}, {{office_room}}, {{office_label}}, {{agent_name}}, {{today}}, {{short_description}}, {{configuration_item}}</div>
         </div>
       `
     ).join("");
@@ -1840,11 +1974,20 @@ ${body}`) : body;
       const { action, category, templateId } = button.dataset;
       if (action === "close-settings") handlers.onCloseSettings();
       if (action === "save-settings") handlers.onSaveSettings();
-      if (action === "reset-session") handlers.onResetSession();
+      if (action === "reset-settings") handlers.onResetSettings();
+      if (action === "export-settings") handlers.onExportSettings();
+      if (action === "trigger-import-settings") handlers.onTriggerImport();
       if (action === "template-category") handlers.onTemplateManagerCategory(category);
       if (action === "restore-template") handlers.onRestoreTemplate(category, templateId);
     });
     const onFieldMutation = (event) => {
+      const importInput = event.target.closest('input[data-role="settings-import-input"]');
+      if (importInput) {
+        const file = importInput.files?.[0] || null;
+        handlers.onImportSettingsFile(file);
+        importInput.value = "";
+        return;
+      }
       const field = event.target.closest("[name]");
       if (!field) return;
       const value = field.type === "checkbox" ? field.checked : field.value;
@@ -1890,14 +2033,18 @@ ${body}`) : body;
       <div class="sn-assistant-modal__dialog">
         <div class="sn-assistant-modal__header">
           <div class="sn-assistant-modal__title">
-            <span class="sn-assistant-panel__eyebrow">Session Settings</span>
-            <div class="sn-assistant-panel__heading">Configure the assistant</div>
-            <div class="sn-assistant-panel__subheading">Session-scoped settings stored in sessionStorage.</div>
+            <span class="sn-assistant-panel__eyebrow">Template Workspace</span>
+            <div class="sn-assistant-panel__heading">Configure templates and profile defaults</div>
+            <div class="sn-assistant-panel__subheading">Saved inside the temporary workspace ${escapeHtml(
+      TEMP_WORKSPACE
+    )} in browser storage. Export can also write a JSON pack to a local temp/sn-assistant folder when the browser allows it.</div>
           </div>
-          ${state.ui.settingsMandatory ? "" : '<button type="button" class="sn-assistant-mini-button" data-action="close-settings" title="Close">\xD7</button>'}
+          ${state.ui.settingsMandatory ? "" : '<button type="button" class="sn-assistant-mini-button" data-action="close-settings" title="Close">x</button>'}
         </div>
         <div class="sn-assistant-modal__body">
-          ${state.ui.settingsMandatory ? '<div class="sn-assistant-note">The assistant needs the minimum office profile before the launcher can appear. Save these values to continue.</div>' : ""}
+          <input id="${escapeHtml(UI_IDS.settingsImportInput)}" type="file" accept="application/json" data-role="settings-import-input" hidden />
+          ${state.ui.settingsMandatory ? '<div class="sn-assistant-note">The assistant can run with defaults, but this panel lets you refine the profile and template package before saving.</div>' : ""}
+          <div class="sn-assistant-note">Draft stays visible outside this modal. Settings are only editable from the gear icon. Manual edits on office fields automatically switch the profile to Custom.</div>
           <div class="sn-assistant-settings-grid">
             <div class="sn-assistant-field">
               <span class="sn-assistant-field__label">Office profile</span>
@@ -1956,8 +2103,12 @@ ${body}`) : body;
           </div>
         </div>
         <div class="sn-assistant-modal__footer">
-          <button type="button" class="sn-assistant-button sn-assistant-button--danger" data-action="reset-session">Reset Session</button>
-          <div class="sn-assistant-row">
+          <div class="sn-assistant-row sn-assistant-row--wrap">
+            <button type="button" class="sn-assistant-button sn-assistant-button--danger" data-action="reset-settings">Reset Settings</button>
+            <button type="button" class="sn-assistant-button sn-assistant-button--secondary" data-action="export-settings">Export Templates</button>
+            <button type="button" class="sn-assistant-button sn-assistant-button--secondary" data-action="trigger-import-settings">Import Templates</button>
+          </div>
+          <div class="sn-assistant-row sn-assistant-row--wrap">
             ${state.ui.settingsMandatory ? "" : '<button type="button" class="sn-assistant-button sn-assistant-button--secondary" data-action="close-settings">Close</button>'}
             <button type="button" class="sn-assistant-button sn-assistant-button--primary" data-action="save-settings">Save Settings</button>
           </div>
@@ -1974,7 +2125,627 @@ ${body}`) : body;
   }
 
   // Assistant/ui/styles.css
-  var styles_default = ':root {\n  --sn-assistant-surface: rgba(249, 246, 239, 0.98);\n  --sn-assistant-panel: rgba(255, 252, 247, 0.96);\n  --sn-assistant-ink: #19232c;\n  --sn-assistant-muted: #5f6d78;\n  --sn-assistant-accent: #0d5a6d;\n  --sn-assistant-accent-strong: #084557;\n  --sn-assistant-border: rgba(25, 35, 44, 0.12);\n  --sn-assistant-shadow: 0 18px 40px rgba(20, 27, 35, 0.18);\n  --sn-assistant-danger: #b5473f;\n  --sn-assistant-radius: 18px;\n  --sn-assistant-font: "IBM Plex Sans", "Segoe UI", sans-serif;\n}\n\n#sn-assistant-launcher,\n#sn-assistant-panel,\n#sn-assistant-settings,\n#sn-assistant-toasts {\n  font-family: var(--sn-assistant-font);\n  color: var(--sn-assistant-ink);\n}\n\n.sn-assistant-floating {\n  position: fixed;\n  z-index: 2147483000;\n  user-select: none;\n}\n\n.sn-assistant-launcher__shell {\n  display: flex;\n  align-items: center;\n  gap: 8px;\n  padding: 7px;\n  border-radius: 999px;\n  background:\n    radial-gradient(circle at top left, rgba(255, 255, 255, 0.96), transparent 55%),\n    linear-gradient(145deg, rgba(253, 251, 247, 0.98), rgba(240, 235, 226, 0.96));\n  border: 1px solid rgba(16, 34, 41, 0.12);\n  box-shadow: 0 14px 32px rgba(17, 24, 39, 0.18);\n  backdrop-filter: blur(12px);\n}\n\n.sn-assistant-launcher__primary,\n.sn-assistant-launcher__icon,\n.sn-assistant-button,\n.sn-assistant-tab,\n.sn-assistant-mini-button {\n  border: 0;\n  cursor: pointer;\n  transition:\n    transform 120ms ease,\n    box-shadow 120ms ease,\n    background 180ms ease,\n    color 180ms ease,\n    opacity 180ms ease;\n  font-family: inherit;\n}\n\n.sn-assistant-launcher__primary {\n  display: inline-flex;\n  align-items: center;\n  gap: 10px;\n  min-width: 132px;\n  height: 38px;\n  padding: 0 16px;\n  border-radius: 999px;\n  background: linear-gradient(135deg, var(--sn-assistant-accent), #1f7b8e);\n  color: #ffffff;\n  font-size: 12px;\n  font-weight: 700;\n  letter-spacing: 0.02em;\n  box-shadow: 0 10px 20px rgba(10, 68, 85, 0.2);\n}\n\n.sn-assistant-launcher__primary:hover,\n.sn-assistant-launcher__icon:hover,\n.sn-assistant-button:hover,\n.sn-assistant-tab:hover,\n.sn-assistant-mini-button:hover {\n  transform: translateY(-1px);\n}\n\n.sn-assistant-launcher__dot {\n  width: 9px;\n  height: 9px;\n  border-radius: 999px;\n  background: #c8fff3;\n  box-shadow: 0 0 0 4px rgba(200, 255, 243, 0.18);\n}\n\n.sn-assistant-launcher__icon {\n  width: 34px;\n  height: 34px;\n  border-radius: 999px;\n  background: rgba(255, 255, 255, 0.84);\n  color: var(--sn-assistant-accent-strong);\n  font-size: 16px;\n  box-shadow: inset 0 0 0 1px rgba(13, 90, 109, 0.12);\n}\n\n.sn-assistant-panel {\n  width: 380px;\n  max-width: calc(100vw - 24px);\n  max-height: calc(100vh - 32px);\n  border-radius: var(--sn-assistant-radius);\n  background:\n    radial-gradient(circle at top right, rgba(255, 255, 255, 0.94), transparent 38%),\n    linear-gradient(180deg, rgba(255, 252, 248, 0.98), rgba(244, 239, 231, 0.96));\n  border: 1px solid var(--sn-assistant-border);\n  box-shadow: var(--sn-assistant-shadow);\n  overflow: hidden;\n  backdrop-filter: blur(14px);\n}\n\n.sn-assistant-panel__header {\n  display: flex;\n  align-items: flex-start;\n  justify-content: space-between;\n  gap: 14px;\n  padding: 16px 16px 10px;\n  cursor: grab;\n  background: linear-gradient(180deg, rgba(255, 255, 255, 0.52), rgba(255, 255, 255, 0));\n}\n\n.sn-assistant-panel__title {\n  display: flex;\n  flex-direction: column;\n  gap: 4px;\n}\n\n.sn-assistant-panel__eyebrow {\n  font-size: 11px;\n  font-weight: 700;\n  color: var(--sn-assistant-accent);\n  letter-spacing: 0.08em;\n  text-transform: uppercase;\n}\n\n.sn-assistant-panel__heading {\n  font-size: 15px;\n  font-weight: 700;\n  line-height: 1.2;\n}\n\n.sn-assistant-panel__subheading {\n  font-size: 12px;\n  color: var(--sn-assistant-muted);\n}\n\n.sn-assistant-panel__header-actions,\n.sn-assistant-panel__footer,\n.sn-assistant-row {\n  display: flex;\n  align-items: center;\n  gap: 8px;\n}\n\n.sn-assistant-panel__body {\n  display: flex;\n  flex-direction: column;\n  gap: 14px;\n  padding: 0 16px 16px;\n}\n\n.sn-assistant-chip-row {\n  display: flex;\n  flex-wrap: wrap;\n  gap: 6px;\n}\n\n.sn-assistant-chip {\n  display: inline-flex;\n  align-items: center;\n  gap: 6px;\n  padding: 5px 10px;\n  border-radius: 999px;\n  font-size: 11px;\n  color: var(--sn-assistant-muted);\n  background: rgba(255, 255, 255, 0.78);\n  border: 1px solid rgba(25, 35, 44, 0.08);\n}\n\n.sn-assistant-chip strong {\n  color: var(--sn-assistant-ink);\n}\n\n.sn-assistant-tabs {\n  display: flex;\n  gap: 6px;\n  flex-wrap: wrap;\n}\n\n.sn-assistant-tab {\n  padding: 8px 12px;\n  border-radius: 999px;\n  background: rgba(255, 255, 255, 0.84);\n  color: var(--sn-assistant-muted);\n  font-size: 12px;\n  font-weight: 700;\n  box-shadow: inset 0 0 0 1px rgba(25, 35, 44, 0.07);\n}\n\n.sn-assistant-tab.is-active {\n  background: linear-gradient(135deg, var(--sn-assistant-accent), #1f7b8e);\n  color: #ffffff;\n  box-shadow: 0 10px 22px rgba(10, 68, 85, 0.18);\n}\n\n.sn-assistant-field {\n  display: flex;\n  flex-direction: column;\n  gap: 6px;\n}\n\n.sn-assistant-field__label {\n  font-size: 12px;\n  font-weight: 700;\n  color: var(--sn-assistant-ink);\n}\n\n.sn-assistant-input,\n.sn-assistant-select,\n.sn-assistant-textarea {\n  width: 100%;\n  border-radius: 12px;\n  border: 1px solid rgba(25, 35, 44, 0.11);\n  background: rgba(255, 255, 255, 0.9);\n  color: var(--sn-assistant-ink);\n  font: inherit;\n  box-sizing: border-box;\n}\n\n.sn-assistant-input,\n.sn-assistant-select {\n  height: 40px;\n  padding: 0 12px;\n}\n\n.sn-assistant-textarea {\n  min-height: 96px;\n  padding: 10px 12px;\n  resize: vertical;\n}\n\n.sn-assistant-input:focus,\n.sn-assistant-select:focus,\n.sn-assistant-textarea:focus {\n  outline: none;\n  border-color: rgba(13, 90, 109, 0.35);\n  box-shadow: 0 0 0 4px rgba(13, 90, 109, 0.1);\n}\n\n.sn-assistant-preview {\n  border-radius: 16px;\n  border: 1px solid rgba(25, 35, 44, 0.1);\n  background:\n    linear-gradient(180deg, rgba(255, 255, 255, 0.92), rgba(249, 245, 239, 0.88));\n  padding: 14px;\n}\n\n.sn-assistant-preview__empty {\n  font-size: 12px;\n  color: var(--sn-assistant-muted);\n}\n\n.sn-assistant-preview__meta {\n  display: grid;\n  grid-template-columns: repeat(2, minmax(0, 1fr));\n  gap: 10px;\n  margin-bottom: 12px;\n}\n\n.sn-assistant-preview__meta-block {\n  padding: 10px 12px;\n  border-radius: 12px;\n  background: rgba(255, 255, 255, 0.84);\n  border: 1px solid rgba(25, 35, 44, 0.08);\n}\n\n.sn-assistant-preview__meta-label {\n  display: block;\n  margin-bottom: 4px;\n  font-size: 10px;\n  font-weight: 700;\n  color: var(--sn-assistant-muted);\n  letter-spacing: 0.08em;\n  text-transform: uppercase;\n}\n\n.sn-assistant-preview__meta-value {\n  font-size: 12px;\n  line-height: 1.4;\n}\n\n.sn-assistant-preview__body {\n  max-height: 240px;\n  overflow: auto;\n  padding: 12px;\n  border-radius: 12px;\n  background: rgba(20, 27, 35, 0.04);\n  font-size: 12px;\n  line-height: 1.55;\n  white-space: pre-wrap;\n}\n\n.sn-assistant-button {\n  display: inline-flex;\n  align-items: center;\n  justify-content: center;\n  gap: 6px;\n  min-width: 86px;\n  height: 38px;\n  padding: 0 14px;\n  border-radius: 12px;\n  font-size: 12px;\n  font-weight: 700;\n}\n\n.sn-assistant-button--primary {\n  background: linear-gradient(135deg, var(--sn-assistant-accent), #1f7b8e);\n  color: #ffffff;\n  box-shadow: 0 10px 20px rgba(10, 68, 85, 0.18);\n}\n\n.sn-assistant-button--secondary {\n  background: rgba(255, 255, 255, 0.86);\n  color: var(--sn-assistant-ink);\n  box-shadow: inset 0 0 0 1px rgba(25, 35, 44, 0.09);\n}\n\n.sn-assistant-button--danger {\n  background: rgba(255, 241, 239, 0.95);\n  color: var(--sn-assistant-danger);\n  box-shadow: inset 0 0 0 1px rgba(181, 71, 63, 0.16);\n}\n\n.sn-assistant-button[disabled],\n.sn-assistant-mini-button[disabled],\n.sn-assistant-launcher__primary[disabled] {\n  cursor: not-allowed;\n  opacity: 0.52;\n  transform: none;\n  box-shadow: none;\n}\n\n.sn-assistant-mini-button {\n  width: 32px;\n  height: 32px;\n  border-radius: 10px;\n  background: rgba(255, 255, 255, 0.84);\n  color: var(--sn-assistant-muted);\n  box-shadow: inset 0 0 0 1px rgba(25, 35, 44, 0.08);\n  font-size: 15px;\n}\n\n.sn-assistant-modal {\n  position: fixed;\n  inset: 0;\n  z-index: 2147483200;\n  display: grid;\n  place-items: center;\n  padding: 18px;\n}\n\n.sn-assistant-modal__backdrop {\n  position: absolute;\n  inset: 0;\n  background:\n    radial-gradient(circle at top left, rgba(13, 90, 109, 0.22), transparent 48%),\n    rgba(15, 23, 42, 0.32);\n  backdrop-filter: blur(8px);\n}\n\n.sn-assistant-modal__dialog {\n  position: relative;\n  width: min(920px, calc(100vw - 24px));\n  max-height: calc(100vh - 36px);\n  overflow: hidden;\n  display: flex;\n  flex-direction: column;\n  border-radius: 24px;\n  background:\n    radial-gradient(circle at top right, rgba(255, 255, 255, 0.96), transparent 34%),\n    linear-gradient(180deg, rgba(255, 252, 248, 0.98), rgba(244, 239, 231, 0.98));\n  border: 1px solid rgba(255, 255, 255, 0.28);\n  box-shadow: 0 24px 60px rgba(15, 23, 42, 0.28);\n}\n\n.sn-assistant-modal__header,\n.sn-assistant-modal__footer {\n  display: flex;\n  align-items: center;\n  justify-content: space-between;\n  gap: 12px;\n  padding: 18px 20px;\n}\n\n.sn-assistant-modal__header {\n  border-bottom: 1px solid rgba(25, 35, 44, 0.08);\n}\n\n.sn-assistant-modal__footer {\n  border-top: 1px solid rgba(25, 35, 44, 0.08);\n  background: rgba(255, 255, 255, 0.5);\n}\n\n.sn-assistant-modal__title {\n  display: flex;\n  flex-direction: column;\n  gap: 5px;\n}\n\n.sn-assistant-modal__body {\n  overflow: auto;\n  padding: 18px 20px 20px;\n  display: flex;\n  flex-direction: column;\n  gap: 18px;\n}\n\n.sn-assistant-note {\n  padding: 12px 14px;\n  border-radius: 14px;\n  background: rgba(13, 90, 109, 0.08);\n  color: var(--sn-assistant-accent-strong);\n  font-size: 12px;\n  line-height: 1.5;\n}\n\n.sn-assistant-settings-grid {\n  display: grid;\n  grid-template-columns: repeat(2, minmax(0, 1fr));\n  gap: 14px;\n}\n\n.sn-assistant-checkbox-list {\n  display: grid;\n  gap: 10px;\n}\n\n.sn-assistant-checkbox {\n  display: flex;\n  align-items: flex-start;\n  gap: 10px;\n  padding: 12px;\n  border-radius: 14px;\n  background: rgba(255, 255, 255, 0.72);\n  border: 1px solid rgba(25, 35, 44, 0.08);\n}\n\n.sn-assistant-checkbox input {\n  margin-top: 3px;\n}\n\n.sn-assistant-checkbox strong {\n  display: block;\n  font-size: 12px;\n  margin-bottom: 2px;\n}\n\n.sn-assistant-checkbox span {\n  display: block;\n  color: var(--sn-assistant-muted);\n  font-size: 11px;\n  line-height: 1.45;\n}\n\n.sn-assistant-template-manager {\n  display: flex;\n  flex-direction: column;\n  gap: 14px;\n}\n\n.sn-assistant-template-list {\n  display: grid;\n  gap: 12px;\n}\n\n.sn-assistant-template-card {\n  padding: 14px;\n  border-radius: 16px;\n  background: rgba(255, 255, 255, 0.76);\n  border: 1px solid rgba(25, 35, 44, 0.08);\n}\n\n.sn-assistant-template-card__header {\n  display: flex;\n  align-items: center;\n  justify-content: space-between;\n  gap: 8px;\n  margin-bottom: 12px;\n}\n\n.sn-assistant-template-card__title {\n  font-size: 13px;\n  font-weight: 700;\n}\n\n.sn-assistant-template-card__hint {\n  margin-top: 8px;\n  font-size: 11px;\n  color: var(--sn-assistant-muted);\n}\n\n.sn-assistant-toast-viewport {\n  position: fixed;\n  right: 18px;\n  bottom: 18px;\n  display: grid;\n  gap: 10px;\n  z-index: 2147483300;\n  pointer-events: none;\n}\n\n.sn-assistant-toast {\n  min-width: 220px;\n  max-width: 360px;\n  padding: 12px 14px;\n  border-radius: 14px;\n  color: #ffffff;\n  font-size: 12px;\n  line-height: 1.45;\n  box-shadow: 0 16px 34px rgba(15, 23, 42, 0.22);\n  animation: sn-assistant-toast-in 180ms ease;\n}\n\n.sn-assistant-toast--success {\n  background: linear-gradient(135deg, #166b46, #20915f);\n}\n\n.sn-assistant-toast--error {\n  background: linear-gradient(135deg, #a23633, #c2514b);\n}\n\n.sn-assistant-toast--info {\n  background: linear-gradient(135deg, var(--sn-assistant-accent-strong), #1f7b8e);\n}\n\n@keyframes sn-assistant-toast-in {\n  from {\n    opacity: 0;\n    transform: translateY(8px);\n  }\n\n  to {\n    opacity: 1;\n    transform: translateY(0);\n  }\n}\n\n@media (max-width: 768px) {\n  .sn-assistant-panel {\n    width: min(92vw, 380px);\n  }\n\n  .sn-assistant-settings-grid {\n    grid-template-columns: 1fr;\n  }\n\n  .sn-assistant-modal {\n    padding: 12px;\n  }\n\n  .sn-assistant-modal__dialog {\n    width: calc(100vw - 12px);\n    max-height: calc(100vh - 12px);\n  }\n\n  .sn-assistant-preview__meta {\n    grid-template-columns: 1fr;\n  }\n}\n';
+  var styles_default = `:root {
+  --sn-assistant-surface: rgba(249, 246, 239, 0.98);
+  --sn-assistant-panel: rgba(255, 252, 247, 0.96);
+  --sn-assistant-ink: #19232c;
+  --sn-assistant-muted: #5f6d78;
+  --sn-assistant-accent: #0d5a6d;
+  --sn-assistant-accent-strong: #084557;
+  --sn-assistant-border: rgba(25, 35, 44, 0.12);
+  --sn-assistant-shadow: 0 18px 40px rgba(20, 27, 35, 0.18);
+  --sn-assistant-danger: #b5473f;
+  --sn-assistant-radius: 18px;
+  --sn-assistant-font: "IBM Plex Sans", "Segoe UI", sans-serif;
+}
+
+#sn-assistant-launcher,
+#sn-assistant-panel,
+#sn-assistant-settings,
+#sn-assistant-toasts {
+  font-family: var(--sn-assistant-font);
+  color: var(--sn-assistant-ink);
+}
+
+.sn-assistant-floating {
+  position: fixed;
+  z-index: 2147483000;
+  user-select: none;
+}
+
+.sn-assistant-launcher__shell {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px;
+  border-radius: 999px;
+  background:
+    radial-gradient(circle at top left, rgba(255, 255, 255, 0.96), transparent 55%),
+    linear-gradient(145deg, rgba(253, 251, 247, 0.98), rgba(240, 235, 226, 0.96));
+  border: 1px solid rgba(16, 34, 41, 0.12);
+  box-shadow: 0 14px 32px rgba(17, 24, 39, 0.18);
+  backdrop-filter: blur(12px);
+}
+
+.sn-assistant-launcher__primary,
+.sn-assistant-launcher__secondary,
+.sn-assistant-launcher__icon,
+.sn-assistant-button,
+.sn-assistant-tab,
+.sn-assistant-mini-button {
+  border: 0;
+  cursor: pointer;
+  transition:
+    transform 120ms ease,
+    box-shadow 120ms ease,
+    background 180ms ease,
+    color 180ms ease,
+    opacity 180ms ease;
+  font-family: inherit;
+}
+
+.sn-assistant-launcher__primary {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 108px;
+  height: 38px;
+  padding: 0 16px;
+  border-radius: 999px;
+  background: linear-gradient(135deg, var(--sn-assistant-accent), #1f7b8e);
+  color: #ffffff;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  box-shadow: 0 10px 20px rgba(10, 68, 85, 0.2);
+}
+
+.sn-assistant-launcher__primary:hover,
+.sn-assistant-launcher__secondary:hover,
+.sn-assistant-launcher__icon:hover,
+.sn-assistant-button:hover,
+.sn-assistant-tab:hover,
+.sn-assistant-mini-button:hover {
+  transform: translateY(-1px);
+}
+
+.sn-assistant-launcher__dot {
+  width: 9px;
+  height: 9px;
+  border-radius: 999px;
+  background: #c8fff3;
+  box-shadow: 0 0 0 4px rgba(200, 255, 243, 0.18);
+}
+
+.sn-assistant-launcher__secondary {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 96px;
+  height: 38px;
+  padding: 0 14px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.84);
+  color: var(--sn-assistant-ink);
+  font-size: 12px;
+  font-weight: 700;
+  box-shadow: inset 0 0 0 1px rgba(25, 35, 44, 0.09);
+}
+
+.sn-assistant-launcher__icon {
+  width: 34px;
+  height: 34px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.84);
+  color: var(--sn-assistant-accent-strong);
+  font-size: 16px;
+  box-shadow: inset 0 0 0 1px rgba(13, 90, 109, 0.12);
+}
+
+.sn-assistant-icon {
+  display: inline-block;
+  width: 16px;
+  height: 16px;
+  background-position: center;
+  background-repeat: no-repeat;
+  background-size: contain;
+}
+
+.sn-assistant-icon--gear {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23084557' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'%3E%3Ccircle cx='12' cy='12' r='3.2'/%3E%3Cpath d='M19.4 15a1.7 1.7 0 0 0 .34 1.83l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.7 1.7 0 0 0-1.83-.34 1.7 1.7 0 0 0-1.03 1.52V21a2 2 0 1 1-4 0v-.09a1.7 1.7 0 0 0-1.03-1.52 1.7 1.7 0 0 0-1.83.34l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.7 1.7 0 0 0 .34-1.83 1.7 1.7 0 0 0-1.52-1.03H3a2 2 0 1 1 0-4h.09A1.7 1.7 0 0 0 4.61 9a1.7 1.7 0 0 0-.34-1.83l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.7 1.7 0 0 0 8.93 4h.08a1.7 1.7 0 0 0 1.03-1.52V2a2 2 0 1 1 4 0v.09A1.7 1.7 0 0 0 15.07 3.6a1.7 1.7 0 0 0 1.83-.34l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.7 1.7 0 0 0 19.39 9v.08A1.7 1.7 0 0 0 20.91 10H21a2 2 0 1 1 0 4h-.09A1.7 1.7 0 0 0 19.4 15z'/%3E%3C/svg%3E");
+}
+
+.sn-assistant-panel {
+  width: 380px;
+  max-width: calc(100vw - 24px);
+  max-height: calc(100vh - 32px);
+  border-radius: var(--sn-assistant-radius);
+  background:
+    radial-gradient(circle at top right, rgba(255, 255, 255, 0.94), transparent 38%),
+    linear-gradient(180deg, rgba(255, 252, 248, 0.98), rgba(244, 239, 231, 0.96));
+  border: 1px solid var(--sn-assistant-border);
+  box-shadow: var(--sn-assistant-shadow);
+  overflow: hidden;
+  backdrop-filter: blur(14px);
+}
+
+.sn-assistant-panel__header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 14px;
+  padding: 16px 16px 10px;
+  cursor: grab;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.52), rgba(255, 255, 255, 0));
+}
+
+.sn-assistant-panel__title {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.sn-assistant-panel__eyebrow {
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--sn-assistant-accent);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.sn-assistant-panel__heading {
+  font-size: 15px;
+  font-weight: 700;
+  line-height: 1.2;
+}
+
+.sn-assistant-panel__subheading {
+  font-size: 12px;
+  color: var(--sn-assistant-muted);
+}
+
+.sn-assistant-panel__header-actions,
+.sn-assistant-panel__footer,
+.sn-assistant-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.sn-assistant-panel__footer,
+.sn-assistant-row--wrap,
+.sn-assistant-modal__footer {
+  flex-wrap: wrap;
+}
+
+.sn-assistant-panel__body {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  padding: 0 16px 16px;
+}
+
+.sn-assistant-chip-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.sn-assistant-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 10px;
+  border-radius: 999px;
+  font-size: 11px;
+  color: var(--sn-assistant-muted);
+  background: rgba(255, 255, 255, 0.78);
+  border: 1px solid rgba(25, 35, 44, 0.08);
+}
+
+.sn-assistant-chip strong {
+  color: var(--sn-assistant-ink);
+}
+
+.sn-assistant-tabs {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.sn-assistant-tab {
+  padding: 8px 12px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.84);
+  color: var(--sn-assistant-muted);
+  font-size: 12px;
+  font-weight: 700;
+  box-shadow: inset 0 0 0 1px rgba(25, 35, 44, 0.07);
+}
+
+.sn-assistant-tab.is-active {
+  background: linear-gradient(135deg, var(--sn-assistant-accent), #1f7b8e);
+  color: #ffffff;
+  box-shadow: 0 10px 22px rgba(10, 68, 85, 0.18);
+}
+
+.sn-assistant-field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.sn-assistant-field__label {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--sn-assistant-ink);
+}
+
+.sn-assistant-input,
+.sn-assistant-select,
+.sn-assistant-textarea {
+  width: 100%;
+  border-radius: 12px;
+  border: 1px solid rgba(25, 35, 44, 0.11);
+  background: rgba(255, 255, 255, 0.9);
+  color: var(--sn-assistant-ink);
+  font: inherit;
+  box-sizing: border-box;
+}
+
+.sn-assistant-input,
+.sn-assistant-select {
+  height: 40px;
+  padding: 0 12px;
+}
+
+.sn-assistant-textarea {
+  min-height: 96px;
+  padding: 10px 12px;
+  resize: vertical;
+}
+
+.sn-assistant-input:focus,
+.sn-assistant-select:focus,
+.sn-assistant-textarea:focus {
+  outline: none;
+  border-color: rgba(13, 90, 109, 0.35);
+  box-shadow: 0 0 0 4px rgba(13, 90, 109, 0.1);
+}
+
+.sn-assistant-preview {
+  border-radius: 16px;
+  border: 1px solid rgba(25, 35, 44, 0.1);
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.92), rgba(249, 245, 239, 0.88));
+  padding: 14px;
+}
+
+.sn-assistant-preview__empty {
+  font-size: 12px;
+  color: var(--sn-assistant-muted);
+}
+
+.sn-assistant-preview__meta {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+  margin-bottom: 12px;
+}
+
+.sn-assistant-preview__meta-block {
+  padding: 10px 12px;
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.84);
+  border: 1px solid rgba(25, 35, 44, 0.08);
+}
+
+.sn-assistant-preview__meta-label {
+  display: block;
+  margin-bottom: 4px;
+  font-size: 10px;
+  font-weight: 700;
+  color: var(--sn-assistant-muted);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.sn-assistant-preview__meta-value {
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.sn-assistant-preview__body {
+  max-height: 240px;
+  overflow: auto;
+  padding: 12px;
+  border-radius: 12px;
+  background: rgba(20, 27, 35, 0.04);
+  font-size: 12px;
+  line-height: 1.55;
+  white-space: pre-wrap;
+}
+
+.sn-assistant-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-width: 86px;
+  height: 38px;
+  padding: 0 14px;
+  border-radius: 12px;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.sn-assistant-button--primary {
+  background: linear-gradient(135deg, var(--sn-assistant-accent), #1f7b8e);
+  color: #ffffff;
+  box-shadow: 0 10px 20px rgba(10, 68, 85, 0.18);
+}
+
+.sn-assistant-button--secondary {
+  background: rgba(255, 255, 255, 0.86);
+  color: var(--sn-assistant-ink);
+  box-shadow: inset 0 0 0 1px rgba(25, 35, 44, 0.09);
+}
+
+.sn-assistant-button--danger {
+  background: rgba(255, 241, 239, 0.95);
+  color: var(--sn-assistant-danger);
+  box-shadow: inset 0 0 0 1px rgba(181, 71, 63, 0.16);
+}
+
+.sn-assistant-button[disabled],
+.sn-assistant-mini-button[disabled],
+.sn-assistant-launcher__primary[disabled] {
+  cursor: not-allowed;
+  opacity: 0.52;
+  transform: none;
+  box-shadow: none;
+}
+
+.sn-assistant-mini-button {
+  width: 32px;
+  height: 32px;
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.84);
+  color: var(--sn-assistant-muted);
+  box-shadow: inset 0 0 0 1px rgba(25, 35, 44, 0.08);
+  font-size: 15px;
+}
+
+.sn-assistant-modal {
+  position: fixed;
+  inset: 0;
+  z-index: 2147483200;
+  display: grid;
+  place-items: center;
+  padding: 18px;
+}
+
+.sn-assistant-modal__backdrop {
+  position: absolute;
+  inset: 0;
+  background:
+    radial-gradient(circle at top left, rgba(13, 90, 109, 0.22), transparent 48%),
+    rgba(15, 23, 42, 0.32);
+  backdrop-filter: blur(8px);
+}
+
+.sn-assistant-modal__dialog {
+  position: relative;
+  width: min(920px, calc(100vw - 24px));
+  max-height: calc(100vh - 36px);
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  border-radius: 24px;
+  background:
+    radial-gradient(circle at top right, rgba(255, 255, 255, 0.96), transparent 34%),
+    linear-gradient(180deg, rgba(255, 252, 248, 0.98), rgba(244, 239, 231, 0.98));
+  border: 1px solid rgba(255, 255, 255, 0.28);
+  box-shadow: 0 24px 60px rgba(15, 23, 42, 0.28);
+}
+
+.sn-assistant-modal__header,
+.sn-assistant-modal__footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 18px 20px;
+}
+
+.sn-assistant-modal__header {
+  border-bottom: 1px solid rgba(25, 35, 44, 0.08);
+}
+
+.sn-assistant-modal__footer {
+  border-top: 1px solid rgba(25, 35, 44, 0.08);
+  background: rgba(255, 255, 255, 0.5);
+}
+
+.sn-assistant-modal__title {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.sn-assistant-modal__body {
+  overflow: auto;
+  padding: 18px 20px 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+
+.sn-assistant-note {
+  padding: 12px 14px;
+  border-radius: 14px;
+  background: rgba(13, 90, 109, 0.08);
+  color: var(--sn-assistant-accent-strong);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.sn-assistant-settings-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+}
+
+.sn-assistant-settings-grid--compact {
+  margin-bottom: 12px;
+}
+
+.sn-assistant-checkbox-list {
+  display: grid;
+  gap: 10px;
+}
+
+.sn-assistant-checkbox {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 12px;
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.72);
+  border: 1px solid rgba(25, 35, 44, 0.08);
+}
+
+.sn-assistant-checkbox input {
+  margin-top: 3px;
+}
+
+.sn-assistant-checkbox strong {
+  display: block;
+  font-size: 12px;
+  margin-bottom: 2px;
+}
+
+.sn-assistant-checkbox span {
+  display: block;
+  color: var(--sn-assistant-muted);
+  font-size: 11px;
+  line-height: 1.45;
+}
+
+.sn-assistant-template-manager {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.sn-assistant-template-list {
+  display: grid;
+  gap: 12px;
+}
+
+.sn-assistant-template-card {
+  padding: 14px;
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.76);
+  border: 1px solid rgba(25, 35, 44, 0.08);
+}
+
+.sn-assistant-template-card__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.sn-assistant-template-card__title {
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.sn-assistant-template-card__meta {
+  margin-top: 2px;
+  font-size: 11px;
+  color: var(--sn-assistant-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.sn-assistant-template-card__hint {
+  margin-top: 8px;
+  font-size: 11px;
+  color: var(--sn-assistant-muted);
+}
+
+.sn-assistant-toast-viewport {
+  position: fixed;
+  right: 18px;
+  bottom: 18px;
+  display: grid;
+  gap: 10px;
+  z-index: 2147483300;
+  pointer-events: none;
+}
+
+.sn-assistant-toast {
+  min-width: 220px;
+  max-width: 360px;
+  padding: 12px 14px;
+  border-radius: 14px;
+  color: #ffffff;
+  font-size: 12px;
+  line-height: 1.45;
+  box-shadow: 0 16px 34px rgba(15, 23, 42, 0.22);
+  animation: sn-assistant-toast-in 180ms ease;
+}
+
+.sn-assistant-toast--success {
+  background: linear-gradient(135deg, #166b46, #20915f);
+}
+
+.sn-assistant-toast--error {
+  background: linear-gradient(135deg, #a23633, #c2514b);
+}
+
+.sn-assistant-toast--info {
+  background: linear-gradient(135deg, var(--sn-assistant-accent-strong), #1f7b8e);
+}
+
+@keyframes sn-assistant-toast-in {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@media (max-width: 768px) {
+  .sn-assistant-panel {
+    width: min(92vw, 380px);
+  }
+
+  .sn-assistant-settings-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .sn-assistant-modal {
+    padding: 12px;
+  }
+
+  .sn-assistant-modal__dialog {
+    width: calc(100vw - 12px);
+    max-height: calc(100vh - 12px);
+  }
+
+  .sn-assistant-preview__meta {
+    grid-template-columns: 1fr;
+  }
+}
+`;
 
   // Assistant/ui/styles.js
   function ensureStyles(hostDocument) {
@@ -2031,10 +2802,35 @@ ${body}`) : body;
   function ensureTemplateSelection(state, settings) {
     const groups = getTemplateGroups(settings);
     const categories = getCategories();
-    if (!groups[state.ui.activeCategory]?.length) {
-      setActiveCategory(state, categories[0]?.id || "email");
+    let activeCategory = state.ui.activeCategory;
+    if (!groups[activeCategory]?.length) {
+      activeCategory = categories.find((category) => groups[category.id]?.length)?.id || categories[0]?.id || "email";
+      setActiveCategory(state, activeCategory);
     }
-    const activeCategory = state.ui.activeCategory;
+    const templates = groups[activeCategory] || [];
+    let selectedTemplateId = getSelectedTemplate(state, activeCategory);
+    if (!templates.some((template) => template.id === selectedTemplateId)) {
+      selectedTemplateId = getFirstTemplateId(activeCategory, settings);
+      setSelectedTemplate(state, activeCategory, selectedTemplateId);
+    }
+    const selectedTemplate = templates.find((template) => template.id === selectedTemplateId) || null;
+    return {
+      groups,
+      categories,
+      activeCategory,
+      templates,
+      selectedTemplateId,
+      selectedTemplate
+    };
+  }
+  function resolveTemplateSelection(state, settings, requestedCategory = state.ui.activeCategory) {
+    if (requestedCategory === state.ui.activeCategory) {
+      return ensureTemplateSelection(state, settings);
+    }
+    const groups = getTemplateGroups(settings);
+    const categories = getCategories();
+    const fallbackCategory = categories.find((category) => groups[category.id]?.length)?.id || categories[0]?.id || "email";
+    const activeCategory = groups[requestedCategory]?.length ? requestedCategory : fallbackCategory;
     const templates = groups[activeCategory] || [];
     let selectedTemplateId = getSelectedTemplate(state, activeCategory);
     if (!templates.some((template) => template.id === selectedTemplateId)) {
@@ -2071,6 +2867,9 @@ ${body}`) : body;
       setSettingsDraft(state, sanitizeSettings(draft));
       return { rerender: false };
     }
+    if (["officeName", "officeRoom", "officeLabel"].includes(name)) {
+      draft.officeProfile = "custom";
+    }
     draft[name] = String(value || "");
     setSettingsDraft(state, sanitizeSettings(draft));
     return { rerender: false };
@@ -2087,9 +2886,12 @@ ${body}`) : body;
     function getDraftSettings() {
       return sanitizeSettings(state.ui.settingsDraft || state.settings);
     }
-    async function getRenderedSelection({ hydrateUser = false } = {}) {
+    async function getRenderedSelection({ hydrateUser = false, categoryOverride } = {}) {
       if (!state.context?.supported) {
-        return { renderedTemplate: null, selection: ensureTemplateSelection(state, getEffectiveSettings()) };
+        return {
+          renderedTemplate: null,
+          selection: resolveTemplateSelection(state, getEffectiveSettings(), categoryOverride)
+        };
       }
       let context = state.context;
       if (hydrateUser) {
@@ -2099,12 +2901,29 @@ ${body}`) : body;
           state.context = context;
         }
       }
-      const selection = ensureTemplateSelection(state, getEffectiveSettings());
+      const selection = resolveTemplateSelection(state, getEffectiveSettings(), categoryOverride);
       const renderedTemplate = selection.selectedTemplate ? renderTemplate(selection.selectedTemplate, {
         context,
         settings: getEffectiveSettings()
       }) : null;
       return { renderedTemplate, selection };
+    }
+    async function runDraftFlow({ categoryOverride } = {}) {
+      const { renderedTemplate, selection } = await getRenderedSelection({
+        hydrateUser: true,
+        categoryOverride
+      });
+      if (!renderedTemplate || renderedTemplate.category !== "email") {
+        throw new Error("Draft is only available for email templates");
+      }
+      if (state.settings.toggles.autoCopyToClipboard) {
+        await copyToClipboard(renderedTemplate.clipboardText, state.host.document);
+      }
+      const result = openDraft(renderedTemplate);
+      if (!result.ok) {
+        throw new Error("Draft could not be opened");
+      }
+      logger.info("template rendered successfully", { templateId: selection.selectedTemplateId });
     }
     function scheduleRecovery(reason = "manual", delayMs = 80) {
       state.lifecycle.queuedReason = reason;
@@ -2138,6 +2957,15 @@ ${body}`) : body;
         state.ui.panelOpen = !state.ui.panelOpen;
         state.ui.panelCollapsed = false;
         scheduleRecovery("panel-toggle", 0);
+      },
+      onQuickDraft() {
+        runAction("draft", async () => {
+          await runDraftFlow({ categoryOverride: "email" });
+          showToast(state.host.document, {
+            message: "Draft opened",
+            tone: "info"
+          });
+        });
       },
       onClosePanel() {
         state.ui.panelOpen = false;
@@ -2210,18 +3038,7 @@ ${body}`) : body;
       },
       onDraft() {
         runAction("draft", async () => {
-          const { renderedTemplate, selection } = await getRenderedSelection({ hydrateUser: true });
-          if (!renderedTemplate || renderedTemplate.category !== "email") {
-            throw new Error("Draft is only available for email templates");
-          }
-          if (state.settings.toggles.autoCopyToClipboard) {
-            await copyToClipboard(renderedTemplate.clipboardText, state.host.document);
-          }
-          const result = openDraft(renderedTemplate);
-          if (!result.ok) {
-            throw new Error("Draft could not be opened");
-          }
-          logger.info("template rendered successfully", { templateId: selection.selectedTemplateId });
+          await runDraftFlow();
           showToast(state.host.document, {
             message: "Draft opened",
             tone: "info"
@@ -2266,6 +3083,60 @@ ${body}`) : body;
         setSettingsDraft(state, sanitizeSettings(draft));
         scheduleRecovery("settings-template-restore", 0);
       },
+      onResetSettings() {
+        setSettingsDraft(state, getDefaultSettings());
+        showToast(state.host.document, {
+          message: "Defaults restored. Save settings to apply.",
+          tone: "info"
+        });
+        scheduleRecovery("settings-reset-draft", 0);
+      },
+      onTriggerImport() {
+        const importInput = state.host.document?.getElementById(UI_IDS.settingsImportInput);
+        if (importInput) {
+          importInput.click();
+        }
+      },
+      async onImportSettingsFile(file) {
+        if (!file) return;
+        try {
+          const importedSettings = await importSettingsPackage(file);
+          setSettingsDraft(state, importedSettings);
+          showToast(state.host.document, {
+            message: "Import loaded. Save settings to apply.",
+            tone: "info"
+          });
+          scheduleRecovery("settings-imported", 0);
+        } catch (error) {
+          logger.error("settings import failed", error);
+          showToast(state.host.document, {
+            message: error?.message || "Import failed",
+            tone: "error"
+          });
+        }
+      },
+      async onExportSettings() {
+        try {
+          const result = await exportSettingsPackage(
+            rootWindow,
+            sanitizeSettings(state.ui.settingsDraft || state.settings)
+          );
+          if (!result.ok && result.canceled) {
+            return;
+          }
+          const message = result.mode === "filesystem" ? `Templates exported to ${result.path}` : `Templates exported as ${result.fileName}`;
+          showToast(state.host.document, {
+            message,
+            tone: "info"
+          });
+        } catch (error) {
+          logger.error("settings export failed", error);
+          showToast(state.host.document, {
+            message: error?.message || "Export failed",
+            tone: "error"
+          });
+        }
+      },
       onSaveSettings() {
         const safeSettings = sanitizeSettings(state.ui.settingsDraft || state.settings);
         if (!hasRequiredSettings(safeSettings)) {
@@ -2288,20 +3159,6 @@ ${body}`) : body;
           message: "Settings saved"
         });
         scheduleRecovery("settings-saved", 0);
-      },
-      onResetSession() {
-        resetSettings(rootWindow);
-        const defaults = getDefaultSettings();
-        setSettings(state, defaults);
-        setSettingsDraft(state, defaults);
-        state.ui.settingsMandatory = true;
-        state.ui.settingsOpen = true;
-        state.ui.panelOpen = false;
-        showToast(state.host.document, {
-          message: "Session reset",
-          tone: "info"
-        });
-        scheduleRecovery("settings-reset", 0);
       }
     };
     async function recover(reason = "recover") {
