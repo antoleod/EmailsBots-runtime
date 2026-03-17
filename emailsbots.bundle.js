@@ -1202,6 +1202,13 @@
     const value = cleanText(text);
     if (!value) return false;
     try {
+      const hookResult = window.__SN_ASSISTANT_TEST_HOOKS__?.onCopyToClipboard?.(value);
+      if (hookResult === true) {
+        return true;
+      }
+    } catch (error) {
+    }
+    try {
       if (navigator.clipboard?.writeText) {
         await navigator.clipboard.writeText(value);
         return true;
@@ -1245,6 +1252,10 @@
     const body = cleanText(renderedTemplate.body);
     const mailto = `mailto:${encodeURIComponent(recipient)}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
     try {
+      const hookResult = window.__SN_ASSISTANT_TEST_HOOKS__?.onOpenDraft?.(mailto, renderedTemplate);
+      if (hookResult === true) {
+        return { ok: true, mailto };
+      }
       window.location.href = mailto;
       return { ok: true, mailto };
     } catch (error) {
@@ -1570,6 +1581,7 @@ ${body}`) : body;
   }
 
   // Assistant/ui/drag.js
+  var INTERACTIVE_SELECTOR = 'button, input, select, textarea, label, a, [role="button"], [data-no-drag="true"]';
   function applyPosition(node, position) {
     if (!position) return;
     node.style.left = `${position.left}px`;
@@ -1620,6 +1632,7 @@ ${body}`) : body;
     node.addEventListener("pointerdown", (event) => {
       if (event.button !== 0) return;
       if (!event.target.closest(handleSelector)) return;
+      if (event.target.closest(INTERACTIVE_SELECTOR)) return;
       const rect = node.getBoundingClientRect();
       dragState = {
         startX: event.clientX,
@@ -1649,7 +1662,7 @@ ${body}`) : body;
   function getDefaultLauncherPosition(node) {
     const ownerWindow = node.ownerDocument.defaultView || window;
     return {
-      left: Math.max(ownerWindow.innerWidth - 290, 14),
+      left: Math.max(ownerWindow.innerWidth - 190, 14),
       top: 88
     };
   }
@@ -1661,7 +1674,6 @@ ${body}`) : body;
       if (!button) return;
       const { action } = button.dataset;
       if (action === "quick-draft") handlers.onQuickDraft();
-      if (action === "toggle-panel") handlers.onTogglePanel();
       if (action === "open-settings") handlers.onOpenSettings();
     });
   }
@@ -1681,9 +1693,6 @@ ${body}`) : body;
       <button type="button" class="sn-assistant-launcher__primary" data-action="quick-draft">
         <span class="sn-assistant-launcher__dot" aria-hidden="true"></span>
         <span>Draft</span>
-      </button>
-      <button type="button" class="sn-assistant-launcher__secondary" data-action="toggle-panel">
-        <span>Templates</span>
       </button>
       <button type="button" class="sn-assistant-launcher__icon" data-action="open-settings" title="Settings">
         <span class="sn-assistant-icon sn-assistant-icon--gear" aria-hidden="true"></span>
@@ -1847,7 +1856,7 @@ ${body}`) : body;
             <span class="sn-assistant-icon sn-assistant-icon--gear" aria-hidden="true"></span>
           </button>
           <button type="button" class="sn-assistant-mini-button" data-action="close-panel" title="Close">
-            x
+            X
           </button>
         </div>
       </div>
@@ -1905,25 +1914,36 @@ ${body}`) : body;
     `
     ).join("");
   }
-  function renderTemplateCards(category, templates) {
+  function renderTemplateCards(category, templates, selectedTemplateId) {
     return templates.map(
       (template) => `
-        <div class="sn-assistant-template-card">
+        <div class="sn-assistant-template-card ${template.id === selectedTemplateId ? "is-selected" : ""}">
           <div class="sn-assistant-template-card__header">
             <div>
               <div class="sn-assistant-template-card__title">${escapeHtml(template.id)}</div>
               <div class="sn-assistant-template-card__meta">${escapeHtml(category)}</div>
             </div>
-            <button
-              type="button"
-              class="sn-assistant-mini-button"
-              data-action="restore-template"
-              data-category="${escapeHtml(category)}"
-              data-template-id="${escapeHtml(template.id)}"
-              title="Restore default"
-            >
-              R
-            </button>
+            <div class="sn-assistant-row">
+              <button
+                type="button"
+                class="sn-assistant-button ${template.id === selectedTemplateId ? "sn-assistant-button--primary" : "sn-assistant-button--secondary"} sn-assistant-button--compact"
+                data-action="select-settings-template"
+                data-category="${escapeHtml(category)}"
+                data-template-id="${escapeHtml(template.id)}"
+              >
+                ${template.id === selectedTemplateId ? "Selected" : "Use"}
+              </button>
+              <button
+                type="button"
+                class="sn-assistant-mini-button"
+                data-action="restore-template"
+                data-category="${escapeHtml(category)}"
+                data-template-id="${escapeHtml(template.id)}"
+                title="Restore default"
+              >
+                R
+              </button>
+            </div>
           </div>
           <div class="sn-assistant-settings-grid sn-assistant-settings-grid--compact">
             <div class="sn-assistant-field">
@@ -1978,6 +1998,7 @@ ${body}`) : body;
       if (action === "export-settings") handlers.onExportSettings();
       if (action === "trigger-import-settings") handlers.onTriggerImport();
       if (action === "template-category") handlers.onTemplateManagerCategory(category);
+      if (action === "select-settings-template") handlers.onSelectSettingsTemplate(category, templateId);
       if (action === "restore-template") handlers.onRestoreTemplate(category, templateId);
     });
     const onFieldMutation = (event) => {
@@ -2011,6 +2032,7 @@ ${body}`) : body;
       (hostDocument.body || hostDocument.documentElement).appendChild(root);
     }
     const activeCategory = state.ui.templateManagerCategory;
+    const selectedTemplateId = state.ui.selectedTemplates[activeCategory] || "";
     const categoryTabs = [
       { id: "email", label: "Emails" },
       { id: "work_note", label: "Work Notes" },
@@ -2031,7 +2053,7 @@ ${body}`) : body;
     <div class="sn-assistant-modal">
       <div class="sn-assistant-modal__backdrop"></div>
       <div class="sn-assistant-modal__dialog">
-        <div class="sn-assistant-modal__header">
+          <div class="sn-assistant-modal__header">
           <div class="sn-assistant-modal__title">
             <span class="sn-assistant-panel__eyebrow">Template Workspace</span>
             <div class="sn-assistant-panel__heading">Configure templates and profile defaults</div>
@@ -2039,7 +2061,7 @@ ${body}`) : body;
       TEMP_WORKSPACE
     )} in browser storage. Export can also write a JSON pack to a local temp/sn-assistant folder when the browser allows it.</div>
           </div>
-          ${state.ui.settingsMandatory ? "" : '<button type="button" class="sn-assistant-mini-button" data-action="close-settings" title="Close">x</button>'}
+          ${state.ui.settingsMandatory ? "" : '<button type="button" class="sn-assistant-mini-button" data-action="close-settings" title="Close">X</button>'}
         </div>
         <div class="sn-assistant-modal__body">
           <input id="${escapeHtml(UI_IDS.settingsImportInput)}" type="file" accept="application/json" data-role="settings-import-input" hidden />
@@ -2098,8 +2120,13 @@ ${body}`) : body;
             <div class="sn-assistant-row">
               <div class="sn-assistant-panel__heading" style="font-size:14px;">Template manager</div>
             </div>
+            <div class="sn-assistant-note">The email template marked as Selected is the one used by the floating Draft button.</div>
             <div class="sn-assistant-tabs">${categoryTabs}</div>
-            <div class="sn-assistant-template-list">${renderTemplateCards(activeCategory, templateGroups[activeCategory] || [])}</div>
+            <div class="sn-assistant-template-list">${renderTemplateCards(
+      activeCategory,
+      templateGroups[activeCategory] || [],
+      selectedTemplateId
+    )}</div>
           </div>
         </div>
         <div class="sn-assistant-modal__footer">
@@ -2168,7 +2195,6 @@ ${body}`) : body;
 }
 
 .sn-assistant-launcher__primary,
-.sn-assistant-launcher__secondary,
 .sn-assistant-launcher__icon,
 .sn-assistant-button,
 .sn-assistant-tab,
@@ -2201,7 +2227,6 @@ ${body}`) : body;
 }
 
 .sn-assistant-launcher__primary:hover,
-.sn-assistant-launcher__secondary:hover,
 .sn-assistant-launcher__icon:hover,
 .sn-assistant-button:hover,
 .sn-assistant-tab:hover,
@@ -2215,21 +2240,6 @@ ${body}`) : body;
   border-radius: 999px;
   background: #c8fff3;
   box-shadow: 0 0 0 4px rgba(200, 255, 243, 0.18);
-}
-
-.sn-assistant-launcher__secondary {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  min-width: 96px;
-  height: 38px;
-  padding: 0 14px;
-  border-radius: 999px;
-  background: rgba(255, 255, 255, 0.84);
-  color: var(--sn-assistant-ink);
-  font-size: 12px;
-  font-weight: 700;
-  box-shadow: inset 0 0 0 1px rgba(25, 35, 44, 0.09);
 }
 
 .sn-assistant-launcher__icon {
@@ -2479,6 +2489,12 @@ ${body}`) : body;
   font-weight: 700;
 }
 
+.sn-assistant-button--compact {
+  min-width: 72px;
+  height: 32px;
+  padding: 0 12px;
+}
+
 .sn-assistant-button--primary {
   background: linear-gradient(135deg, var(--sn-assistant-accent), #1f7b8e);
   color: #ffffff;
@@ -2648,6 +2664,11 @@ ${body}`) : body;
   border-radius: 16px;
   background: rgba(255, 255, 255, 0.76);
   border: 1px solid rgba(25, 35, 44, 0.08);
+}
+
+.sn-assistant-template-card.is-selected {
+  border-color: rgba(13, 90, 109, 0.36);
+  box-shadow: inset 0 0 0 1px rgba(13, 90, 109, 0.18);
 }
 
 .sn-assistant-template-card__header {
@@ -3074,6 +3095,15 @@ ${body}`) : body;
       onTemplateManagerCategory(category) {
         state.ui.templateManagerCategory = category;
         scheduleRecovery("settings-template-category", 0);
+      },
+      onSelectSettingsTemplate(category, templateId) {
+        setSelectedTemplate(state, category, templateId);
+        setActiveCategory(state, category);
+        showToast(state.host.document, {
+          message: `Template selected: ${templateId}`,
+          tone: "info"
+        });
+        scheduleRecovery("settings-template-selected", 0);
       },
       onRestoreTemplate(category, templateId) {
         const draft = cloneSettings(ensureSettingsDraft(state));
