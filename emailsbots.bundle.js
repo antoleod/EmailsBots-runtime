@@ -715,6 +715,7 @@
     officeRoom: "Front Desk",
     officeLabel: "IT Welcome Desk",
     defaultLanguage: "en",
+    draftButtonLabel: "Prepare Draft",
     toggles: {
       autoCopyToClipboard: true,
       autoOpenDraft: false,
@@ -824,6 +825,7 @@
       officeRoom: cleanText(merged.officeRoom),
       officeLabel: cleanText(merged.officeLabel),
       defaultLanguage: cleanText(merged.defaultLanguage) || defaults.defaultLanguage,
+      draftButtonLabel: cleanText(merged.draftButtonLabel) || defaults.draftButtonLabel,
       toggles: {
         autoCopyToClipboard: toggles.autoCopyToClipboard !== false,
         autoOpenDraft: toggles.autoOpenDraft === true,
@@ -1456,15 +1458,15 @@
       label: "Incident Follow-up",
       target: "comments",
       subject: "Follow-up on {{ticket_number}}",
-      body: 'Dear {{user_name}},\n\nI am following up on {{ticket_number}} regarding "{{short_description}}".\n\nCould you please confirm whether the issue is still happening and share any useful update so we can continue?\n\nKind regards,\n{{agent_name}}'
+      body: 'Dear {{user_name}},\n\nI am following up on {{ticket_number}} regarding "{{short_description}}".\n\nCould you please confirm whether the issue is still occurring and share any relevant update so we can proceed accordingly?\n\nKind regards,\n{{agent_name}}'
     },
     {
       id: "request_to_visit_office",
       category: "email",
       label: "Request To Visit Office",
       target: "comments",
-      subject: "Visit requested for {{ticket_number}}",
-      body: "Dear {{user_name}},\n\nTo continue with {{ticket_number}}, please visit the {{office_label}} {{office_room}}.\n\nReply if you need another slot or if remote support is preferable.\n\nKind regards,\n{{agent_name}}"
+      subject: "On-site visit requested for {{ticket_number}}",
+      body: "Dear {{user_name}},\n\nTo continue with {{ticket_number}}, please visit the {{office_label}} {{office_room}}.\n\nIf this time is not convenient, please reply with an alternative availability or let us know whether remote support would be preferable.\n\nKind regards,\n{{agent_name}}"
     },
     {
       id: "appointment_proposal",
@@ -1472,15 +1474,15 @@
       label: "Appointment Proposal",
       target: "comments",
       subject: "Appointment proposal for {{ticket_number}}",
-      body: "Dear {{user_name}},\n\nI can propose an appointment for {{ticket_number}} at the {{office_label}} {{office_room}}.\n\nPlease reply with your preferred slot and we will confirm the meeting.\n\nKind regards,\n{{agent_name}}"
+      body: "Dear {{user_name}},\n\nI can propose an appointment for {{ticket_number}} at the {{office_label}} {{office_room}}.\n\nPlease reply with your preferred time slot and we will confirm the appointment accordingly.\n\nKind regards,\n{{agent_name}}"
     },
     {
       id: "user_unavailable",
       category: "email",
       label: "User Unavailable",
       target: "comments",
-      subject: "Unable to reach you for {{ticket_number}}",
-      body: "Dear {{user_name}},\n\nWe tried to contact you regarding {{ticket_number}}, but we could not reach you.\n\nPlease reply with your availability so we can continue without delay.\n\nKind regards,\n{{agent_name}}"
+      subject: "Unable to reach you regarding {{ticket_number}}",
+      body: "Dear {{user_name}},\n\nWe have tried to contact you regarding {{ticket_number}}, but we have not been able to reach you.\n\nPlease reply with your availability so we can continue without further delay.\n\nKind regards,\n{{agent_name}}"
     },
     {
       id: "device_ready_for_collection",
@@ -1488,7 +1490,7 @@
       label: "Device Ready For Collection",
       target: "comments",
       subject: "Device ready for collection - {{ticket_number}}",
-      body: "Dear {{user_name}},\n\nYour device linked to {{ticket_number}} is ready for collection.\n\nPlease visit the {{office_label}} {{office_room}} and bring your badge if needed.\n\nKind regards,\n{{agent_name}}"
+      body: "Dear {{user_name}},\n\nYour device linked to {{ticket_number}} is now ready for collection.\n\nPlease visit the {{office_label}} {{office_room}} and bring your badge if required.\n\nKind regards,\n{{agent_name}}"
     },
     {
       id: "smartphone_handover",
@@ -1496,15 +1498,15 @@
       label: "Smartphone Handover",
       target: "comments",
       subject: "Smartphone handover for {{ticket_number}}",
-      body: "Dear {{user_name}},\n\nYour smartphone request is ready to move to handover.\n\nPlease confirm your availability to collect it at the {{office_label}} {{office_room}}.\n\nKind regards,\n{{agent_name}}"
+      body: "Dear {{user_name}},\n\nYour smartphone request is ready for handover.\n\nPlease confirm your availability to collect it at the {{office_label}} {{office_room}}.\n\nKind regards,\n{{agent_name}}"
     },
     {
       id: "battery_issue",
       category: "email",
       label: "Battery Issue",
       target: "comments",
-      subject: "Battery troubleshooting - {{ticket_number}}",
-      body: "Dear {{user_name}},\n\nI am reviewing the battery issue reported in {{ticket_number}}.\n\nPlease let me know whether the device is available for testing and if the issue is constant or intermittent.\n\nKind regards,\n{{agent_name}}"
+      subject: "Battery issue follow-up - {{ticket_number}}",
+      body: "Dear {{user_name}},\n\nI am reviewing the battery issue reported in {{ticket_number}}.\n\nPlease confirm whether the device is available for testing and whether the issue is constant or intermittent.\n\nKind regards,\n{{agent_name}}"
     },
     {
       id: "sound_issue",
@@ -1512,7 +1514,7 @@
       label: "Sound Issue",
       target: "comments",
       subject: "Sound issue follow-up - {{ticket_number}}",
-      body: "Dear {{user_name}},\n\nI am following up on the sound issue recorded in {{ticket_number}}.\n\nPlease confirm whether the issue affects speakers, headset or both, and whether it happens in every application.\n\nKind regards,\n{{agent_name}}"
+      body: "Dear {{user_name}},\n\nI am following up on the sound issue recorded in {{ticket_number}}.\n\nPlease confirm whether the issue affects the speakers, the headset, or both, and whether it occurs in every application.\n\nKind regards,\n{{agent_name}}"
     },
     {
       id: "laptop_swap",
@@ -1528,7 +1530,7 @@
       label: "Backup Needed",
       target: "comments",
       subject: "Backup required before intervention - {{ticket_number}}",
-      body: "Dear {{user_name}},\n\nBefore we continue with {{ticket_number}}, please confirm whether a backup of your data is required.\n\nIf needed, let us know so we can factor it into the intervention plan.\n\nKind regards,\n{{agent_name}}"
+      body: "Dear {{user_name}},\n\nBefore we continue with {{ticket_number}}, please confirm whether a backup of your data is required.\n\nIf needed, let us know so we can include it in the intervention plan.\n\nKind regards,\n{{agent_name}}"
     },
     {
       id: "closure_confirmation",
@@ -1536,7 +1538,7 @@
       label: "Closure Confirmation",
       target: "comments",
       subject: "Closure confirmation for {{ticket_number}}",
-      body: "Dear {{user_name}},\n\nI am checking whether {{ticket_number}} can now be closed.\n\nIf everything is working as expected, please confirm and I will close the record. If not, reply with the current status.\n\nKind regards,\n{{agent_name}}"
+      body: "Dear {{user_name}},\n\nI am checking whether {{ticket_number}} can now be closed.\n\nIf everything is working as expected, please confirm and I will close the record. If not, please reply with the current status.\n\nKind regards,\n{{agent_name}}"
     }
   ];
 
@@ -1579,7 +1581,7 @@
       category: "work_note",
       label: "User Contacted",
       target: "work_notes",
-      body: "{{today}} - Contacted {{user_name}} ({{user_email}}) regarding {{ticket_number}}. Awaiting reply."
+      body: "{{today}} - Contacted {{user_name}} ({{user_email}}) regarding {{ticket_number}}. Awaiting response."
     },
     {
       id: "email_sent",
@@ -1628,7 +1630,7 @@
       category: "work_note",
       label: "Waiting For Feedback",
       target: "work_notes",
-      body: "{{today}} - Waiting for user feedback on {{ticket_number}} after latest communication."
+      body: "{{today}} - Waiting for user feedback on {{ticket_number}} after the latest communication."
     },
     {
       id: "ticket_updated",
@@ -1836,6 +1838,9 @@ ${body}`) : body;
       top: 88
     };
   }
+  function getLauncherLabel(state) {
+    return state?.settings?.draftButtonLabel || "Prepare Draft";
+  }
   function bindLauncher(root, handlers) {
     if (root.dataset.snAssistantBound === "true") return;
     root.dataset.snAssistantBound = "true";
@@ -1857,13 +1862,14 @@ ${body}`) : body;
       root.setAttribute(ROOT_ATTRIBUTE, ROOT_VALUE);
       (hostDocument.body || hostDocument.documentElement).appendChild(root);
     }
+    const draftButtonLabel = getLauncherLabel(state);
     const markup = `
     <div class="sn-assistant-launcher__shell" data-drag-handle="launcher" title="${escapeHtml(
       `${context.ticketNumber || context.tableLabel} | ${context.recordKey}`
     )}">
       <button type="button" class="sn-assistant-launcher__primary" data-action="quick-draft">
         <span class="sn-assistant-launcher__dot" aria-hidden="true"></span>
-        <span>Draft</span>
+        <span>${escapeHtml(draftButtonLabel)}</span>
       </button>
       <button type="button" class="sn-assistant-launcher__icon" data-action="open-settings" title="Settings">
         <span class="sn-assistant-icon sn-assistant-icon--gear" aria-hidden="true"></span>
@@ -2011,6 +2017,7 @@ ${body}`) : body;
     const collapsed = state.ui.panelCollapsed;
     const pending = Object.values(state.pendingActions).some(Boolean);
     const showPiSearch = context.table === "sc_task";
+    const draftButtonLabel = state.settings?.draftButtonLabel || "Prepare Draft";
     const selectorMarkup = renderTemplateSelector({
       categories,
       activeCategory: state.ui.activeCategory,
@@ -2056,7 +2063,7 @@ ${body}`) : body;
               <div class="sn-assistant-panel__footer">
                 <button type="button" class="sn-assistant-button sn-assistant-button--secondary" data-action="copy-template" ${pending ? "disabled" : ""}>Copy</button>
                 <button type="button" class="sn-assistant-button sn-assistant-button--secondary" data-action="insert-template" ${pending || !renderedTemplate ? "disabled" : ""}>Insert</button>
-                <button type="button" class="sn-assistant-button sn-assistant-button--primary" data-action="open-draft" ${pending || renderedTemplate?.category !== "email" ? "disabled" : ""}>Draft</button>
+                <button type="button" class="sn-assistant-button sn-assistant-button--primary" data-action="open-draft" ${pending || renderedTemplate?.category !== "email" ? "disabled" : ""}>${escapeHtml(draftButtonLabel)}</button>
               </div>
             </div>
           `}
@@ -2278,6 +2285,10 @@ ${body}`) : body;
               <span class="sn-assistant-field__label">Display office text</span>
               <input class="sn-assistant-input" name="officeLabel" value="${escapeHtml(draftSettings.officeLabel)}" />
             </div>
+            <div class="sn-assistant-field" style="grid-column: 1 / -1;">
+              <span class="sn-assistant-field__label">Draft button label</span>
+              <input class="sn-assistant-input" name="draftButtonLabel" value="${escapeHtml(draftSettings.draftButtonLabel || "Prepare Draft")}" placeholder="Prepare Draft" />
+            </div>
           </div>
           <div class="sn-assistant-checkbox-list">
             <label class="sn-assistant-checkbox">
@@ -2306,7 +2317,7 @@ ${body}`) : body;
             <div class="sn-assistant-row">
               <div class="sn-assistant-panel__heading" style="font-size:14px;">Template manager</div>
             </div>
-            <div class="sn-assistant-note">The email template marked as Selected is the one used by the floating Draft button.</div>
+            <div class="sn-assistant-note">The email template marked as Selected is the one used by the floating button. You can also rename that button above.</div>
             <div class="sn-assistant-tabs">${categoryTabs}</div>
             <div class="sn-assistant-template-list">${renderTemplateCards(
       activeCategory,
