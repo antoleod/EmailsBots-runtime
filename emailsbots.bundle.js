@@ -1586,7 +1586,7 @@
       category: "work_note",
       label: "Email Sent",
       target: "work_notes",
-      body: "{{today}} - Email sent to {{user_name}} for {{ticket_number}}. Subject context: {{short_description}}."
+      body: "{{today}} - Email has been sent to the user {{user_name}} for {{ticket_number}}. Subject context: {{short_description}}."
     },
     {
       id: "appointment_proposed",
