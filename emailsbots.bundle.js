@@ -1456,7 +1456,7 @@
       label: "Incident Follow-up",
       target: "comments",
       subject: "Follow-up on {{ticket_number}}",
-      body: 'Hello {{user_name}},\n\nI am following up on {{ticket_number}} regarding "{{short_description}}".\n\nCould you please confirm whether the issue is still happening and share any useful update so we can continue?\n\nKind regards,\n{{agent_name}}'
+      body: 'Dear {{user_name}},\n\nI am following up on {{ticket_number}} regarding "{{short_description}}".\n\nCould you please confirm whether the issue is still happening and share any useful update so we can continue?\n\nKind regards,\n{{agent_name}}'
     },
     {
       id: "request_to_visit_office",
@@ -1464,7 +1464,7 @@
       label: "Request To Visit Office",
       target: "comments",
       subject: "Visit requested for {{ticket_number}}",
-      body: "Hello {{user_name}},\n\nTo continue with {{ticket_number}}, please visit the {{office_label}} {{office_room}}.\n\nReply if you need another slot or if remote support is preferable.\n\nKind regards,\n{{agent_name}}"
+      body: "Dear {{user_name}},\n\nTo continue with {{ticket_number}}, please visit the {{office_label}} {{office_room}}.\n\nReply if you need another slot or if remote support is preferable.\n\nKind regards,\n{{agent_name}}"
     },
     {
       id: "appointment_proposal",
@@ -1472,7 +1472,7 @@
       label: "Appointment Proposal",
       target: "comments",
       subject: "Appointment proposal for {{ticket_number}}",
-      body: "Hello {{user_name}},\n\nI can propose an appointment for {{ticket_number}} at the {{office_label}} {{office_room}}.\n\nPlease reply with your preferred slot and we will confirm the meeting.\n\nKind regards,\n{{agent_name}}"
+      body: "Dear {{user_name}},\n\nI can propose an appointment for {{ticket_number}} at the {{office_label}} {{office_room}}.\n\nPlease reply with your preferred slot and we will confirm the meeting.\n\nKind regards,\n{{agent_name}}"
     },
     {
       id: "user_unavailable",
@@ -1480,7 +1480,7 @@
       label: "User Unavailable",
       target: "comments",
       subject: "Unable to reach you for {{ticket_number}}",
-      body: "Hello {{user_name}},\n\nWe tried to contact you regarding {{ticket_number}}, but we could not reach you.\n\nPlease reply with your availability so we can continue without delay.\n\nKind regards,\n{{agent_name}}"
+      body: "Dear {{user_name}},\n\nWe tried to contact you regarding {{ticket_number}}, but we could not reach you.\n\nPlease reply with your availability so we can continue without delay.\n\nKind regards,\n{{agent_name}}"
     },
     {
       id: "device_ready_for_collection",
@@ -1488,7 +1488,7 @@
       label: "Device Ready For Collection",
       target: "comments",
       subject: "Device ready for collection - {{ticket_number}}",
-      body: "Hello {{user_name}},\n\nYour device linked to {{ticket_number}} is ready for collection.\n\nPlease visit the {{office_label}} {{office_room}} and bring your badge if needed.\n\nKind regards,\n{{agent_name}}"
+      body: "Dear {{user_name}},\n\nYour device linked to {{ticket_number}} is ready for collection.\n\nPlease visit the {{office_label}} {{office_room}} and bring your badge if needed.\n\nKind regards,\n{{agent_name}}"
     },
     {
       id: "smartphone_handover",
@@ -1496,7 +1496,7 @@
       label: "Smartphone Handover",
       target: "comments",
       subject: "Smartphone handover for {{ticket_number}}",
-      body: "Hello {{user_name}},\n\nYour smartphone request is ready to move to handover.\n\nPlease confirm your availability to collect it at the {{office_label}} {{office_room}}.\n\nKind regards,\n{{agent_name}}"
+      body: "Dear {{user_name}},\n\nYour smartphone request is ready to move to handover.\n\nPlease confirm your availability to collect it at the {{office_label}} {{office_room}}.\n\nKind regards,\n{{agent_name}}"
     },
     {
       id: "battery_issue",
@@ -1504,7 +1504,7 @@
       label: "Battery Issue",
       target: "comments",
       subject: "Battery troubleshooting - {{ticket_number}}",
-      body: "Hello {{user_name}},\n\nI am reviewing the battery issue reported in {{ticket_number}}.\n\nPlease let me know whether the device is available for testing and if the issue is constant or intermittent.\n\nKind regards,\n{{agent_name}}"
+      body: "Dear {{user_name}},\n\nI am reviewing the battery issue reported in {{ticket_number}}.\n\nPlease let me know whether the device is available for testing and if the issue is constant or intermittent.\n\nKind regards,\n{{agent_name}}"
     },
     {
       id: "sound_issue",
@@ -1512,7 +1512,7 @@
       label: "Sound Issue",
       target: "comments",
       subject: "Sound issue follow-up - {{ticket_number}}",
-      body: "Hello {{user_name}},\n\nI am following up on the sound issue recorded in {{ticket_number}}.\n\nPlease confirm whether the issue affects speakers, headset or both, and whether it happens in every application.\n\nKind regards,\n{{agent_name}}"
+      body: "Dear {{user_name}},\n\nI am following up on the sound issue recorded in {{ticket_number}}.\n\nPlease confirm whether the issue affects speakers, headset or both, and whether it happens in every application.\n\nKind regards,\n{{agent_name}}"
     },
     {
       id: "laptop_swap",
@@ -1520,7 +1520,7 @@
       label: "Laptop Swap",
       target: "comments",
       subject: "Laptop swap coordination - {{ticket_number}}",
-      body: "Hello {{user_name}},\n\nWe are ready to coordinate the laptop swap related to {{ticket_number}}.\n\nPlease confirm your availability to visit the {{office_label}} {{office_room}} so we can complete the exchange.\n\nKind regards,\n{{agent_name}}"
+      body: "Dear {{user_name}},\n\nWe are ready to coordinate the laptop swap related to {{ticket_number}}.\n\nPlease confirm your availability to visit the {{office_label}} {{office_room}} so we can complete the exchange.\n\nKind regards,\n{{agent_name}}"
     },
     {
       id: "backup_needed",
@@ -1528,7 +1528,7 @@
       label: "Backup Needed",
       target: "comments",
       subject: "Backup required before intervention - {{ticket_number}}",
-      body: "Hello {{user_name}},\n\nBefore we continue with {{ticket_number}}, please confirm whether a backup of your data is required.\n\nIf needed, let us know so we can factor it into the intervention plan.\n\nKind regards,\n{{agent_name}}"
+      body: "Dear {{user_name}},\n\nBefore we continue with {{ticket_number}}, please confirm whether a backup of your data is required.\n\nIf needed, let us know so we can factor it into the intervention plan.\n\nKind regards,\n{{agent_name}}"
     },
     {
       id: "closure_confirmation",
@@ -1536,7 +1536,7 @@
       label: "Closure Confirmation",
       target: "comments",
       subject: "Closure confirmation for {{ticket_number}}",
-      body: "Hello {{user_name}},\n\nI am checking whether {{ticket_number}} can now be closed.\n\nIf everything is working as expected, please confirm and I will close the record. If not, reply with the current status.\n\nKind regards,\n{{agent_name}}"
+      body: "Dear {{user_name}},\n\nI am checking whether {{ticket_number}} can now be closed.\n\nIf everything is working as expected, please confirm and I will close the record. If not, reply with the current status.\n\nKind regards,\n{{agent_name}}"
     }
   ];
 
@@ -2371,6 +2371,7 @@ ${body}`) : body;
 }
 
 .sn-assistant-launcher__shell {
+  position: relative;
   display: flex;
   align-items: center;
   gap: 8px;
@@ -2379,9 +2380,24 @@ ${body}`) : body;
   background:
     radial-gradient(circle at top left, rgba(255, 255, 255, 0.96), transparent 55%),
     linear-gradient(145deg, rgba(253, 251, 247, 0.98), rgba(240, 235, 226, 0.96));
+  background-color: rgba(251, 247, 241, 0.98);
   border: 1px solid rgba(16, 34, 41, 0.12);
   box-shadow: 0 14px 32px rgba(17, 24, 39, 0.18);
+  -webkit-backdrop-filter: blur(12px);
   backdrop-filter: blur(12px);
+  transform: translateZ(0);
+  animation: sn-assistant-launcher-float 4.8s ease-in-out infinite;
+}
+
+.sn-assistant-launcher__shell::before {
+  content: "";
+  position: absolute;
+  inset: 1px;
+  border-radius: inherit;
+  pointer-events: none;
+  background: radial-gradient(circle at 20% 20%, rgba(255, 255, 255, 0.46), transparent 58%);
+  opacity: 0.72;
+  animation: sn-assistant-launcher-glow 3.2s ease-in-out infinite;
 }
 
 .sn-assistant-launcher__primary,
@@ -2414,6 +2430,9 @@ ${body}`) : body;
   font-weight: 700;
   letter-spacing: 0.02em;
   box-shadow: 0 10px 20px rgba(10, 68, 85, 0.2);
+  position: relative;
+  overflow: hidden;
+  transform: translateZ(0);
 }
 
 .sn-assistant-launcher__primary:hover,
@@ -2430,6 +2449,7 @@ ${body}`) : body;
   border-radius: 999px;
   background: #c8fff3;
   box-shadow: 0 0 0 4px rgba(200, 255, 243, 0.18);
+  animation: sn-assistant-launcher-dot 1.8s ease-in-out infinite;
 }
 
 .sn-assistant-launcher__icon {
@@ -2468,9 +2488,11 @@ ${body}`) : body;
   background:
     radial-gradient(circle at top right, rgba(255, 255, 255, 0.94), transparent 38%),
     linear-gradient(180deg, rgba(255, 252, 248, 0.98), rgba(244, 239, 231, 0.96));
+  background-color: rgba(248, 244, 237, 0.98);
   border: 1px solid var(--sn-assistant-border);
   box-shadow: var(--sn-assistant-shadow);
   overflow: hidden;
+  -webkit-backdrop-filter: blur(14px);
   backdrop-filter: blur(14px);
 }
 
@@ -2747,7 +2769,27 @@ ${body}`) : body;
   background:
     radial-gradient(circle at top left, rgba(13, 90, 109, 0.22), transparent 48%),
     rgba(15, 23, 42, 0.32);
+  -webkit-backdrop-filter: blur(8px);
   backdrop-filter: blur(8px);
+}
+
+@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+  .sn-assistant-launcher__shell,
+  .sn-assistant-panel {
+    background-image: none;
+  }
+
+  .sn-assistant-modal__backdrop {
+    background: rgba(15, 23, 42, 0.42);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .sn-assistant-launcher__shell,
+  .sn-assistant-launcher__shell::before,
+  .sn-assistant-launcher__dot {
+    animation: none;
+  }
 }
 
 .sn-assistant-modal__dialog {
@@ -2941,6 +2983,38 @@ ${body}`) : body;
   to {
     opacity: 1;
     transform: translateY(0);
+  }
+}
+
+@keyframes sn-assistant-launcher-float {
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-2px);
+  }
+}
+
+@keyframes sn-assistant-launcher-glow {
+  0%,
+  100% {
+    opacity: 0.58;
+  }
+  50% {
+    opacity: 0.88;
+  }
+}
+
+@keyframes sn-assistant-launcher-dot {
+  0%,
+  100% {
+    transform: scale(1);
+    box-shadow: 0 0 0 4px rgba(200, 255, 243, 0.18);
+  }
+  50% {
+    transform: scale(1.12);
+    box-shadow: 0 0 0 7px rgba(200, 255, 243, 0.08);
   }
 }
 
