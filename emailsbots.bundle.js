@@ -212,8 +212,40 @@
   var TABLES = {
     incident: {
       label: "Incident",
-      userFieldCandidates: ["caller_id", "opened_for", "u_requested_for"],
-      emailFieldCandidates: ["u_email", "email", "caller_id.email", "opened_for.email"],
+      userFieldCandidates: [
+        "u_affected_end_user",
+        "affected_end_user",
+        "u_affected_user",
+        "affected_user",
+        "caller_id",
+        "opened_for",
+        "u_requested_for"
+      ],
+      emailFieldCandidates: [
+        "u_affected_end_user.email",
+        "u_affected_end_user.u_email",
+        "affected_end_user.email",
+        "affected_end_user.u_email",
+        "u_affected_user.email",
+        "u_affected_user.u_email",
+        "affected_user.email",
+        "affected_user.u_email",
+        "u_email",
+        "email",
+        "caller_id.email",
+        "caller_id.u_email",
+        "opened_for.email",
+        "opened_for.u_email"
+      ],
+      previewFieldCandidates: [
+        "u_affected_end_user",
+        "affected_end_user",
+        "u_affected_user",
+        "affected_user",
+        "caller_id",
+        "opened_for",
+        "u_requested_for"
+      ],
       cmdbCiSelectors: [
         "#sys_display\\.incident\\.cmdb_ci",
         'input[id="sys_display.incident.cmdb_ci"]',
@@ -227,15 +259,35 @@
     sc_task: {
       label: "SC Task",
       userFieldCandidates: [
+        "requested_for",
+        "request_item.requested_for",
+        "request_item.u_requested_for",
         "request_item.request.requested_for",
         "request.requested_for",
-        "requested_for"
+        "opened_by"
       ],
       emailFieldCandidates: [
         "requested_for.email",
+        "requested_for.u_email",
+        "request_item.requested_for.email",
+        "request_item.requested_for.u_email",
+        "request_item.u_requested_for.email",
+        "request_item.u_requested_for.u_email",
         "request_item.request.requested_for.email",
+        "request_item.request.requested_for.u_email",
         "request.requested_for.email",
+        "request.requested_for.u_email",
+        "opened_by.email",
+        "opened_by.u_email",
         "email"
+      ],
+      previewFieldCandidates: [
+        "requested_for",
+        "request_item.requested_for",
+        "request_item.u_requested_for",
+        "request_item.request.requested_for",
+        "request.requested_for",
+        "opened_by"
       ],
       cmdbCiSelectors: [
         "#sys_display\\.sc_task\\.cmdb_ci",
@@ -252,8 +304,19 @@
     },
     sc_req_item: {
       label: "RITM",
-      userFieldCandidates: ["requested_for", "request.requested_for", "opened_by"],
-      emailFieldCandidates: ["requested_for.email", "email", "opened_by.email"],
+      userFieldCandidates: ["requested_for", "u_requested_for", "request.requested_for", "opened_by"],
+      emailFieldCandidates: [
+        "requested_for.email",
+        "requested_for.u_email",
+        "u_requested_for.email",
+        "u_requested_for.u_email",
+        "request.requested_for.email",
+        "request.requested_for.u_email",
+        "opened_by.email",
+        "opened_by.u_email",
+        "email"
+      ],
+      previewFieldCandidates: ["requested_for", "u_requested_for", "request.requested_for", "opened_by"],
       cmdbCiSelectors: [
         "#sys_display\\.sc_req_item\\.cmdb_ci",
         'input[id="sys_display.sc_req_item.cmdb_ci"]',
@@ -266,8 +329,17 @@
     },
     sc_request: {
       label: "Request",
-      userFieldCandidates: ["requested_for", "opened_by"],
-      emailFieldCandidates: ["requested_for.email", "email", "opened_by.email"],
+      userFieldCandidates: ["requested_for", "u_requested_for", "opened_by"],
+      emailFieldCandidates: [
+        "requested_for.email",
+        "requested_for.u_email",
+        "u_requested_for.email",
+        "u_requested_for.u_email",
+        "opened_by.email",
+        "opened_by.u_email",
+        "email"
+      ],
+      previewFieldCandidates: ["requested_for", "u_requested_for", "opened_by"],
       cmdbCiSelectors: [
         "#sys_display\\.sc_request\\.cmdb_ci",
         'input[id="sys_display.sc_request.cmdb_ci"]',
@@ -988,6 +1060,18 @@
     ".modal",
     ".glide_box"
   ];
+  function getPreviewButtonCandidates({ table = "", previewButtonId = "", previewFieldCandidates = [] } = {}) {
+    const candidates = [cleanText(previewButtonId)];
+    previewFieldCandidates.forEach((fieldName) => {
+      const safeFieldName = cleanText(fieldName);
+      if (!safeFieldName) return;
+      candidates.push(`viewr.${safeFieldName}`);
+      if (table) {
+        candidates.push(`viewr.${cleanText(table)}.${safeFieldName}`);
+      }
+    });
+    return Array.from(new Set(candidates.filter(Boolean)));
+  }
   function dispatchInputEvents(element) {
     ["input", "change", "blur"].forEach((eventName) => {
       element.dispatchEvent(new Event(eventName, { bubbles: true }));
@@ -1064,15 +1148,24 @@
     } catch (error) {
     }
   }
-  async function getRequestedForPreviewButton(previewButtonId, rootWindow = getRootWindow()) {
+  async function getRequestedForPreviewButton(previewConfig, rootWindow = getRootWindow()) {
+    const previewButtonIds = getPreviewButtonCandidates(previewConfig);
     return waitFor(
-      () => findElementByIdAcrossDocuments(previewButtonId, rootWindow),
+      () => {
+        for (const previewButtonId of previewButtonIds) {
+          const match = findElementByIdAcrossDocuments(previewButtonId, rootWindow);
+          if (match?.element) {
+            return match;
+          }
+        }
+        return null;
+      },
       7e3,
       200
     );
   }
-  async function readUserFromPreview(previewButtonId, logger, rootWindow = getRootWindow()) {
-    const previewButton = await getRequestedForPreviewButton(previewButtonId, rootWindow);
+  async function readUserFromPreview(previewConfig, logger, rootWindow = getRootWindow()) {
+    const previewButton = await getRequestedForPreviewButton(previewConfig, rootWindow);
     if (!previewButton?.element) {
       throw new Error("Requested For preview button not found");
     }
@@ -1126,8 +1219,8 @@
     (hostDocument.body || hostDocument.documentElement).appendChild(frame);
     return frame;
   }
-  async function getRequestedForUrl(previewButtonId, rootWindow = getRootWindow()) {
-    const previewButton = await getRequestedForPreviewButton(previewButtonId, rootWindow);
+  async function getRequestedForUrl(previewConfig, rootWindow = getRootWindow()) {
+    const previewButton = await getRequestedForPreviewButton(previewConfig, rootWindow);
     if (!previewButton?.element) {
       throw new Error("Requested For preview button not found");
     }
@@ -1308,10 +1401,19 @@
     }
     const tableConfig = getTableConfig(context.table);
     if (!tableConfig?.previewButtonId) {
-      return context.user;
+      if (!tableConfig?.previewFieldCandidates?.length) {
+        return context.user;
+      }
     }
     try {
-      const resolvedUser = await readUserFromPreview(tableConfig.previewButtonId, logger);
+      const resolvedUser = await readUserFromPreview(
+        {
+          table: context.table,
+          previewButtonId: tableConfig.previewButtonId,
+          previewFieldCandidates: tableConfig.previewFieldCandidates || tableConfig.userFieldCandidates || []
+        },
+        logger
+      );
       if (resolvedUser?.email) {
         state.caches.userByRecord[context.recordKey] = resolvedUser;
         return resolvedUser;
@@ -1324,9 +1426,15 @@
   async function runPiSearch({ context, hostDocument, logger }) {
     const tableConfig = getTableConfig(context.table);
     if (!tableConfig?.previewButtonId) {
-      throw new Error("PI search is only available for sc_task");
+      if (!tableConfig?.previewFieldCandidates?.length) {
+        throw new Error("PI search is only available for sc_task");
+      }
     }
-    const userUrl = await getRequestedForUrl(tableConfig.previewButtonId);
+    const userUrl = await getRequestedForUrl({
+      table: context.table,
+      previewButtonId: tableConfig.previewButtonId,
+      previewFieldCandidates: tableConfig.previewFieldCandidates || tableConfig.userFieldCandidates || []
+    });
     logger?.info("Requested For URL resolved for PI search");
     const piValue = await extractPiFromUserRecord({
       hostDocument,
