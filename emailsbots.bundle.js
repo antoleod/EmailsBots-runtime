@@ -1675,6 +1675,7 @@ ${body}`) : body;
       const { action } = button.dataset;
       if (action === "quick-draft") handlers.onQuickDraft();
       if (action === "open-settings") handlers.onOpenSettings();
+      if (action === "force-close") handlers.onForceClose();
     });
   }
   function ensureLauncher({ hostDocument, state, context, handlers }) {
@@ -1686,7 +1687,7 @@ ${body}`) : body;
       root.setAttribute(ROOT_ATTRIBUTE, ROOT_VALUE);
       (hostDocument.body || hostDocument.documentElement).appendChild(root);
     }
-    root.innerHTML = `
+    const markup = `
     <div class="sn-assistant-launcher__shell" data-drag-handle="launcher" title="${escapeHtml(
       `${context.ticketNumber || context.tableLabel} | ${context.recordKey}`
     )}">
@@ -1697,8 +1698,15 @@ ${body}`) : body;
       <button type="button" class="sn-assistant-launcher__icon" data-action="open-settings" title="Settings">
         <span class="sn-assistant-icon sn-assistant-icon--gear" aria-hidden="true"></span>
       </button>
+      <button type="button" class="sn-assistant-launcher__icon sn-assistant-launcher__icon--danger" data-action="force-close" title="Close Assistant">
+        <span>X</span>
+      </button>
     </div>
   `;
+    if (root.__snAssistantMarkup !== markup) {
+      root.innerHTML = markup;
+      root.__snAssistantMarkup = markup;
+    }
     bindLauncher(root, handlers);
     makeDraggable({
       node: root,
@@ -1797,6 +1805,7 @@ ${body}`) : body;
       if (!button) return;
       const { action, category } = button.dataset;
       if (action === "close-panel") handlers.onClosePanel();
+      if (action === "force-close") handlers.onForceClose();
       if (action === "toggle-collapse") handlers.onToggleCollapse();
       if (action === "open-settings") handlers.onOpenSettings();
       if (action === "select-category") handlers.onSelectCategory(category);
@@ -1838,7 +1847,7 @@ ${body}`) : body;
       templates,
       selectedTemplateId
     });
-    root.innerHTML = `
+    const markup = `
     <div class="sn-assistant-panel">
       <div class="sn-assistant-panel__header" data-drag-handle="panel">
         <div class="sn-assistant-panel__title">
@@ -1854,6 +1863,9 @@ ${body}`) : body;
           </button>
           <button type="button" class="sn-assistant-mini-button" data-action="open-settings" title="Settings">
             <span class="sn-assistant-icon sn-assistant-icon--gear" aria-hidden="true"></span>
+          </button>
+          <button type="button" class="sn-assistant-mini-button sn-assistant-mini-button--danger" data-action="force-close" title="Close Assistant">
+            X
           </button>
           <button type="button" class="sn-assistant-mini-button" data-action="close-panel" title="Close">
             X
@@ -1880,6 +1892,10 @@ ${body}`) : body;
           `}
     </div>
   `;
+    if (root.__snAssistantMarkup !== markup) {
+      root.innerHTML = markup;
+      root.__snAssistantMarkup = markup;
+    }
     bindPanel(root, handlers);
     makeDraggable({
       node: root,
@@ -2049,7 +2065,7 @@ ${body}`) : body;
         </button>
       `
     ).join("");
-    root.innerHTML = `
+    const markup = `
     <div class="sn-assistant-modal">
       <div class="sn-assistant-modal__backdrop"></div>
       <div class="sn-assistant-modal__dialog">
@@ -2143,6 +2159,10 @@ ${body}`) : body;
       </div>
     </div>
   `;
+    if (root.__snAssistantMarkup !== markup) {
+      root.innerHTML = markup;
+      root.__snAssistantMarkup = markup;
+    }
     bindSettings(root, handlers);
     return root;
   }
@@ -2250,6 +2270,11 @@ ${body}`) : body;
   color: var(--sn-assistant-accent-strong);
   font-size: 16px;
   box-shadow: inset 0 0 0 1px rgba(13, 90, 109, 0.12);
+}
+
+.sn-assistant-launcher__icon--danger {
+  color: var(--sn-assistant-danger);
+  box-shadow: inset 0 0 0 1px rgba(181, 71, 63, 0.18);
 }
 
 .sn-assistant-icon {
@@ -2530,6 +2555,11 @@ ${body}`) : body;
   color: var(--sn-assistant-muted);
   box-shadow: inset 0 0 0 1px rgba(25, 35, 44, 0.08);
   font-size: 15px;
+}
+
+.sn-assistant-mini-button--danger {
+  color: var(--sn-assistant-danger);
+  box-shadow: inset 0 0 0 1px rgba(181, 71, 63, 0.18);
 }
 
 .sn-assistant-modal {
@@ -2901,6 +2931,15 @@ ${body}`) : body;
       destroy,
       scheduleRecovery
     };
+    function isLauncherRefreshReason(reason) {
+      return ["initial-start", "duplicate-loader", "start-reentry"].includes(reason);
+    }
+    function isPanelRefreshReason(reason) {
+      return isLauncherRefreshReason(reason) || reason.startsWith("template-") || reason.startsWith("action:") || reason.startsWith("panel-") || reason === "settings-saved" || reason === "settings-imported" || reason === "settings-reset-draft" || reason === "settings-template-selected" || reason === "settings-template-restore";
+    }
+    function isSettingsRefreshReason(reason) {
+      return isLauncherRefreshReason(reason) || reason.startsWith("settings-");
+    }
     function getEffectiveSettings() {
       return state.settings;
     }
@@ -2987,6 +3026,9 @@ ${body}`) : body;
             tone: "info"
           });
         });
+      },
+      onForceClose() {
+        api.destroy("user-force-close");
       },
       onClosePanel() {
         state.ui.panelOpen = false;
@@ -3251,7 +3293,7 @@ ${body}`) : body;
         const launcherMissing = !hostDocument.getElementById(UI_IDS.launcher);
         const panelMissing = !hostDocument.getElementById(UI_IDS.panel);
         const settingsMissing = !hostDocument.getElementById(UI_IDS.settings);
-        if (launcherMissing || contextDidChange || !passiveReason) {
+        if (launcherMissing || contextDidChange || isLauncherRefreshReason(reason)) {
           ensureLauncher({
             hostDocument,
             state,
@@ -3262,7 +3304,7 @@ ${body}`) : body;
         const { renderedTemplate, selection } = await getRenderedSelection({
           hydrateUser: false
         });
-        if (state.ui.panelOpen && (panelMissing || contextDidChange || !passiveReason)) {
+        if (state.ui.panelOpen && (panelMissing || contextDidChange || isPanelRefreshReason(reason))) {
           ensurePanel({
             hostDocument,
             state,
@@ -3276,7 +3318,7 @@ ${body}`) : body;
         } else if (!state.ui.panelOpen) {
           removePanel(hostDocument);
         }
-        const shouldRefreshSettings = settingsMissing || contextDidChange || reason.startsWith("settings-") || reason === "initial-start" || reason === "dom-mutation";
+        const shouldRefreshSettings = settingsMissing || contextDidChange || isSettingsRefreshReason(reason);
         if (state.ui.settingsOpen && shouldRefreshSettings) {
           const draftSettings = getDraftSettings();
           const templateGroups = getTemplateGroups(draftSettings);
@@ -3378,12 +3420,18 @@ ${body}`) : body;
       state,
       logger
     });
+    function destroy(reason = "destroy") {
+      bootstrap.destroy(reason);
+      if (globalStore.instance === instance) {
+        delete globalStore.instance;
+      }
+    }
     const instance = {
       version: VERSION,
       logger,
       state,
       bootstrap,
-      destroy: bootstrap.destroy
+      destroy
     };
     globalStore.instance = instance;
     bootstrap.start();
