@@ -308,6 +308,27 @@
       fullName: text
     };
   }
+  function looksLikeEmail(value) {
+    return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(cleanText(value));
+  }
+  function looksLikeRecordIdentifier(value) {
+    const text = cleanText(value).toUpperCase();
+    if (!text) return false;
+    return /^[0-9A-F]{32}$/.test(text) || /^(INC|RITM|REQ|SCTASK|TASK|CHG|PRB|SR|KB)\d{4,}$/.test(text) || /^[A-Z]{2,}\d{4,}$/.test(text);
+  }
+  function isLikelyPersonName(value) {
+    const text = cleanText(value);
+    if (!text || looksLikeEmail(text) || looksLikeRecordIdentifier(text)) {
+      return false;
+    }
+    return /[A-Za-zÀ-ÿ]/.test(text);
+  }
+  function deriveNameFromEmail(email) {
+    const localPart = cleanText(email).split("@")[0] || "";
+    const normalized = localPart.replace(/[._-]+/g, " ").replace(/\d+/g, " ").replace(/\s+/g, " ").trim();
+    if (!normalized) return "";
+    return titleCase(normalized);
+  }
   function safeGetValue(fieldName, rootWindow = getRootWindow()) {
     try {
       const bestGForm = getBestGForm(rootWindow);
@@ -404,19 +425,34 @@
     if (!config) return user;
     for (const fieldName of config.userFieldCandidates || []) {
       const displayValue = safeGetDisplayValue(fieldName, rootWindow) || getFieldDisplayValue(fieldName, rootWindow);
-      if (!displayValue) continue;
+      if (!isLikelyPersonName(displayValue)) continue;
       const parsed = parseDisplayName(displayValue);
       user.firstName = user.firstName || parsed.firstName;
       user.lastName = user.lastName || parsed.lastName;
       user.fullName = user.fullName || parsed.fullName;
       break;
     }
-    for (const fieldName of config.emailFieldCandidates || []) {
+    const emailCandidates = Array.from(
+      /* @__PURE__ */ new Set([
+      ...config.emailFieldCandidates || [],
+      ...(config.userFieldCandidates || []).flatMap((fieldName) => [
+        `${fieldName}.email`,
+        `${fieldName}.u_email`
+      ])
+    ])
+    );
+    for (const fieldName of emailCandidates) {
       const emailValue = safeGetValue(fieldName, rootWindow) || getFieldDisplayValue(fieldName, rootWindow);
-      if (emailValue.includes("@")) {
+      if (looksLikeEmail(emailValue)) {
         user.email = emailValue;
         break;
       }
+    }
+    if (!user.fullName && user.email) {
+      const parsed = parseDisplayName(deriveNameFromEmail(user.email));
+      user.firstName = user.firstName || parsed.firstName;
+      user.lastName = user.lastName || parsed.lastName;
+      user.fullName = user.fullName || parsed.fullName;
     }
     return user;
   }
@@ -1539,8 +1575,34 @@
   function finalizeTemplateText(value) {
     return String(value || "").replace(/\r\n/g, "\n").replace(/[ \t]+\n/g, "\n").replace(/\n{3,}/g, "\n\n").replace(/[ \t]{2,}/g, " ").replace(/\s+([,.;:!?])/g, "$1").trim();
   }
+  function looksLikeRecordIdentifier2(value) {
+    const text = cleanText(value).toUpperCase();
+    if (!text) return false;
+    return /^[0-9A-F]{32}$/.test(text) || /^(INC|RITM|REQ|SCTASK|TASK|CHG|PRB|SR|KB)\d{4,}$/.test(text) || /^[A-Z]{2,}\d{4,}$/.test(text);
+  }
+  function formatEmailLocalPart(email) {
+    const localPart = cleanText(email).split("@")[0] || "";
+    const normalized = localPart.replace(/[._-]+/g, " ").replace(/\d+/g, " ").replace(/\s+/g, " ").trim();
+    if (!normalized) return "";
+    return normalized.split(" ").filter(Boolean).map((part) => part.charAt(0).toUpperCase() + part.slice(1)).join(" ");
+  }
+  function resolveUserName(contextUser) {
+    const directCandidates = [
+      cleanText(contextUser?.fullName),
+      [cleanText(contextUser?.firstName), cleanText(contextUser?.lastName)].filter(Boolean).join(" ").trim()
+    ];
+    const directMatch = directCandidates.find((candidate) => candidate && !looksLikeRecordIdentifier2(candidate));
+    if (directMatch) {
+      return directMatch;
+    }
+    const fromEmail = formatEmailLocalPart(contextUser?.email);
+    if (fromEmail && !looksLikeRecordIdentifier2(fromEmail)) {
+      return fromEmail;
+    }
+    return "colleague";
+  }
   function buildPlaceholderMap({ context, settings }) {
-    const userName = cleanText(context?.user?.fullName) || [cleanText(context?.user?.firstName), cleanText(context?.user?.lastName)].filter(Boolean).join(" ") || "colleague";
+    const userName = resolveUserName(context?.user);
     return {
       user_name: userName,
       user_email: cleanText(context?.user?.email),
@@ -2837,6 +2899,18 @@ ${body}`) : body;
   }
 
   // Assistant/core/bootstrap.js
+  function mergeResolvedUser(currentUser = {}, resolvedUser = {}) {
+    const merged = {
+      firstName: resolvedUser.firstName || currentUser.firstName || "",
+      lastName: resolvedUser.lastName || currentUser.lastName || "",
+      fullName: resolvedUser.fullName || currentUser.fullName || "",
+      email: resolvedUser.email || currentUser.email || ""
+    };
+    if (!merged.fullName) {
+      merged.fullName = [merged.firstName, merged.lastName].filter(Boolean).join(" ").trim();
+    }
+    return merged;
+  }
   function removeUiFromDocument(documentRef) {
     removeLauncher(documentRef);
     removePanel(documentRef);
@@ -2956,8 +3030,9 @@ ${body}`) : body;
       let context = state.context;
       if (hydrateUser) {
         const resolvedUser = await resolveUserForContext(context, state, getEffectiveSettings(), logger);
-        if (resolvedUser?.email && resolvedUser.email !== context.user.email) {
-          context = { ...context, user: resolvedUser };
+        const mergedUser = mergeResolvedUser(context?.user, resolvedUser);
+        if (mergedUser.email !== context?.user?.email || mergedUser.fullName !== context?.user?.fullName || mergedUser.firstName !== context?.user?.firstName || mergedUser.lastName !== context?.user?.lastName) {
+          context = { ...context, user: mergedUser };
           state.context = context;
         }
       }
