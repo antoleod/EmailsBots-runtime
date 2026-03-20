@@ -562,6 +562,22 @@
       return match ? decodeURIComponent(match[1]) : href;
     }
   }
+  function detectPageKey(rootWindow = getRootWindow()) {
+    const bestGForm = getBestGForm(rootWindow);
+    const windows = [
+      ...bestGForm?.window ? [bestGForm.window] : [],
+      ...getAccessibleWindows(rootWindow)
+    ];
+    for (const win of windows) {
+      try {
+        const href = extractNestedUri(win.location.href);
+        if (href) return href.replace(/#.*$/, "");
+      } catch (error) {
+        continue;
+      }
+    }
+    return "";
+  }
   function detectTable(rootWindow = getRootWindow()) {
     const bestGForm = getBestGForm(rootWindow);
     try {
@@ -612,6 +628,7 @@
     const table = detectTable(rootWindow);
     const ticketNumber = getTicketNumber(table, rootWindow);
     const sysId = detectSysId(rootWindow);
+    const pageKey = detectPageKey(rootWindow);
     const recordKey = createRecordKey({ table, sysId, ticketNumber });
     const supported = isSupportedTable(table);
     return {
@@ -621,6 +638,7 @@
       tableLabel: getTableLabel(table),
       tableConfig: getTableConfig(table),
       sysId,
+      pageKey,
       recordKey,
       ticketNumber,
       recordNumber: ticketNumber,
@@ -635,7 +653,7 @@
     if (!previousContext && nextContext) return true;
     if (previousContext && !nextContext) return true;
     if (!previousContext && !nextContext) return false;
-    return previousContext.recordKey !== nextContext.recordKey;
+    return previousContext.recordKey !== nextContext.recordKey || previousContext.pageKey !== nextContext.pageKey;
   }
 
   // Assistant/ui/ids.js
@@ -719,7 +737,8 @@
     toggles: {
       autoCopyToClipboard: true,
       autoOpenDraft: false,
-      autoFillUserEmail: true
+      autoFillUserEmail: true,
+      autoLogEmailToComments: false
     },
     templateOverrides: {
       email: {},
@@ -829,7 +848,8 @@
       toggles: {
         autoCopyToClipboard: toggles.autoCopyToClipboard !== false,
         autoOpenDraft: toggles.autoOpenDraft === true,
-        autoFillUserEmail: toggles.autoFillUserEmail !== false
+        autoFillUserEmail: toggles.autoFillUserEmail !== false,
+        autoLogEmailToComments: toggles.autoLogEmailToComments === true
       },
       templateOverrides: sanitizeTemplateOverrides(merged.templateOverrides)
     };
@@ -1374,6 +1394,28 @@
     }
     return insertWithTargetDefinition(targetDefinition, cleanText(renderedTemplate?.body));
   }
+  function buildEmailCommentText(renderedTemplate) {
+    const recipient = cleanText(renderedTemplate?.recipient);
+    const subject = cleanText(renderedTemplate?.subject);
+    const body = cleanText(renderedTemplate?.body);
+    const prefix = recipient ? `Email has been sent to the user ${recipient}.` : "Email has been sent to the user.";
+    const parts = [prefix];
+    if (subject) {
+      parts.push(`Subject: ${subject}`);
+    }
+    if (body) {
+      parts.push("", body);
+    }
+    return parts.join("\n");
+  }
+  function insertEmailComment(renderedTemplate, context) {
+    const config = getTableConfig(context.table);
+    const targetDefinition = config?.targets?.comments;
+    if (!targetDefinition) {
+      return { ok: false, targetField: "" };
+    }
+    return insertWithTargetDefinition(targetDefinition, buildEmailCommentText(renderedTemplate));
+  }
   function openDraft(renderedTemplate) {
     if (!renderedTemplate || renderedTemplate.category !== "email") {
       return { ok: false, mailto: "" };
@@ -1453,92 +1495,220 @@
   // Assistant/templates/emailTemplates.js
   var EMAIL_TEMPLATES = [
     {
-      id: "incident_follow_up",
+      id: "my_request_not_listed",
       category: "email",
-      label: "Incident Follow-up",
+      label: "My Request Is Not Listed",
       target: "comments",
-      subject: "Follow-up on {{ticket_number}}",
-      body: 'Dear {{user_name}},\n\nI am following up on {{ticket_number}} regarding "{{short_description}}".\n\nCould you please confirm whether the issue is still occurring and share any relevant update so we can proceed accordingly?\n\nKind regards,\n{{agent_name}}'
+      subject: "Request review for {{ticket_number}}",
+      body: "Dear {{user_name}},\n\nI hope you are doing well.\n\nI am reaching out regarding {{ticket_number}} and your request, {{short_description}}.\n\nWe will review it carefully and ensure it is directed to the appropriate support path. If any additional detail would help, please feel free to let us know.\n\nKind regards,\n{{agent_name}}"
     },
     {
-      id: "request_to_visit_office",
+      id: "safe_tablet_sync_issue",
       category: "email",
-      label: "Request To Visit Office",
+      label: "SAFE Tablet Synchronisation Issue",
       target: "comments",
-      subject: "On-site visit requested for {{ticket_number}}",
-      body: "Dear {{user_name}},\n\nTo continue with {{ticket_number}}, please visit the {{office_label}} {{office_room}}.\n\nIf this time is not convenient, please reply with an alternative availability or let us know whether remote support would be preferable.\n\nKind regards,\n{{agent_name}}"
+      subject: "Follow-up on your tablet synchronisation issue - {{ticket_number}}",
+      body: "Dear {{user_name}},\n\nI hope you are doing well.\n\nI am reaching out regarding {{ticket_number}} and the synchronisation issue reported on your tablet.\n\nCould you please confirm whether the issue is still present? If possible, any recent details, error messages, or screenshots would be greatly appreciated.\n\nKind regards,\n{{agent_name}}"
     },
     {
-      id: "appointment_proposal",
+      id: "other_it_equipment_request",
       category: "email",
-      label: "Appointment Proposal",
+      label: "Other IT Equipment Request",
       target: "comments",
-      subject: "Appointment proposal for {{ticket_number}}",
-      body: "Dear {{user_name}},\n\nI can propose an appointment for {{ticket_number}} at the {{office_label}} {{office_room}}.\n\nPlease reply with your preferred time slot and we will confirm the appointment accordingly.\n\nKind regards,\n{{agent_name}}"
+      subject: "IT equipment request in review - {{ticket_number}}",
+      body: "Dear {{user_name}},\n\nI hope you are doing well.\n\nI am reaching out regarding {{ticket_number}} and your request for other IT equipment.\n\nWe are reviewing the details and will proceed as soon as the most suitable option is confirmed. Please feel free to let us know if you have any preferred model, timing, or delivery requirement.\n\nKind regards,\n{{agent_name}}"
     },
     {
-      id: "user_unavailable",
+      id: "laptop_swap_appointment",
       category: "email",
-      label: "User Unavailable",
+      label: "Laptop Swap Appointment",
       target: "comments",
-      subject: "Unable to reach you regarding {{ticket_number}}",
-      body: "Dear {{user_name}},\n\nWe have tried to contact you regarding {{ticket_number}}, but we have not been able to reach you.\n\nPlease reply with your availability so we can continue without further delay.\n\nKind regards,\n{{agent_name}}"
+      subject: "Appointment to complete your laptop swap - {{ticket_number}}",
+      body: "Dear {{user_name}},\n\nI hope you are doing well.\n\nI am reaching out regarding {{ticket_number}} to arrange the appointment for your laptop swap.\n\nCould you please share your availability so we can schedule this at the {{office_label}} {{office_room}} at a convenient time?\n\nKind regards,\n{{agent_name}}"
     },
     {
-      id: "device_ready_for_collection",
+      id: "pda_official_mail_blocked",
       category: "email",
-      label: "Device Ready For Collection",
+      label: "PDA Blocked for Official Mail",
       target: "comments",
-      subject: "Device ready for collection - {{ticket_number}}",
-      body: "Dear {{user_name}},\n\nYour device linked to {{ticket_number}} is now ready for collection.\n\nPlease visit the {{office_label}} {{office_room}} and bring your badge if required.\n\nKind regards,\n{{agent_name}}"
+      subject: "Support for your official mail access - {{ticket_number}}",
+      body: "Dear {{user_name}},\n\nI hope you are doing well.\n\nI am reaching out regarding {{ticket_number}} and the PDA access issue affecting your official mail.\n\nCould you please confirm whether the device is still blocked and, if possible, let us know at which stage the issue occurs? This will help us proceed with precision.\n\nKind regards,\n{{agent_name}}"
     },
     {
-      id: "smartphone_handover",
+      id: "laptop_loan_request",
       category: "email",
-      label: "Smartphone Handover",
+      label: "Laptop Loan Request",
       target: "comments",
-      subject: "Smartphone handover for {{ticket_number}}",
-      body: "Dear {{user_name}},\n\nYour smartphone request is ready for handover.\n\nPlease confirm your availability to collect it at the {{office_label}} {{office_room}}.\n\nKind regards,\n{{agent_name}}"
+      subject: "Laptop loan request under review - {{ticket_number}}",
+      body: "Dear {{user_name}},\n\nI hope you are doing well.\n\nI am reaching out regarding {{ticket_number}} and your request to loan a laptop.\n\nWe are reviewing availability and will keep you informed as soon as possible. If helpful, please confirm the expected duration of use and any specific requirement we should take into account.\n\nKind regards,\n{{agent_name}}"
     },
     {
-      id: "battery_issue",
+      id: "eu_login_new_smartphone",
       category: "email",
-      label: "Battery Issue",
+      label: "EU Login for New Smartphone",
       target: "comments",
-      subject: "Battery issue follow-up - {{ticket_number}}",
-      body: "Dear {{user_name}},\n\nI am reviewing the battery issue reported in {{ticket_number}}.\n\nPlease confirm whether the device is available for testing and whether the issue is constant or intermittent.\n\nKind regards,\n{{agent_name}}"
+      subject: "Support with EU Login on your new smartphone - {{ticket_number}}",
+      body: "Dear {{user_name}},\n\nI hope you are doing well.\n\nI am reaching out regarding {{ticket_number}} and the difficulty connecting your EU Login account to a new smartphone.\n\nCould you please confirm whether the issue is still occurring and, if possible, indicate the step where the process stops? We will then guide you accordingly.\n\nKind regards,\n{{agent_name}}"
     },
     {
-      id: "sound_issue",
+      id: "personal_device_mdm_byd_removal",
       category: "email",
-      label: "Sound Issue",
+      label: "Personal Device MDM and BYOD Removal",
       target: "comments",
-      subject: "Sound issue follow-up - {{ticket_number}}",
-      body: "Dear {{user_name}},\n\nI am following up on the sound issue recorded in {{ticket_number}}.\n\nPlease confirm whether the issue affects the speakers, the headset, or both, and whether it occurs in every application.\n\nKind regards,\n{{agent_name}}"
+      subject: "Personal device review for MDM and BYOD removal - {{ticket_number}}",
+      body: "Dear {{user_name}},\n\nI hope you are doing well.\n\nI am reaching out regarding {{ticket_number}} and the review of your personal device for MDM and BYOD enrolment removal.\n\nCould you please confirm that the device is available? If appropriate, please also let us know whether you prefer remote guidance or an on-site appointment.\n\nKind regards,\n{{agent_name}}"
     },
     {
-      id: "laptop_swap",
+      id: "laptop_delivery",
       category: "email",
-      label: "Laptop Swap",
+      label: "Laptop Delivery",
       target: "comments",
-      subject: "Laptop swap coordination - {{ticket_number}}",
-      body: "Dear {{user_name}},\n\nWe are ready to coordinate the laptop swap related to {{ticket_number}}.\n\nPlease confirm your availability to visit the {{office_label}} {{office_room}} so we can complete the exchange.\n\nKind regards,\n{{agent_name}}"
+      subject: "Your laptop is ready for delivery - {{ticket_number}}",
+      body: "Dear {{user_name}},\n\nI hope you are doing well.\n\nI am pleased to inform you that your laptop request under {{ticket_number}} is ready for delivery.\n\nCould you please confirm your availability so we can arrange the handover at the {{office_label}} {{office_room}}?\n\nKind regards,\n{{agent_name}}"
     },
     {
-      id: "backup_needed",
+      id: "tablet_loan_request",
       category: "email",
-      label: "Backup Needed",
+      label: "Tablet Loan Request",
       target: "comments",
-      subject: "Backup required before intervention - {{ticket_number}}",
-      body: "Dear {{user_name}},\n\nBefore we continue with {{ticket_number}}, please confirm whether a backup of your data is required.\n\nIf needed, let us know so we can include it in the intervention plan.\n\nKind regards,\n{{agent_name}}"
+      subject: "Tablet loan request under review - {{ticket_number}}",
+      body: "Dear {{user_name}},\n\nI hope you are doing well.\n\nI am reaching out regarding {{ticket_number}} and your request to loan a tablet.\n\nWe are currently reviewing availability. If helpful, please confirm the expected duration of use and any specific requirement we should consider.\n\nKind regards,\n{{agent_name}}"
     },
     {
-      id: "closure_confirmation",
+      id: "smartphone_delivery_schedule",
       category: "email",
-      label: "Closure Confirmation",
+      label: "Schedule Smartphone Delivery",
       target: "comments",
-      subject: "Closure confirmation for {{ticket_number}}",
-      body: "Dear {{user_name}},\n\nI am checking whether {{ticket_number}} can now be closed.\n\nIf everything is working as expected, please confirm and I will close the record. If not, please reply with the current status.\n\nKind regards,\n{{agent_name}}"
+      subject: "Scheduling your smartphone delivery - {{ticket_number}}",
+      body: "Dear {{user_name}},\n\nI hope you are doing well.\n\nI am reaching out regarding {{ticket_number}} so we can schedule your smartphone delivery and complete the request in a smooth manner.\n\nCould you please share your availability for the handover at the {{office_label}} {{office_room}}?\n\nKind regards,\n{{agent_name}}"
+    },
+    {
+      id: "sim_card_management",
+      category: "email",
+      label: "SIM Card Management",
+      target: "comments",
+      subject: "SIM card request review - {{ticket_number}}",
+      body: "Dear {{user_name}},\n\nI hope you are doing well.\n\nI am reaching out regarding {{ticket_number}} and your SIM card request.\n\nCould you please confirm the exact action required, such as activation, replacement, or another service, so we can proceed without delay?\n\nKind regards,\n{{agent_name}}"
+    },
+    {
+      id: "local_printer_request",
+      category: "email",
+      label: "Local Printer Request",
+      target: "comments",
+      subject: "Local printer request follow-up - {{ticket_number}}",
+      body: "Dear {{user_name}},\n\nI hope you are doing well.\n\nI am reaching out regarding {{ticket_number}} and your request for a local printer.\n\nCould you please confirm whether this concerns a new installation, a replacement, or support for an existing device?\n\nKind regards,\n{{agent_name}}"
+    },
+    {
+      id: "smartphone_preparation",
+      category: "email",
+      label: "Smartphone Preparation",
+      target: "comments",
+      subject: "Your smartphone is being prepared - {{ticket_number}}",
+      body: "Dear {{user_name}},\n\nI hope you are doing well.\n\nI am pleased to let you know that your smartphone request under {{ticket_number}} is currently being prepared.\n\nWe will contact you again as soon as the device is ready. In the meantime, please feel free to let us know if any scheduling constraint should be taken into account.\n\nKind regards,\n{{agent_name}}"
+    },
+    {
+      id: "iphone_battery_below_80",
+      category: "email",
+      label: "iPhone Battery Below 80%",
+      target: "comments",
+      subject: "iPhone battery health review - {{ticket_number}}",
+      body: "Dear {{user_name}},\n\nI hope you are doing well.\n\nI am reaching out regarding {{ticket_number}} and the reported iPhone battery capacity below 80%.\n\nCould you please confirm whether the device is available for assessment and whether the battery performance is affecting your daily use?\n\nKind regards,\n{{agent_name}}"
+    },
+    {
+      id: "outlook_email_calendar_support",
+      category: "email",
+      label: "Outlook Email and Calendar Support",
+      target: "comments",
+      subject: "Support for your Outlook request - {{ticket_number}}",
+      body: "Dear {{user_name}},\n\nI hope you are doing well.\n\nI am reaching out regarding {{ticket_number}} and your Outlook email and calendar request.\n\nCould you please confirm whether the issue remains active and, if so, provide a brief description of the current behaviour so we can assist you efficiently?\n\nKind regards,\n{{agent_name}}"
+    },
+    {
+      id: "request_validation_and_approval",
+      category: "email",
+      label: "Request Validation and Approval",
+      target: "comments",
+      subject: "Your request is under validation - {{ticket_number}}",
+      body: "Dear {{user_name}},\n\nI hope you are doing well.\n\nI am reaching out regarding {{ticket_number}}. Your request is currently under validation and approval.\n\nWe will keep you informed as soon as the review is complete, or if any additional information is required from your side.\n\nKind regards,\n{{agent_name}}"
+    },
+    {
+      id: "smartphone_delivery",
+      category: "email",
+      label: "Smartphone Delivery",
+      target: "comments",
+      subject: "Your smartphone is ready for delivery - {{ticket_number}}",
+      body: "Dear {{user_name}},\n\nI hope you are doing well.\n\nI am pleased to confirm that your smartphone request under {{ticket_number}} is ready for delivery.\n\nCould you please confirm your availability so we can arrange the handover at the {{office_label}} {{office_room}}?\n\nKind regards,\n{{agent_name}}"
+    },
+    {
+      id: "recover_it_material_before_due_date",
+      category: "email",
+      label: "Recover IT Material Before Due Date",
+      target: "comments",
+      subject: "Return of IT equipment before {{due_date}} - {{ticket_number}}",
+      body: "Dear {{user_name}},\n\nI hope you are doing well.\n\nI am reaching out regarding {{ticket_number}} and the return of your IT material before {{due_date}}.\n\nCould you please confirm your availability so we can arrange the recovery in good time and close the process smoothly?\n\nKind regards,\n{{agent_name}}"
+    },
+    {
+      id: "recover_mobile_devices_before_due_date",
+      category: "email",
+      label: "Recover Mobile Devices Before Due Date",
+      target: "comments",
+      subject: "Return of mobile devices before {{due_date}} - {{ticket_number}}",
+      body: "Dear {{user_name}},\n\nI hope you are doing well.\n\nI am reaching out regarding {{ticket_number}} and the return of your mobile devices before {{due_date}}.\n\nPlease let us know your availability so we can organise the collection in a smooth and timely manner.\n\nKind regards,\n{{agent_name}}"
+    },
+    {
+      id: "quality_check_after_move",
+      category: "email",
+      label: "Quality Check After Move",
+      target: "comments",
+      subject: "Post-move quality check for {{ticket_number}}",
+      body: "Dear {{user_name}},\n\nI hope you are doing well.\n\nI am reaching out regarding {{ticket_number}} following your move.\n\nCould you please confirm that everything is working as expected at your new location, including your equipment, connectivity, and any connected peripherals?\n\nKind regards,\n{{agent_name}}"
+    },
+    {
+      id: "delivery_of_items",
+      category: "email",
+      label: "Delivery of Items",
+      target: "comments",
+      subject: "Arrangement for item delivery - {{ticket_number}}",
+      body: "Dear {{user_name}},\n\nI hope you are doing well.\n\nI am reaching out regarding {{ticket_number}} and the delivery of your items.\n\nCould you please confirm your availability so we can arrange the handover in the most convenient way for you?\n\nKind regards,\n{{agent_name}}"
+    },
+    {
+      id: "smartphone_return_schedule",
+      category: "email",
+      label: "Schedule Smartphone Return",
+      target: "comments",
+      subject: "Scheduling the return of your smartphone - {{ticket_number}}",
+      body: "Dear {{user_name}},\n\nI hope you are doing well.\n\nI am reaching out regarding {{ticket_number}} so we can arrange the return of your smartphone and complete the closure of the request.\n\nCould you please confirm your availability for the collection?\n\nKind regards,\n{{agent_name}}"
+    },
+    {
+      id: "adobe_acrobat_reader_access_update",
+      category: "email",
+      label: "Adobe Acrobat Reader Access and Update",
+      target: "comments",
+      subject: "Adobe Acrobat Reader support request - {{ticket_number}}",
+      body: "Dear {{user_name}},\n\nI hope you are doing well.\n\nI am reaching out regarding {{ticket_number}} and your request for Adobe Acrobat Reader access or update support.\n\nCould you please confirm whether this concerns an installation, an update, or an access issue so we can proceed appropriately?\n\nKind regards,\n{{agent_name}}"
+    },
+    {
+      id: "tablet_delivery_schedule",
+      category: "email",
+      label: "Schedule Tablet Delivery",
+      target: "comments",
+      subject: "Scheduling your tablet delivery - {{ticket_number}}",
+      body: "Dear {{user_name}},\n\nI hope you are doing well.\n\nI am reaching out regarding {{ticket_number}} so we can schedule your tablet delivery and close the request smoothly.\n\nCould you please share your availability for the handover at the {{office_label}} {{office_room}}?\n\nKind regards,\n{{agent_name}}"
+    },
+    {
+      id: "smartphone_eligibility_validation",
+      category: "email",
+      label: "Smartphone Eligibility Validation",
+      target: "comments",
+      subject: "Eligibility review for your smartphone request - {{ticket_number}}",
+      body: "Dear {{user_name}},\n\nI hope you are doing well.\n\nI am reaching out regarding {{ticket_number}}. Your smartphone request is currently under eligibility review.\n\nWe will contact you as soon as the validation is complete, or sooner if any additional information is required.\n\nKind regards,\n{{agent_name}}"
+    },
+    {
+      id: "tablet_preparation",
+      category: "email",
+      label: "Tablet Preparation",
+      target: "comments",
+      subject: "Your tablet is being prepared - {{ticket_number}}",
+      body: "Dear {{user_name}},\n\nI hope you are doing well.\n\nI am pleased to let you know that your tablet request under {{ticket_number}} is currently being prepared.\n\nWe will contact you again as soon as the device is ready for collection or delivery.\n\nKind regards,\n{{agent_name}}"
     }
   ];
 
@@ -2310,6 +2480,13 @@ ${body}`) : body;
               <div>
                 <strong>Auto-fill user email when detected</strong>
                 <span>Uses form values or Requested For preview when needed.</span>
+              </div>
+            </label>
+            <label class="sn-assistant-checkbox">
+              <input type="checkbox" name="toggle:autoLogEmailToComments" ${draftSettings.toggles.autoLogEmailToComments ? "checked" : ""} />
+              <div>
+                <strong>Add email summary to ticket comments</strong>
+                <span>Writes the generated email to the Comments field before opening the draft.</span>
               </div>
             </label>
           </div>
@@ -3247,6 +3424,14 @@ ${body}`) : body;
       if (state.settings.toggles.autoCopyToClipboard) {
         await copyToClipboard(renderedTemplate.clipboardText, state.host.document);
       }
+      if (state.settings.toggles.autoLogEmailToComments) {
+        const commentResult = insertEmailComment(renderedTemplate, state.context);
+        if (!commentResult.ok) {
+          logger.warn("email comment could not be written", {
+            templateId: selection.selectedTemplateId
+          });
+        }
+      }
       const result = openDraft(renderedTemplate);
       if (!result.ok) {
         throw new Error("Draft could not be opened");
@@ -3334,6 +3519,14 @@ ${body}`) : body;
             throw new Error("Clipboard copy failed");
           }
           logger.info("template rendered successfully", { templateId: selection.selectedTemplateId });
+          if (state.settings.toggles.autoLogEmailToComments) {
+            const commentResult = insertEmailComment(renderedTemplate, state.context);
+            if (!commentResult.ok) {
+              logger.warn("email comment could not be written", {
+                templateId: selection.selectedTemplateId
+              });
+            }
+          }
           if (state.settings.toggles.autoOpenDraft && renderedTemplate.category === "email") {
             const result = openDraft(renderedTemplate);
             if (!result.ok) {
