@@ -401,6 +401,15 @@
     if (!normalized) return "";
     return titleCase(normalized);
   }
+  function extractDateFromText(text) {
+    const value = cleanText(text);
+    if (!value) return "";
+    const isoMatch = value.match(/\b(\d{4}-\d{2}-\d{2})\b/);
+    if (isoMatch?.[1]) return isoMatch[1];
+    const slashMatch = value.match(/\b(\d{2}\/\d{2}\/\d{4})\b/);
+    if (slashMatch?.[1]) return slashMatch[1];
+    return "";
+  }
   function safeGetValue(fieldName, rootWindow = getRootWindow()) {
     try {
       const bestGForm = getBestGForm(rootWindow);
@@ -485,6 +494,21 @@
     const config = getTableConfig(table);
     if (!config) return "";
     return safeGetDisplayValue("cmdb_ci", rootWindow) || getFirstValue(config.cmdbCiSelectors || [], rootWindow);
+  }
+  function getDueDate(table, rootWindow = getRootWindow()) {
+    const directValue = safeGetValue("due_date", rootWindow) || safeGetValue("u_due_date", rootWindow) || safeGetValue("expected_date", rootWindow) || safeGetValue("planned_end_date", rootWindow) || safeGetValue("end_date", rootWindow) || getFieldDisplayValue("due_date", rootWindow) || getFieldDisplayValue("u_due_date", rootWindow);
+    if (cleanText(directValue)) {
+      return cleanText(directValue);
+    }
+    const textCandidates = [
+      getShortDescription(table, rootWindow),
+      getDescription(table, rootWindow)
+    ];
+    for (const candidate of textCandidates) {
+      const extracted = extractDateFromText(candidate);
+      if (extracted) return extracted;
+    }
+    return "";
   }
   function resolveUserFromForm(table, rootWindow = getRootWindow()) {
     const config = getTableConfig(table);
@@ -644,6 +668,7 @@
       recordNumber: ticketNumber,
       shortDescription: getShortDescription(table, rootWindow),
       description: getDescription(table, rootWindow),
+      dueDate: getDueDate(table, rootWindow),
       configurationItem: getConfigurationItem(table, rootWindow),
       user: resolveUserFromForm(table, rootWindow),
       agentName: getAgentName(rootWindow)
@@ -1070,9 +1095,6 @@
   function setSelectedTemplate(state, category, templateId) {
     state.ui.selectedTemplates[category] = templateId;
   }
-  function getSelectedTemplate(state, category) {
-    return state.ui.selectedTemplates[category] || "";
-  }
 
   // Assistant/sn/actions.js
   var USER_POPUP_SELECTORS = [
@@ -1416,6 +1438,14 @@
     }
     return insertWithTargetDefinition(targetDefinition, buildEmailCommentText(renderedTemplate));
   }
+  function insertWorkNote(workNote, context) {
+    const config = getTableConfig(context.table);
+    const targetDefinition = config?.targets?.work_notes;
+    if (!targetDefinition) {
+      return { ok: false, targetField: "" };
+    }
+    return insertWithTargetDefinition(targetDefinition, cleanText(workNote));
+  }
   function openDraft(renderedTemplate) {
     if (!renderedTemplate || renderedTemplate.category !== "email") {
       return { ok: false, mailto: "" };
@@ -1709,6 +1739,62 @@
       target: "comments",
       subject: "Your tablet is being prepared - {{ticket_number}}",
       body: "Dear {{user_name}},\n\nI hope you are doing well.\n\nI am pleased to let you know that your tablet request under {{ticket_number}} is currently being prepared.\n\nWe will contact you again as soon as the device is ready for collection or delivery.\n\nKind regards,\n{{agent_name}}"
+    },
+    {
+      id: "incident_follow_up",
+      category: "email",
+      label: "Incident Follow-Up",
+      target: "comments",
+      subject: "Follow-up on your technical issue - {{ticket_number}}",
+      body: "Dear {{user_name}},\n\nI hope you are doing well.\n\nI am reaching out regarding {{ticket_number}} and the technical issue reported in {{short_description}}.\n\nCould you please confirm whether you are still experiencing the issue? If it remains present, any additional details would be greatly appreciated.\n\nKind regards,\n{{agent_name}}"
+    },
+    {
+      id: "incident_resolution_check",
+      category: "email",
+      label: "Incident Resolution Check",
+      target: "comments",
+      subject: "Closure confirmation for {{ticket_number}}",
+      body: "Dear {{user_name}},\n\nI hope you are doing well.\n\nI am reaching out regarding {{ticket_number}} to confirm whether the issue has been fully resolved and may be closed.\n\nPlease feel free to let us know if anything remains open or if further assistance is required.\n\nKind regards,\n{{agent_name}}"
+    },
+    {
+      id: "loss_or_theft_follow_up",
+      category: "email",
+      label: "Loss or Theft Follow-Up",
+      target: "comments",
+      subject: "Follow-up on the reported loss or theft - {{ticket_number}}",
+      body: "Dear {{user_name}},\n\nI hope you are doing well.\n\nI am reaching out regarding {{ticket_number}} and the reported loss or theft of the equipment.\n\nCould you please confirm whether any action has already been taken? Please let us know if the item has been reported or if further assistance is required from our side.\n\nKind regards,\n{{agent_name}}"
+    },
+    {
+      id: "account_access_support",
+      category: "email",
+      label: "Account Access Support",
+      target: "comments",
+      subject: "Support for your access request - {{ticket_number}}",
+      body: "Dear {{user_name}},\n\nI hope you are doing well.\n\nI am reaching out regarding {{ticket_number}} and your access request.\n\nCould you please confirm whether you are still unable to access the service? If so, please let us know at which step the process fails so we can assist you promptly.\n\nKind regards,\n{{agent_name}}"
+    },
+    {
+      id: "appointment_coordination",
+      category: "email",
+      label: "Appointment Coordination",
+      target: "comments",
+      subject: "Appointment coordination for {{ticket_number}}",
+      body: "Dear {{user_name}},\n\nI hope you are doing well.\n\nI am reaching out regarding {{ticket_number}} to coordinate a suitable appointment.\n\nCould you please share your availability so we can arrange this at the {{office_label}} {{office_room}}?\n\nKind regards,\n{{agent_name}}"
+    },
+    {
+      id: "delivery_coordination",
+      category: "email",
+      label: "Delivery Coordination",
+      target: "comments",
+      subject: "Delivery coordination for {{ticket_number}}",
+      body: "Dear {{user_name}},\n\nI hope you are doing well.\n\nYour request under {{ticket_number}} is ready for the next step.\n\nCould you please confirm your availability for delivery or collection so we can coordinate this smoothly?\n\nKind regards,\n{{agent_name}}"
+    },
+    {
+      id: "generic_ticket_follow_up",
+      category: "email",
+      label: "Generic Ticket Follow-Up",
+      target: "comments",
+      subject: "Follow-up on your request - {{ticket_number}}",
+      body: "Dear {{user_name}},\n\nI hope you are doing well.\n\nI am reaching out regarding {{ticket_number}} and your request, {{short_description}}.\n\nPlease feel free to let us know any additional detail or preferred next step so we can assist you appropriately.\n\nKind regards,\n{{agent_name}}"
     }
   ];
 
@@ -1851,6 +1937,284 @@
     return getTemplatesForCategory(category, settings)[0]?.id || "";
   }
 
+  // Assistant/templates/intelligence.js
+  var TYPE_KEYWORDS = [
+    { type: "loss_or_theft", keywords: ["lost", "stolen", "missing", "misplaced", "theft", "vol", "perdu", "vole"] },
+    { type: "validation_approval", keywords: ["validation", "approval", "eligibility", "eligible", "under review", "review"] },
+    { type: "asset_recovery", keywords: ["recover", "recovery", "return before", "before", "retrieve", "collection", "recuper", "retour"] },
+    { type: "appointment", keywords: ["appointment", "visit", "swap", "return", "collect", "collection", "pickup", "pick up", "rendez-vous", "rdv"] },
+    { type: "request_delivery", keywords: ["delivery", "delivered", "handover", "preparation", "prepare", "prepared", "ready for delivery", "livraison"] },
+    { type: "account_access", keywords: ["login", "access", "account", "blocked", "authentication", "password", "sign in", "eu login", "outlook", "mail", "pda", "bloque"] },
+    { type: "incident_resolution_check", keywords: ["resolved", "resolution", "close", "closure", "closed", "after intervention", "follow-up", "follow up"] },
+    { type: "incident_active", keywords: ["issue", "problem", "not working", "no connection", "sound", "battery", "sync", "synchron", "docking", "dock", "error", "fail", "broken", "outlook"] },
+    { type: "request_user_action", keywords: ["please confirm", "confirm", "provide", "details", "clarify", "backup", "printer", "sim", "mdm", "byod"] }
+  ];
+  var EMAIL_RULES = [
+    {
+      intent: "loss_or_theft",
+      matches: [
+        { keywords: ["lost", "stolen", "missing", "misplaced", "theft", "vol", "perdu", "vole"], templateId: "loss_or_theft_follow_up" }
+      ]
+    },
+    {
+      intent: "validation_approval",
+      matches: [
+        { keywords: ["smartphone", "phone", "mobile"], templateId: "smartphone_eligibility_validation" },
+        { keywords: ["validation", "approval", "eligibility", "eligible", "review"], templateId: "request_validation_and_approval" }
+      ]
+    },
+    {
+      intent: "asset_recovery",
+      matches: [
+        { keywords: ["mobile", "smartphone", "phone", "tablet"], templateId: "recover_mobile_devices_before_due_date" },
+        { keywords: ["laptop", "equipment", "material", "it material", "asset"], templateId: "recover_it_material_before_due_date" }
+      ]
+    },
+    {
+      intent: "appointment",
+      matches: [
+        { keywords: ["swap"], templateId: "laptop_swap_appointment" },
+        { keywords: ["smartphone", "phone", "mobile", "return", "collect", "collection"], templateId: "smartphone_return_schedule" },
+        { keywords: ["appointment", "visit", "schedule", "rendez-vous", "rdv"], templateId: "appointment_coordination" }
+      ]
+    },
+    {
+      intent: "request_delivery",
+      matches: [
+        { keywords: ["laptop"], templateId: "laptop_delivery" },
+        { keywords: ["smartphone", "phone", "mobile"], templateId: "smartphone_delivery" },
+        { keywords: ["tablet"], templateId: "tablet_delivery_schedule" },
+        { keywords: ["prepare", "preparation", "ready"], templateId: "delivery_coordination" },
+        { keywords: ["delivery", "handover", "collection"], templateId: "delivery_coordination" }
+      ]
+    },
+    {
+      intent: "account_access",
+      matches: [
+        { keywords: ["eu login", "new smartphone"], templateId: "eu_login_new_smartphone" },
+        { keywords: ["pda", "official mail", "mail blocked", "blocked"], templateId: "pda_official_mail_blocked" },
+        { keywords: ["adobe", "acrobat", "reader"], templateId: "adobe_acrobat_reader_access_update" },
+        { keywords: ["access", "login", "blocked", "authentication", "account"], templateId: "account_access_support" }
+      ]
+    },
+    {
+      intent: "incident_resolution_check",
+      matches: [{ keywords: ["resolved", "close", "closure", "closed", "follow-up"], templateId: "incident_resolution_check" }]
+    },
+    {
+      intent: "incident_active",
+      matches: [
+        { keywords: ["battery"], templateId: "iphone_battery_below_80" },
+        { keywords: ["sync", "synchron", "tablet", "docking", "dock", "connection"], templateId: "safe_tablet_sync_issue" },
+        { keywords: ["outlook", "calendar", "mail"], templateId: "outlook_email_calendar_support" },
+        { keywords: ["adobe", "acrobat", "reader"], templateId: "adobe_acrobat_reader_access_update" },
+        { keywords: ["issue", "problem", "not working", "error", "fail", "broken", "sound"], templateId: "incident_follow_up" }
+      ]
+    },
+    {
+      intent: "request_user_action",
+      matches: [
+        { keywords: ["sim", "card"], templateId: "sim_card_management" },
+        { keywords: ["printer"], templateId: "local_printer_request" },
+        { keywords: ["personal device", "byod", "mdm"], templateId: "personal_device_mdm_byd_removal" },
+        { keywords: ["other it equipment", "equipment"], templateId: "other_it_equipment_request" },
+        { keywords: ["details", "clarify", "confirm", "share"], templateId: "generic_ticket_follow_up" }
+      ]
+    },
+    {
+      intent: "generic",
+      matches: [{ keywords: ["request", "ticket", "follow up"], templateId: "generic_ticket_follow_up" }]
+    }
+  ];
+  var WORK_NOTE_RULES = {
+    loss_or_theft: "ticket_updated",
+    validation_approval: "ticket_updated",
+    asset_recovery: "waiting_for_feedback",
+    appointment: "appointment_proposed",
+    request_delivery: "device_delivered",
+    account_access: "user_contacted",
+    incident_resolution_check: "waiting_for_feedback",
+    incident_active: "user_contacted",
+    request_user_action: "ticket_updated",
+    generic: "ticket_updated"
+  };
+  var TYPE_BY_TABLE = {
+    incident: "INC",
+    sc_req_item: "RITM",
+    sc_task: "SCTASK",
+    sc_request: "RITM"
+  };
+  var TYPE_BY_PREFIX = [
+    { prefix: "INC", type: "INC" },
+    { prefix: "RITM", type: "RITM" },
+    { prefix: "SCTASK", type: "SCTASK" },
+    { prefix: "TASK", type: "SCTASK" },
+    { prefix: "REQ", type: "RITM" }
+  ];
+  function tokenize(text) {
+    return normalizeText(text).split(/[^a-z0-9]+/i).map((segment) => segment.trim()).filter(Boolean);
+  }
+  function buildSearchText(ticket = {}, metadata = {}) {
+    return normalizeText(
+      [
+        ticket.type,
+        ticket.table,
+        ticket.tableLabel,
+        ticket.shortDescription,
+        ticket.description,
+        ticket.ticketNumber,
+        ticket.recordNumber,
+        ticket.configurationItem,
+        metadata.shortDescription,
+        metadata.description
+      ].filter(Boolean).map((entry) => cleanText(entry)).join(" ")
+    );
+  }
+  function scoreKeywords(text, keywords = []) {
+    if (!text) return 0;
+    return keywords.reduce((score, keyword) => {
+      const needle = normalizeText(keyword);
+      if (!needle) return score;
+      return text.includes(needle) ? score + Math.max(1, needle.split(" ").length) : score;
+    }, 0);
+  }
+  function inferTicketType(ticket = {}, text = "") {
+    const table = normalizeText(ticket.table);
+    if (TYPE_BY_TABLE[table]) return TYPE_BY_TABLE[table];
+    const number = normalizeText(ticket.ticketNumber || ticket.recordNumber);
+    const prefixMatch = TYPE_BY_PREFIX.find(({ prefix }) => number.startsWith(prefix.toLowerCase()));
+    if (prefixMatch) return prefixMatch.type;
+    const explicitType = normalizeText(ticket.type);
+    if (["inc", "incident"].includes(explicitType)) return "INC";
+    if (["ritm", "request item"].includes(explicitType)) return "RITM";
+    if (["sc_task", "sctask", "task"].includes(explicitType)) return "SCTASK";
+    if (text.includes("lost") || text.includes("stolen")) return "RITM";
+    if (text.includes("delivery") || text.includes("handover") || text.includes("appointment")) return "SCTASK";
+    return "INC";
+  }
+  function resolveBestIntent(text, ticketType, metadata = {}) {
+    if (!text) {
+      return {
+        intent: "generic",
+        confidence: 0
+      };
+    }
+    const scores = TYPE_KEYWORDS.map((rule) => {
+      const baseScore = scoreKeywords(text, rule.keywords);
+      const typeBoost = ticketType === "INC" && rule.type === "incident_active" ? 2 : 0;
+      const taskBoost = ticketType === "SCTASK" && ["request_delivery", "appointment", "request_user_action"].includes(rule.type) ? 1 : 0;
+      const requestBoost = ticketType === "RITM" && ["request_delivery", "request_user_action", "validation_approval", "asset_recovery"].includes(rule.type) ? 1 : 0;
+      return {
+        type: rule.type,
+        score: baseScore + typeBoost + taskBoost + requestBoost,
+        keywords: rule.keywords
+      };
+    }).sort((left, right) => right.score - left.score);
+    const best = scores[0] || { type: "generic", score: 0 };
+    const genericFallback = metadata.forceGeneric ? "generic" : best.type;
+    if (!best.score) {
+      return {
+        intent: ticketType === "INC" ? "incident_active" : ticketType === "SCTASK" ? "request_delivery" : "generic",
+        confidence: 0
+      };
+    }
+    return {
+      intent: genericFallback,
+      confidence: best.score
+    };
+  }
+  function detectContext(ticket = {}, metadata = {}) {
+    const text = buildSearchText(ticket, metadata);
+    const ticketType = inferTicketType(ticket, text);
+    const { intent, confidence } = resolveBestIntent(text, ticketType, metadata);
+    return {
+      ticketType,
+      intent,
+      confidence,
+      text,
+      tokens: tokenize(text),
+      table: cleanText(ticket.table),
+      shortDescription: cleanText(ticket.shortDescription),
+      description: cleanText(ticket.description),
+      dueDate: cleanText(ticket.dueDate)
+    };
+  }
+  function findTemplateById(templates = [], templateId = "") {
+    return templates.find((template) => template.id === templateId) || null;
+  }
+  function matchRuleTemplate(text, rules = [], templates = []) {
+    let bestTemplateId = "";
+    let bestScore = 0;
+    rules.forEach((rule) => {
+      const score = scoreKeywords(text, rule.keywords);
+      if (score > bestScore) {
+        bestScore = score;
+        bestTemplateId = rule.templateId;
+      }
+    });
+    if (!bestTemplateId && templates.length) {
+      bestTemplateId = templates[0].id;
+    }
+    return { templateId: bestTemplateId, score: bestScore };
+  }
+  function selectEmailTemplate(templates = [], ticket = {}, metadata = {}) {
+    const context = detectContext(ticket, metadata);
+    const rules = EMAIL_RULES.find((rule) => rule.intent === context.intent)?.matches || EMAIL_RULES.find((rule) => rule.intent === "generic")?.matches || EMAIL_RULES[EMAIL_RULES.length - 1].matches;
+    const { templateId } = matchRuleTemplate(context.text, rules, templates);
+    const template = findTemplateById(templates, templateId) || templates[0] || null;
+    return {
+      context,
+      template,
+      templateId: template?.id || "",
+      intent: context.intent,
+      ticketType: context.ticketType
+    };
+  }
+  function selectWorkNoteTemplate(templates = [], ticket = {}, metadata = {}) {
+    const context = detectContext(ticket, metadata);
+    const templateId = WORK_NOTE_RULES[context.intent] || WORK_NOTE_RULES.generic;
+    const template = findTemplateById(templates, templateId) || templates[0] || null;
+    return {
+      context,
+      template,
+      templateId: template?.id || "",
+      intent: context.intent,
+      ticketType: context.ticketType
+    };
+  }
+  function generateWorkNotes(ticket = {}, metadata = {}) {
+    const context = detectContext(ticket, metadata);
+    const today = formatToday(metadata.language || "en");
+    const userName = cleanText(ticket.user?.fullName || ticket.user?.email || "the user");
+    const ticketNumber = cleanText(ticket.ticketNumber || ticket.recordNumber);
+    const shortDescription = cleanText(ticket.shortDescription);
+    const dueDate = cleanText(ticket.dueDate);
+    const officeLabel = cleanText(ticket.officeLabel);
+    const officeRoom = cleanText(ticket.officeRoom);
+    switch (context.intent) {
+      case "incident_active":
+        return `${today} - User reported ${shortDescription || "an active technical issue"}. Follow-up requested to confirm whether the issue persists. Current status: under investigation.`;
+      case "incident_resolution_check":
+        return `${today} - Follow-up completed with ${userName} regarding ${ticketNumber}. Awaiting confirmation to close once resolution is validated.`;
+      case "request_delivery":
+        return `${today} - Device prepared for ${userName}. Delivery or handover remains pending scheduling. Current status: ready for coordination.`;
+      case "loss_or_theft":
+        return `${today} - User reported equipment as lost or stolen. Awaiting confirmation to proceed with the next action.`;
+      case "account_access":
+        return `${today} - Access issue reviewed for ${ticketNumber}. Awaiting confirmation of the failure point or successful access restoration.`;
+      case "appointment":
+        return `${today} - Appointment to be arranged with ${userName}${officeLabel ? ` at ${officeLabel}${officeRoom ? ` ${officeRoom}` : ""}` : ""}. Pending user availability.`;
+      case "validation_approval":
+        return `${today} - Request under validation for ${ticketNumber}. Awaiting review outcome before proceeding.`;
+      case "asset_recovery":
+        return `${today} - Recovery of equipment scheduled before ${dueDate || "the requested date"}. Awaiting user availability.`;
+      case "request_user_action":
+        return `${today} - Additional user input required for ${ticketNumber}. Awaiting confirmation to proceed.`;
+      default:
+        return `${today} - Ticket reviewed for ${ticketNumber}. Current summary: ${shortDescription || "No additional details available."}`;
+    }
+  }
+
   // Assistant/templates/renderer.js
   function finalizeTemplateText(value) {
     return String(value || "").replace(/\r\n/g, "\n").replace(/[ \t]+\n/g, "\n").replace(/\n{3,}/g, "\n\n").replace(/[ \t]{2,}/g, " ").replace(/\s+([,.;:!?])/g, "$1").trim();
@@ -1895,7 +2259,8 @@
       agent_name: cleanText(context?.agentName) || "IT Support",
       today: formatToday(settings?.defaultLanguage),
       short_description: cleanText(context?.shortDescription),
-      configuration_item: cleanText(context?.configurationItem)
+      configuration_item: cleanText(context?.configurationItem),
+      due_date: cleanText(context?.dueDate)
     };
   }
   function replacePlaceholders(value, placeholders) {
@@ -2343,7 +2708,7 @@ ${body}`) : body;
               name="tpl:${escapeHtml(category)}:${escapeHtml(template.id)}:body"
             >${escapeHtml(template.body || "")}</textarea>
           </div>
-          <div class="sn-assistant-template-card__hint">Empty values fall back to the built-in default. Placeholders: {{user_name}}, {{user_email}}, {{ticket_number}}, {{record_number}}, {{table_name}}, {{office_name}}, {{office_room}}, {{office_label}}, {{agent_name}}, {{today}}, {{short_description}}, {{configuration_item}}</div>
+          <div class="sn-assistant-template-card__hint">Empty values fall back to the built-in default. Placeholders: {{user_name}}, {{user_email}}, {{ticket_number}}, {{record_number}}, {{table_name}}, {{office_name}}, {{office_room}}, {{office_label}}, {{agent_name}}, {{today}}, {{short_description}}, {{configuration_item}}, {{due_date}}</div>
         </div>
       `
     ).join("");
@@ -2494,7 +2859,7 @@ ${body}`) : body;
             <div class="sn-assistant-row">
               <div class="sn-assistant-panel__heading" style="font-size:14px;">Template manager</div>
             </div>
-            <div class="sn-assistant-note">The email template marked as Selected is the one used by the floating button. You can also rename that button above.</div>
+            <div class="sn-assistant-note">The assistant automatically recommends the template used by the floating button based on the current ticket. You can still refine the catalog and rename that button above.</div>
             <div class="sn-assistant-tabs">${categoryTabs}</div>
             <div class="sn-assistant-template-list">${renderTemplateCards(
       activeCategory,
@@ -3294,21 +3659,37 @@ ${body}`) : body;
       }
     });
   }
-  function ensureTemplateSelection(state, settings) {
+  function selectSmartTemplateForCategory(state, settings, requestedCategory = state.ui.activeCategory) {
     const groups = getTemplateGroups(settings);
     const categories = getCategories();
-    let activeCategory = state.ui.activeCategory;
-    if (!groups[activeCategory]?.length) {
-      activeCategory = categories.find((category) => groups[category.id]?.length)?.id || categories[0]?.id || "email";
-      setActiveCategory(state, activeCategory);
+    const fallbackCategory = categories.find((category) => groups[category.id]?.length)?.id || categories[0]?.id || "email";
+    const activeCategory = groups[requestedCategory]?.length ? requestedCategory : fallbackCategory;
+    const ticketContext = detectContext(state.context || {});
+    let selectedTemplate = null;
+    let selectedTemplateId = "";
+    if (activeCategory === "work_note") {
+      const selection = selectWorkNoteTemplate(groups.work_note || [], state.context || {}, ticketContext);
+      selectedTemplate = selection.template;
+      selectedTemplateId = selection.templateId;
+    } else if (activeCategory === "internal") {
+      const templates2 = groups.internal || [];
+      selectedTemplate = templates2[0] || null;
+      selectedTemplateId = selectedTemplate?.id || "";
+    } else {
+      const selection = selectEmailTemplate(groups.email || [], state.context || {}, ticketContext);
+      selectedTemplate = selection.template;
+      selectedTemplateId = selection.templateId;
+    }
+    if (!selectedTemplateId) {
+      selectedTemplateId = getFirstTemplateId(activeCategory, settings);
     }
     const templates = groups[activeCategory] || [];
-    let selectedTemplateId = getSelectedTemplate(state, activeCategory);
     if (!templates.some((template) => template.id === selectedTemplateId)) {
       selectedTemplateId = getFirstTemplateId(activeCategory, settings);
-      setSelectedTemplate(state, activeCategory, selectedTemplateId);
     }
-    const selectedTemplate = templates.find((template) => template.id === selectedTemplateId) || null;
+    setActiveCategory(state, activeCategory);
+    setSelectedTemplate(state, activeCategory, selectedTemplateId);
+    selectedTemplate = templates.find((template) => template.id === selectedTemplateId) || selectedTemplate || null;
     return {
       groups,
       categories,
@@ -3318,29 +3699,51 @@ ${body}`) : body;
       selectedTemplate
     };
   }
+  function ensureTemplateSelection(state, settings) {
+    return selectSmartTemplateForCategory(state, settings, state.ui.activeCategory);
+  }
   function resolveTemplateSelection(state, settings, requestedCategory = state.ui.activeCategory) {
     if (requestedCategory === state.ui.activeCategory) {
       return ensureTemplateSelection(state, settings);
     }
-    const groups = getTemplateGroups(settings);
-    const categories = getCategories();
-    const fallbackCategory = categories.find((category) => groups[category.id]?.length)?.id || categories[0]?.id || "email";
-    const activeCategory = groups[requestedCategory]?.length ? requestedCategory : fallbackCategory;
-    const templates = groups[activeCategory] || [];
-    let selectedTemplateId = getSelectedTemplate(state, activeCategory);
-    if (!templates.some((template) => template.id === selectedTemplateId)) {
-      selectedTemplateId = getFirstTemplateId(activeCategory, settings);
-      setSelectedTemplate(state, activeCategory, selectedTemplateId);
+    return selectSmartTemplateForCategory(state, settings, requestedCategory);
+  }
+  function buildAutomaticWorkNote(context, settings) {
+    return generateWorkNotes(
+      {
+        table: context.table,
+        ticketNumber: context.ticketNumber,
+        recordNumber: context.recordNumber,
+        shortDescription: context.shortDescription,
+        description: context.description,
+        dueDate: context.dueDate,
+        configurationItem: context.configurationItem,
+        officeLabel: settings?.officeLabel || "",
+        officeRoom: settings?.officeRoom || "",
+        user: context.user
+      },
+      {
+        language: settings?.defaultLanguage || "en"
+      }
+    );
+  }
+  function logGeneratedArtifacts(renderedTemplate, context, settings, logger) {
+    if (!renderedTemplate || renderedTemplate.category !== "email") {
+      return;
     }
-    const selectedTemplate = templates.find((template) => template.id === selectedTemplateId) || null;
-    return {
-      groups,
-      categories,
-      activeCategory,
-      templates,
-      selectedTemplateId,
-      selectedTemplate
-    };
+    const commentResult = insertEmailComment(renderedTemplate, context);
+    if (!commentResult.ok) {
+      logger.warn("email comment could not be written", {
+        templateId: renderedTemplate?.id || ""
+      });
+    }
+    const workNote = buildAutomaticWorkNote(context, settings);
+    const workNoteResult = insertWorkNote(workNote, context);
+    if (!workNoteResult.ok) {
+      logger.warn("work note could not be written", {
+        templateId: renderedTemplate?.id || ""
+      });
+    }
   }
   function applyDraftFieldChange(state, name, value) {
     const draft = cloneSettings(ensureSettingsDraft(state));
@@ -3424,14 +3827,7 @@ ${body}`) : body;
       if (state.settings.toggles.autoCopyToClipboard) {
         await copyToClipboard(renderedTemplate.clipboardText, state.host.document);
       }
-      if (state.settings.toggles.autoLogEmailToComments) {
-        const commentResult = insertEmailComment(renderedTemplate, state.context);
-        if (!commentResult.ok) {
-          logger.warn("email comment could not be written", {
-            templateId: selection.selectedTemplateId
-          });
-        }
-      }
+      logGeneratedArtifacts(renderedTemplate, state.context, getEffectiveSettings(), logger);
       const result = openDraft(renderedTemplate);
       if (!result.ok) {
         throw new Error("Draft could not be opened");
@@ -3519,14 +3915,7 @@ ${body}`) : body;
             throw new Error("Clipboard copy failed");
           }
           logger.info("template rendered successfully", { templateId: selection.selectedTemplateId });
-          if (state.settings.toggles.autoLogEmailToComments) {
-            const commentResult = insertEmailComment(renderedTemplate, state.context);
-            if (!commentResult.ok) {
-              logger.warn("email comment could not be written", {
-                templateId: selection.selectedTemplateId
-              });
-            }
-          }
+          logGeneratedArtifacts(renderedTemplate, state.context, getEffectiveSettings(), logger);
           if (state.settings.toggles.autoOpenDraft && renderedTemplate.category === "email") {
             const result = openDraft(renderedTemplate);
             if (!result.ok) {
