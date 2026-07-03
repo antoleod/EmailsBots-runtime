@@ -6849,6 +6849,168 @@
     onboarding: "sn-assistant-onboarding"
   };
 
+  // Assistant/ui/layout.js
+  var SAFE_MARGIN = 10;
+  var GAP = 12;
+  function getViewportRect(ownerWindow) {
+    const width = Math.max(0, ownerWindow?.innerWidth || 0);
+    const height = Math.max(0, ownerWindow?.innerHeight || 0);
+    return {
+      left: SAFE_MARGIN,
+      top: SAFE_MARGIN,
+      right: Math.max(SAFE_MARGIN, width - SAFE_MARGIN),
+      bottom: Math.max(SAFE_MARGIN, height - SAFE_MARGIN),
+      width: Math.max(0, width - SAFE_MARGIN * 2),
+      height: Math.max(0, height - SAFE_MARGIN * 2)
+    };
+  }
+  function intersects(a, b) {
+    return !(a.right <= b.left || a.left >= b.right || a.bottom <= b.top || a.top >= b.bottom);
+  }
+  function normalizeRect(rect = {}) {
+    return {
+      left: Number(rect.left || 0),
+      top: Number(rect.top || 0),
+      right: Number(rect.right || rect.left || 0),
+      bottom: Number(rect.bottom || rect.top || 0),
+      width: Number(rect.width || Math.max(0, (rect.right || 0) - (rect.left || 0))),
+      height: Number(rect.height || Math.max(0, (rect.bottom || 0) - (rect.top || 0)))
+    };
+  }
+  function clampRectToViewport(rect, viewport) {
+    const width = Math.min(rect.width, viewport.width);
+    const height = Math.min(rect.height, viewport.height);
+    const left = clamp(rect.left, viewport.left, Math.max(viewport.left, viewport.right - width));
+    const top = clamp(rect.top, viewport.top, Math.max(viewport.top, viewport.bottom - height));
+    return {
+      left,
+      top,
+      width,
+      height,
+      right: left + width,
+      bottom: top + height
+    };
+  }
+  function sanitizeFloatingSurface(node, { safeMargin = SAFE_MARGIN, avoidRects = [] } = {}) {
+    if (!node) return null;
+    const ownerWindow = node.ownerDocument?.defaultView || window;
+    const viewport = getViewportRect(ownerWindow);
+    const rect = normalizeRect(node.getBoundingClientRect());
+    if (!rect.width || !rect.height) return rect;
+    const clamped = clampRectToViewport(rect, viewport);
+    node.style.left = `${clamped.left}px`;
+    node.style.top = `${clamped.top}px`;
+    node.style.right = "auto";
+    node.style.bottom = "auto";
+    return resolveCollision(node, { viewport, avoidRects, safeMargin });
+  }
+  function resolveCollision(node, { viewport, avoidRects = [], safeMargin = SAFE_MARGIN } = {}) {
+    if (!node) return null;
+    const ownerWindow = node.ownerDocument?.defaultView || window;
+    const vp = viewport || getViewportRect(ownerWindow);
+    const current = normalizeRect(node.getBoundingClientRect());
+    if (!current.width || !current.height) return current;
+    const overlaps = [...avoidRects].map(normalizeRect).filter((rect) => rect.width && rect.height);
+    if (!overlaps.some((rect) => intersects(current, rect))) {
+      return current;
+    }
+    const candidates = [];
+    const width = Math.min(current.width, vp.width);
+    const height = Math.min(current.height, vp.height);
+    const anchor = overlaps[0] || current;
+    candidates.push({ left: anchor.left - width - GAP, top: anchor.top });
+    candidates.push({ left: anchor.right + GAP, top: anchor.top });
+    candidates.push({ left: anchor.left, top: anchor.bottom + GAP });
+    candidates.push({ left: anchor.left, top: anchor.top - height - GAP });
+    for (const candidate of candidates) {
+      const next = clampRectToViewport({ ...candidate, width, height }, vp);
+      if (!overlaps.some((rect) => intersects(next, rect))) {
+        node.style.left = `${next.left}px`;
+        node.style.top = `${next.top}px`;
+        node.style.right = "auto";
+        node.style.bottom = "auto";
+        return next;
+      }
+    }
+    const stacked = clampRectToViewport({
+      left: vp.left,
+      top: Math.max(vp.top, anchor.bottom + GAP),
+      width,
+      height
+    }, vp);
+    node.style.left = `${stacked.left}px`;
+    node.style.top = `${stacked.top}px`;
+    node.style.right = "auto";
+    node.style.bottom = "auto";
+    return stacked;
+  }
+  function positionSecondarySurface(node, anchorNode, options = {}) {
+    if (!node || !anchorNode) return null;
+    const ownerWindow = node.ownerDocument?.defaultView || window;
+    const viewport = getViewportRect(ownerWindow);
+    const anchor = normalizeRect(anchorNode.getBoundingClientRect());
+    const current = normalizeRect(node.getBoundingClientRect());
+    const width = Math.min(current.width || node.offsetWidth || 0, viewport.width);
+    const height = Math.min(current.height || node.offsetHeight || 0, viewport.height);
+    if (!width || !height) return current;
+    const spaceLeft = anchor.left - viewport.left - GAP;
+    const spaceRight = viewport.right - anchor.right - GAP;
+    const spaceBelow = viewport.bottom - anchor.bottom - GAP;
+    const spaceAbove = anchor.top - viewport.top - GAP;
+    const candidates = [];
+    if (spaceLeft >= width) candidates.push({ left: anchor.left - width - GAP, top: anchor.top });
+    if (spaceRight >= width) candidates.push({ left: anchor.right + GAP, top: anchor.top });
+    if (spaceBelow >= height) candidates.push({ left: anchor.left, top: anchor.bottom + GAP });
+    if (spaceAbove >= height) candidates.push({ left: anchor.left, top: anchor.top - height - GAP });
+    candidates.push({ left: viewport.left, top: viewport.top });
+    const avoidRects = [anchor, ...options.avoidRects || []];
+    for (const candidate of candidates) {
+      const next = clampRectToViewport({ ...candidate, width, height }, viewport);
+      if (!avoidRects.some((rect) => intersects(next, normalizeRect(rect)))) {
+        node.style.left = `${next.left}px`;
+        node.style.top = `${next.top}px`;
+        node.style.right = "auto";
+        node.style.bottom = "auto";
+        return next;
+      }
+    }
+    const fallback = clampRectToViewport({ left: viewport.left, top: viewport.top, width, height }, viewport);
+    node.style.left = `${fallback.left}px`;
+    node.style.top = `${fallback.top}px`;
+    node.style.right = "auto";
+    node.style.bottom = "auto";
+    return fallback;
+  }
+  function repositionSecondarySurfaces(hostDocument, anchorNode, options = {}) {
+    if (!hostDocument || !anchorNode) return;
+    const nodes = Array.from(hostDocument.querySelectorAll([
+      "#sn-assistant-work-notes .sn-assistant-panel",
+      "#sn-assistant-user-info .sn-assistant-panel",
+      "#sn-assistant-user-tickets .sn-assistant-panel",
+      "#sn-assistant-find-ci .sn-assistant-panel",
+      "#sn-ep-links-panel .sn-ep-links__panel"
+    ].join(", ")));
+    const anchorRect = normalizeRect(anchorNode.getBoundingClientRect());
+    const viewport = getViewportRect(anchorNode.ownerDocument?.defaultView || window);
+    const usedRects = [anchorRect];
+    nodes.forEach((node) => {
+      const positioned = positionSecondarySurface(node, anchorNode, {
+        avoidRects: usedRects,
+        ...options
+      });
+      if (positioned) usedRects.push(positioned);
+    });
+    const dialogs = Array.from(hostDocument.querySelectorAll("#sn-assistant-settings .sn-assistant-modal__dialog, #sn-assistant-pdf-selector .sn-assistant-modal__dialog"));
+    dialogs.forEach((dialog) => {
+      const rect = normalizeRect(dialog.getBoundingClientRect());
+      const clamped = clampRectToViewport(rect, viewport);
+      dialog.style.maxWidth = `calc(100vw - ${SAFE_MARGIN * 2}px)`;
+      dialog.style.maxHeight = `calc(100dvh - ${SAFE_MARGIN * 2}px)`;
+      dialog.style.left = `${clamped.left}px`;
+      dialog.style.top = `${clamped.top}px`;
+    });
+  }
+
   // Assistant/core/state/selectors.js
   function getHeaderCounts(state) {
     return state?.ui?.headerCounts || { inc: 0, task: 0, loading: false, ready: false, error: false, recordKey: "", fetchedAt: 0, lastNotifiedInc: 0, lastNotifiedTask: 0 };
@@ -6982,6 +7144,7 @@
       shell.style.transform = "translateY(-50%)";
     }
     shell.classList.toggle("sn-ep--left", edge === "left");
+    sanitizeFloatingSurface(shell);
   }
   function makePanelDraggable(root, state) {
     if (root.dataset.snEpDragBound === "true") return;
@@ -7044,6 +7207,8 @@
           shell.style.left = "";
           shell.style.right = "";
           shell.classList.toggle("sn-ep--left", newEdge === "left");
+          sanitizeFloatingSurface(shell);
+          repositionSecondarySurfaces(root.ownerDocument, shell);
         }
       }
       drag = null;
@@ -7498,6 +7663,7 @@
     bindLauncher(root, state, handlers);
     applyEdgePanelPosition(root, state);
     makePanelDraggable(root, state);
+    repositionSecondarySurfaces(hostDocument, root.querySelector(".sn-ep"));
     return root;
   }
   function removeLauncher(hostDocument) {
@@ -7514,12 +7680,16 @@
   function resolveDefaultPosition(node, defaultPosition) {
     return typeof defaultPosition === "function" ? defaultPosition(node) : defaultPosition;
   }
-  function makeDraggable({ node, handleSelector, state, positionKey, defaultPosition }) {
+  function makeDraggable({ node, handleSelector, state, positionKey, defaultPosition, onPositionChange }) {
     if (!node) return;
     const ownerWindow = node.ownerDocument.defaultView || window;
     const storedPosition = state.ui[positionKey];
     const fallbackPosition = resolveDefaultPosition(node, defaultPosition);
     applyPosition(node, storedPosition || fallbackPosition);
+    const sanitized = sanitizeFloatingSurface(node);
+    if (sanitized) {
+      state.ui[positionKey] = { left: sanitized.left, top: sanitized.top };
+    }
     if (node.dataset.snAssistantDragBound === "true") return;
     node.dataset.snAssistantDragBound = "true";
     let dragState = null;
@@ -7544,10 +7714,14 @@
       );
       state.ui[positionKey] = { left: nextLeft, top: nextTop };
       applyPosition(node, state.ui[positionKey]);
+      const sanitized2 = sanitizeFloatingSurface(node);
+      if (sanitized2) state.ui[positionKey] = { left: sanitized2.left, top: sanitized2.top };
+      onPositionChange?.();
     };
     const onPointerUp = () => {
       if (dragState?.moved) {
         suppressClickUntil = Date.now() + 120;
+        onPositionChange?.();
       }
       dragState = null;
       ownerWindow.removeEventListener("pointermove", onPointerMove);
@@ -9259,8 +9433,11 @@ ${body}`) : body;
       handleSelector: '[data-drag-handle="panel"]',
       state,
       positionKey: "panelPosition",
-      defaultPosition: getDefaultPanelPosition
+      defaultPosition: getDefaultPanelPosition,
+      onPositionChange: () => repositionSecondarySurfaces(hostDocument, root)
     });
+    sanitizeFloatingSurface(root);
+    repositionSecondarySurfaces(hostDocument, root);
     return root;
   }
   function removePanel(hostDocument) {
@@ -9289,6 +9466,7 @@ ${configurationItemLine}`, action, closing, SIGN_OFF].filter(Boolean).join("\n\n
   var makeEmail = (id, label, subject, context, action, closing = CLOSINGS.reply) => ({ id, category: "email", label, target: "comments", subject, body: buildEmail({ context, action, closing }) });
   var makeDeliveryEmail = (id, label, subject, context, intro, action, closing = CLOSINGS.confirm, deviceLine = "Device: {{device_label}}", configurationItemLine = "PI / Configuration item: {{configuration_item}}") => ({ id, category: "email", label, target: "comments", subject, body: buildDeliveryEmailBody({ context, intro, action, closing, deviceLine, configurationItemLine }) });
   var makeReminderEmail = (base, subject, body, workNote = "") => withReminder(base, { subject, body, workNote });
+  var aliasTemplate = (template, overrides = {}) => ({ ...template, ...overrides });
   var catalog = [
     { id: "generic_follow_up", label: "Generic Follow-up", subject: "{{ticket_number}} - Request follow-up", context: aboutTicket("your request"), action: "We are following up on your request and will continue to review it. Please let us know if there is any additional detail that could help us proceed." },
     { id: "generic_reminder", label: "Generic Reminder", subject: "{{ticket_number}} - Friendly reminder", context: reminderAbout("your request"), action: "We would appreciate your feedback so that we can continue with the next step or close the request if everything is complete.", reminder: true },
@@ -9328,7 +9506,61 @@ ${configurationItemLine}`, action, closing, SIGN_OFF].filter(Boolean).join("\n\n
       closing: item.closing || CLOSINGS.reply
     });
     return makeReminderEmail(base, reminderSubject, reminderBody);
-  });
+  }).concat([
+    aliasTemplate(
+      makeDeliveryEmail(
+        "smartphone_delivery_initial",
+        "Smartphone Delivery - Initial",
+        "{{ticket_number}} - Smartphone delivery scheduling",
+        aboutTicket("the delivery of your corporate smartphone"),
+        "Your new device has been prepared and tested, and is now ready for handover.\n\nDevice: {{model}}\nPI / Configuration item: {{configuration_item}}",
+        "As part of the iPhone Replacement Plan 2026, we kindly ask you to confirm your availability so that we can arrange the delivery and proceed with the closure of the request. You may come to the IT Welcome Desk at your convenience, or we can arrange a visit to your office if you prefer.",
+        CLOSINGS.confirm,
+        "Device: {{model}}",
+        "PI / Configuration item: {{configuration_item}}"
+      ),
+      {
+        reminderBody: buildDeliveryEmailBody({
+          context: "This is a kind reminder regarding ticket {{ticket_number}} concerning the delivery of your corporate smartphone.",
+          intro: "Your device has been prepared and tested, and is ready for handover.",
+          deviceLine: "Device: {{model}}",
+          action: "As part of the iPhone Replacement Plan 2026, we would appreciate it if you could let us know your availability so that we can arrange the delivery and close the request. You may come to the IT Welcome Desk at your convenience, or we can arrange a visit to your office if you prefer.",
+          closing: CLOSINGS.confirm
+        }),
+        reminderSubject: "{{ticket_number}} - Smartphone delivery scheduling (reminder)"
+      }
+    ),
+    aliasTemplate(
+      makeReminderEmail(
+        makeDeliveryEmail(
+          "smartphone_delivery_reminder",
+          "Smartphone Delivery Reminder",
+          "{{ticket_number}} - Smartphone delivery reminder",
+          aboutTicket("the delivery of your corporate smartphone"),
+          "Your device has been prepared and tested, and is ready for handover.",
+          "We kindly ask you to share your availability so that we can arrange the handover at the IT Welcome Desk ({{office_location}}). If you have any timing constraints, please let us know so that we can assist you accordingly.",
+          CLOSINGS.confirm,
+          "Device: {{model}}",
+          "PI / Configuration item: {{configuration_item}}"
+        ),
+        "{{ticket_number}} - Smartphone delivery reminder",
+        buildDeliveryEmailBody({
+          context: reminderAbout("the delivery of your corporate smartphone"),
+          intro: "Your device has been prepared and tested, and is ready for handover.",
+          deviceLine: "Device: {{model}}",
+          action: "We kindly ask you to share your availability so that we can arrange the handover at the IT Welcome Desk ({{office_location}}). If you have any timing constraints, please let us know so that we can assist you accordingly.",
+          closing: CLOSINGS.confirm
+        })
+      )
+    ),
+    aliasTemplate(makeEmail("smartphone_delivery_schedule", "Schedule Smartphone Delivery", "{{ticket_number}} - Smartphone delivery scheduling", aboutTicket("the delivery of your corporate smartphone"), "Your device has been prepared and tested, and is ready for handover. Please confirm your availability so that we can arrange the delivery.", CLOSINGS.confirm)),
+    aliasTemplate(makeEmail("vpn_connectivity_issue", "VPN Connectivity Issue", "{{ticket_number}} - VPN connectivity follow-up", aboutTicket("the reported VPN connectivity issue"), "Could you please confirm whether the connection remains unstable, and share the approximate time of the last disconnection along with your network environment (office or remote)?")),
+    aliasTemplate(makeEmail("wifi_connectivity_issue", "WiFi Connectivity Issue", "{{ticket_number}} - Wi-Fi connectivity follow-up", aboutTicket("the reported Wi-Fi connectivity issue"), "Could you please confirm whether the issue is still occurring, and whether it affects only your corporate laptop or other devices as well? Your building or floor location would also help us investigate.")),
+    aliasTemplate(makeEmail("incident_hardware_issue", "Incident - Hardware Issue", "{{ticket_number}} - Hardware issue follow-up", aboutTicket("the hardware issue reported on your {{device_type}}"), "Could you please confirm whether the issue is still present, and describe any visible symptoms, such as physical damage, screen problems, or intermittent failures?")),
+    aliasTemplate(makeEmail("account_access_support", "Account Access Support", "{{ticket_number}} - Account access follow-up", aboutTicket("your account access request"), "Could you please confirm whether access is still failing, and share the exact step or error message encountered, if possible?")),
+    aliasTemplate(makeEmail("request_software_install", "Request Software Install", "{{ticket_number}} - Software installation request", aboutTicket("your software request for {{software_name}}"), "Could you please confirm the required version and the target device so that we can proceed with the installation?")),
+    aliasTemplate(makeEmail("loss_or_theft_follow_up", "Loss or Theft Follow-Up", "{{ticket_number}} - Reported loss or theft follow-up", aboutTicket("the reported loss or theft of IT equipment"), "We kindly ask you to confirm whether a formal report has already been filed, and whether you require any supporting documentation or further assistance."))
+  ]);
 
   // Assistant/templates/appointmentTemplates.js
   var APPOINTMENT_TEMPLATES = [
@@ -11581,6 +11813,7 @@ ${value}` : value;
       handleSelector: '[data-drag-handle="work-notes"]',
       state,
       positionKey: "workNotesPosition",
+      onPositionChange: () => repositionSecondarySurfaces(hostDocument, root),
       defaultPosition: (node) => {
         const ownerWindow = node.ownerDocument.defaultView || window;
         return {
@@ -11589,6 +11822,8 @@ ${value}` : value;
         };
       }
     });
+    sanitizeFloatingSurface(root);
+    repositionSecondarySurfaces(hostDocument, root);
     return root;
   }
   function removeWorkNotesPanel(hostDocument) {
@@ -13217,11 +13452,14 @@ Extension: +32 2 123 456"
       handleSelector: '[data-drag-handle="user-info"]',
       state,
       positionKey: "userInfoPosition",
+      onPositionChange: () => repositionSecondarySurfaces(hostDocument, root),
       defaultPosition: (node) => {
         const ownerWindow = node.ownerDocument.defaultView || window;
         return { left: Math.max(16, (ownerWindow.innerWidth - 460) / 2), top: Math.max(80, (ownerWindow.innerHeight - 560) / 2) };
       }
     });
+    sanitizeFloatingSurface(root);
+    repositionSecondarySurfaces(hostDocument, root);
     return root;
   }
   function removeUserInfoPanel(hostDocument) {
@@ -13428,6 +13666,7 @@ Extension: +32 2 123 456"
       handleSelector: '[data-drag-handle="user-tickets"]',
       state,
       positionKey: "userTicketsPosition",
+      onPositionChange: () => repositionSecondarySurfaces(hostDocument, root),
       defaultPosition: (node) => {
         const ownerWindow = node.ownerDocument.defaultView || window;
         const w = Math.min(600, ownerWindow.innerWidth - 32);
@@ -13436,6 +13675,8 @@ Extension: +32 2 123 456"
         return { left, top };
       }
     });
+    sanitizeFloatingSurface(root);
+    repositionSecondarySurfaces(hostDocument, root);
     return root;
   }
   function removeUserTicketsPanel(hostDocument) {
@@ -13670,6 +13911,7 @@ Extension: +32 2 123 456"
       handleSelector: '[data-drag-handle="find-ci"]',
       state,
       positionKey: "findCiPosition",
+      onPositionChange: () => repositionSecondarySurfaces(hostDocument, root),
       defaultPosition: (node) => {
         const ownerWindow = node.ownerDocument.defaultView || window;
         const left = Math.max(16, (ownerWindow.innerWidth - 420) / 2);
@@ -13677,6 +13919,8 @@ Extension: +32 2 123 456"
         return { left, top };
       }
     });
+    sanitizeFloatingSurface(root);
+    repositionSecondarySurfaces(hostDocument, root);
     return root;
   }
   function removeFindCiPanel(hostDocument) {
@@ -15352,6 +15596,34 @@ Extension: +32 2 123 456"
   .sn-assistant-panel {
     width: calc(100vw - 24px);
     max-height: calc(100vh - 32px);
+  }
+}
+
+.sn-assistant-worknotes-panel,
+.sn-assistant-panel--find-ci,
+.sn-assistant-user-tickets-root,
+.sn-assistant-user-info-root,
+.sn-ep-links__panel,
+.sn-assistant-modal__dialog {
+  max-width: calc(100vw - 20px);
+  max-height: calc(100vh - 20px);
+  overflow: auto;
+}
+
+@media (max-width: 700px) {
+  .sn-assistant-worknotes-panel,
+  .sn-assistant-panel--find-ci,
+  .sn-assistant-user-tickets-root,
+  .sn-assistant-user-info-root,
+  .sn-ep-links__panel {
+    width: calc(100vw - 20px);
+    left: 10px !important;
+    right: 10px !important;
+  }
+
+  .sn-assistant-panel__body,
+  .sn-assistant-modal__body {
+    max-height: calc(100vh - 120px);
   }
 }
 
@@ -39460,6 +39732,9 @@ ${text2}` : text2;
       ownerWindow.addEventListener("click", onOutside, true);
     }, 0);
     (hostDocument.body || hostDocument.documentElement).appendChild(panel);
+    sanitizeFloatingSurface(panel);
+    const anchor = hostDocument.getElementById("sn-assistant-launcher")?.querySelector(".sn-ep");
+    if (anchor) repositionSecondarySurfaces(hostDocument, anchor);
   }
   function openEpLinks({ hostDocument, context, settings, logger, showToast: showToast2 }) {
     const linkCtx = buildEpLinkContext(context);
