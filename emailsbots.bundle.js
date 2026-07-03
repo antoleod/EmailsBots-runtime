@@ -7590,6 +7590,9 @@
       root.id = UI_IDS.launcher;
       root.setAttribute(ROOT_ATTRIBUTE, ROOT_VALUE);
       (hostDocument.body || hostDocument.documentElement).appendChild(root);
+      console.info("[SN Assistant][Init] EP panel created");
+    } else {
+      console.info("[SN Assistant][Init] existing EP panel restored");
     }
     forceVisibleSurface(root);
     const ownerWin = hostDocument.defaultView || window;
@@ -7773,88 +7776,6 @@
       },
       true
     );
-  }
-
-  // Assistant/ui/preview.js
-  function renderMeta(label, value) {
-    return `
-    <div class="sn-assistant-preview__meta-block">
-      <span class="sn-assistant-preview__meta-label">${escapeHtml(label)}</span>
-      <div class="sn-assistant-preview__meta-value">${escapeHtml(value || "Not available")}</div>
-    </div>
-  `;
-  }
-  function hasUnfilledPlaceholders(text2) {
-    return /\{\{[^}]+\}\}/.test(String(text2 || ""));
-  }
-  function renderBodyWithHighlights(text2) {
-    const escaped = escapeHtml(String(text2 || ""));
-    return escaped.replace(
-      /\{\{([^}]+)\}\}/g,
-      (_, name) => `<mark class="sn-assistant-preview__unfilled">{{${escapeHtml(name)}}}</mark>`
-    );
-  }
-  function renderPreview(renderedTemplate) {
-    if (!renderedTemplate) {
-      return `<div class="sn-assistant-preview__empty">Select a template to generate a preview.</div>`;
-    }
-    const bodyText = renderedTemplate.body || "";
-    const subjectText = renderedTemplate.subject || "";
-    const hasWarnings = hasUnfilledPlaceholders(bodyText) || hasUnfilledPlaceholders(subjectText);
-    const metaBlocks = renderedTemplate.category === "email" ? `
-          <div class="sn-assistant-preview__meta">
-            ${renderMeta("Recipient", renderedTemplate.recipient || "Not detected")}
-            ${renderMeta("Subject", renderedTemplate.subject)}
-          </div>
-        ` : `
-          <div class="sn-assistant-preview__meta">
-            ${renderMeta("Target", renderedTemplate.target || "work_notes")}
-            ${renderMeta("Template", renderedTemplate.label)}
-          </div>
-        `;
-    const warningBanner = hasWarnings ? `<div class="sn-assistant-preview__warn-banner">Some placeholders were not resolved \u2014 review highlighted text before sending.</div>` : "";
-    return `
-    ${metaBlocks}
-    ${warningBanner}
-    <div class="sn-assistant-preview__body">${renderBodyWithHighlights(bodyText)}</div>
-  `;
-  }
-
-  // Assistant/ui/templates.js
-  function renderTemplateSelector({
-    categories,
-    activeCategory,
-    templates,
-    selectedTemplateId
-  }) {
-    const tabs = categories.map(
-      (category) => `
-        <button
-          type="button"
-          class="sn-assistant-tab ${category.id === activeCategory ? "is-active" : ""}"
-          data-action="select-category"
-          data-category="${escapeHtml(category.id)}"
-        >
-          ${escapeHtml(category.label)}
-        </button>
-      `
-    ).join("");
-    const options = templates.map(
-      (template) => `
-        <option value="${escapeHtml(template.id)}" ${template.id === selectedTemplateId ? "selected" : ""}>
-          ${escapeHtml(template.label)}
-        </option>
-      `
-    ).join("");
-    return `
-    <div class="sn-assistant-tabs">${tabs}</div>
-    <div class="sn-assistant-field">
-      <span class="sn-assistant-field__label">Template</span>
-      <select class="sn-assistant-select" data-action="select-template">
-        ${options}
-      </select>
-    </div>
-  `;
   }
 
   // Assistant/templates/intelligence.js
@@ -9118,25 +9039,6 @@
     const cleanSubject = cleanText(subject).replace(new RegExp(`\\b${ticket}\\b`, "ig"), "").replace(/\bSCTASK\d{4,}\b/ig, "").replace(/\s*-\s*/g, " - ").replace(/\s{2,}/g, " ").replace(/^-\s*|\s*-\s*$/g, "").trim();
     return cleanSubject ? `${ticket} - ${cleanSubject}` : ticket;
   }
-  function getMissingFields(template, { context, settings }) {
-    if (!template) return [];
-    const placeholders = buildPlaceholderMap({ context, settings });
-    const missingFields = [];
-    const criticalFields = {
-      user_name: "User name",
-      user_email: "User email",
-      requested_for: "Recipient name",
-      ticket_number: "Ticket number",
-      configuration_item: "Configuration item"
-    };
-    Object.entries(criticalFields).forEach(([fieldKey, fieldLabel]) => {
-      const value = placeholders[fieldKey];
-      if (!value || String(value).trim() === "") {
-        missingFields.push(fieldLabel);
-      }
-    });
-    return missingFields;
-  }
   function renderTemplate(template, { context, settings }) {
     if (!template) return null;
     const placeholders = buildPlaceholderMap({ context, settings });
@@ -9180,288 +9082,6 @@ ${body}`) : body;
   }
 
   // Assistant/ui/panel.js
-  function getDefaultPanelPosition(node) {
-    const ownerWindow = node.ownerDocument.defaultView || window;
-    const width = Math.min(404, Math.max(320, ownerWindow.innerWidth - 24));
-    const height = Math.min(560, Math.max(320, ownerWindow.innerHeight - 24));
-    return {
-      left: Math.max(12, Math.round((ownerWindow.innerWidth - width) / 2)),
-      top: Math.max(12, Math.round((ownerWindow.innerHeight - height) / 2))
-    };
-  }
-  function renderCmdbCiLookup(context, state) {
-    const currentValue = state.ui.ciLookupQuery || context.configurationItem || context.configurationItemDisplay || context.configurationItemValue || "";
-    const results = Array.isArray(state.ui.ciLookupResults) ? state.ui.ciLookupResults : [];
-    const showResults = state.ui.ciLookupOpen || state.ui.ciLookupLoading || results.length > 0;
-    const resultMarkup = state.ui.ciLookupLoading ? '<div class="sn-assistant-note sn-assistant-note--empty">Searching Configuration Item...</div>' : results.length ? results.map(
-      (item) => `
-              <button
-                type="button"
-                class="sn-assistant-ci-lookup__result"
-                data-action="select-ci-suggestion"
-                data-ci-sys-id="${escapeHtml(item.sys_id || "")}"
-                data-ci-name="${escapeHtml(item.name || "")}"
-              >
-                <strong>${escapeHtml(item.name || "")}</strong>
-                <span>${escapeHtml(item.sys_id || "")}</span>
-              </button>
-            `
-    ).join("") : '<div class="sn-assistant-note sn-assistant-note--empty">No Configuration Item found.</div>';
-    return `
-    <div class="sn-assistant-ci-lookup">
-      <div class="sn-assistant-field">
-        <span class="sn-assistant-field__label">Configuration Item</span>
-        <input
-          class="sn-assistant-input sn-assistant-ci-lookup__input"
-          name="ciLookupQuery"
-          value="${escapeHtml(currentValue)}"
-          placeholder="Search Configuration Item"
-          autocomplete="off"
-        />
-      </div>
-      ${showResults ? `<div class="sn-assistant-ci-lookup__results">${resultMarkup}</div>` : ""}
-    </div>
-  `;
-  }
-  function isDraftCapableTemplate(renderedTemplate) {
-    return ["email", "appointment"].includes(String(renderedTemplate?.category || "").trim());
-  }
-  function isResolutionTemplate(renderedTemplate) {
-    return String(renderedTemplate?.category || "").trim() === "close_note";
-  }
-  function isResolved(stateText) {
-    const s = String(stateText || "").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
-    return s === "resolved" || s === "resolu" || s.includes("closed") || s.includes("ferme");
-  }
-  function renderManualDraftFallback(state) {
-    const composeUrl = String(state.ui.lastDraftComposeUrl || "");
-    if (!composeUrl) return "";
-    return `
-    <div class="sn-assistant-note sn-assistant-note--warning">
-      <div>Draft created, but automatic opening was blocked or unavailable.</div>
-      <div class="sn-assistant-row" style="margin-top:8px;">
-        <a class="sn-assistant-button sn-assistant-button--secondary" href="${escapeHtml(composeUrl)}" target="_blank" rel="noopener noreferrer">Open draft manually</a>
-      </div>
-    </div>
-  `;
-  }
-  function bindPanel(root, handlers) {
-    if (root.dataset.snAssistantBound === "true") return;
-    root.dataset.snAssistantBound = "true";
-    root.addEventListener("click", (event) => {
-      const button = event.target.closest("[data-action]");
-      if (!button) return;
-      const { action, category } = button.dataset;
-      if (action === "close-panel") handlers.onClosePanel();
-      if (action === "force-close") handlers.onForceClose();
-      if (action === "toggle-collapse") handlers.onToggleCollapse();
-      if (action === "open-settings") handlers.onOpenSettings();
-      if (action === "select-category") handlers.onSelectCategory(category);
-      if (action === "select-suggested-template") handlers.onSelectTemplate(button.dataset.templateId || "");
-      if (action === "copy-template") handlers.onCopy();
-      if (action === "insert-template") handlers.onInsert();
-      if (action === "open-draft") handlers.onDraft();
-      if (action === "run-pi-search") handlers.onPiSearch();
-      if (action === "suggest-resolved") handlers.onSuggestResolved?.();
-      if (action === "select-ci-suggestion") {
-        handlers.onSelectCiSuggestion(button.dataset.ciSysId || "", button.dataset.ciName || "");
-      }
-      if (action === "open-my-assigned-list") openMyAssignedList(button.dataset.filter || "incident");
-    });
-    root.addEventListener("change", (event) => {
-      const select = event.target.closest('select[data-action="select-template"]');
-      if (!select) return;
-      handlers.onSelectTemplate(select.value);
-    });
-    root.addEventListener("focusin", (event) => {
-      const field = event.target.closest('[name="ciLookupQuery"]');
-      if (!field) return;
-      handlers.onCiLookupOpen();
-    });
-    root.addEventListener("blur", (event) => {
-      const field = event.target.closest('[name="ciLookupQuery"]');
-      if (!field) return;
-      handlers.onCiLookupBlur();
-    }, true);
-    root.addEventListener("input", (event) => {
-      const field = event.target.closest('[name="ciLookupQuery"]');
-      if (!field) return;
-      handlers.onCiLookupChange(field.value);
-    });
-    root.addEventListener("toggle", (event) => {
-      const details = event.target.closest(".sn-assistant-preview-collapsible");
-      if (!details) return;
-      handlers.onPreviewToggle?.(details.open);
-    });
-  }
-  function ensurePanel({
-    hostDocument,
-    state,
-    context,
-    categories,
-    templates,
-    selectedTemplateId,
-    emailSuggestions = [],
-    showEmailSuggestions = false,
-    renderedTemplate,
-    handlers
-  }) {
-    let root = hostDocument.getElementById(UI_IDS.panel);
-    if (!root) {
-      root = hostDocument.createElement("div");
-      root.id = UI_IDS.panel;
-      root.className = "sn-assistant-floating";
-      root.setAttribute(ROOT_ATTRIBUTE, ROOT_VALUE);
-      (hostDocument.body || hostDocument.documentElement).appendChild(root);
-    }
-    forceVisibleSurface(root);
-    const collapsed = state.ui.panelCollapsed;
-    const pending = Object.values(state.pendingActions).some(Boolean);
-    const showPiSearch = context.table === "sc_task";
-    const headerCounts = getHeaderCounts(state);
-    const incDisabled = headerCounts.ready && headerCounts.inc === 0;
-    const taskDisabled = headerCounts.ready && headerCounts.task === 0;
-    const headerCountsMarkup = `
-    <div id="assistant-header-counts" class="sn-assistant-header-counts" aria-label="Open tickets for current user">
-      <button type="button" id="inc-badge"
-        class="sn-assistant-header-counts__badge sn-assistant-header-counts__badge--inc"
-        data-action="open-my-assigned-list"
-        data-filter="incident"
-        data-loading="${headerCounts.loading ? "true" : "false"}"
-        data-ready="${headerCounts.ready ? "true" : "false"}"
-        ${incDisabled ? 'disabled aria-disabled="true"' : ""}
-        title="${incDisabled ? "No open incidents assigned to me" : "Show my open incidents"}">
-        INC ${headerCounts.loading && !headerCounts.ready ? "\u2026" : headerCounts.error ? "!" : escapeHtml(String(headerCounts.inc))}
-      </button>
-      <button type="button" id="task-badge"
-        class="sn-assistant-header-counts__badge sn-assistant-header-counts__badge--task"
-        data-action="open-my-assigned-list"
-        data-filter="sc_task"
-        data-loading="${headerCounts.loading ? "true" : "false"}"
-        data-ready="${headerCounts.ready ? "true" : "false"}"
-        ${taskDisabled ? 'disabled aria-disabled="true"' : ""}
-        title="${taskDisabled ? "No open SCTASKs assigned to me" : "Show my open SCTASKs"}">
-        TASK ${headerCounts.loading && !headerCounts.ready ? "\u2026" : headerCounts.error ? "!" : escapeHtml(String(headerCounts.task))}
-      </button>
-    </div>
-  `;
-    const draftButtonLabel = state.settings?.draftButtonLabel || "Prepare Draft";
-    const selectorMarkup = renderTemplateSelector({
-      categories,
-      activeCategory: state.ui.activeCategory,
-      templates,
-      selectedTemplateId
-    });
-    const ciLookupMarkup = renderCmdbCiLookup(context, state);
-    const suggestionsMarkup = showEmailSuggestions && emailSuggestions.length ? `
-          <div class="sn-assistant-suggestions">
-            <div class="sn-assistant-suggestions__title">Short description is unclear. Choose a template:</div>
-            <div class="sn-assistant-suggestions__list">
-              ${emailSuggestions.map(
-      (suggestion) => `
-                    <button
-                      type="button"
-                      class="sn-assistant-suggestions__item ${suggestion.templateId === selectedTemplateId ? "is-selected" : ""}"
-                      data-action="select-suggested-template"
-                      data-template-id="${escapeHtml(suggestion.templateId)}"
-                    >
-                      <div class="sn-assistant-suggestions__label">${escapeHtml(suggestion.label || suggestion.templateId)}</div>
-                      <div class="sn-assistant-suggestions__subject">${escapeHtml(suggestion.subject || "No subject")}</div>
-                      <div class="sn-assistant-suggestions__body">${escapeHtml((suggestion.body || "").slice(0, 180))}</div>
-                    </button>
-                  `
-    ).join("")}
-            </div>
-          </div>
-        ` : "";
-    const markup = `
-    <div class="sn-assistant-panel">
-      <div class="sn-assistant-panel__header" data-drag-handle="panel">
-        <div class="sn-assistant-panel__title">
-          <span class="sn-assistant-panel__eyebrow">SN Assistant</span>
-          <span class="sn-assistant-panel__version">${escapeHtml(`v${VERSION}`)}</span>
-          <div class="sn-assistant-panel__generator">
-            <span class="sn-assistant-panel__generator-icon" aria-hidden="true">\u{1F916}</span>
-            <span class="sn-assistant-panel__generator-label">Bot EU</span>
-          </div>
-          ${headerCountsMarkup}
-          <div class="sn-assistant-panel__subheading">${escapeHtml(context.ticketNumber || context.tableLabel || "Record")} \xB7 ${escapeHtml(context.tableLabel)} | ${escapeHtml(
-      context.recordKey
-    )}</div>
-        </div>
-        <div class="sn-assistant-panel__header-actions">
-          <button type="button" class="sn-assistant-mini-button" data-action="toggle-collapse" title="Collapse">
-            ${collapsed ? "+" : "-"}
-          </button>
-          <button type="button" class="sn-assistant-mini-button" data-action="open-settings" title="Settings">
-            <span class="sn-assistant-icon sn-assistant-icon--gear" aria-hidden="true"></span>
-          </button>
-          <button type="button" class="sn-assistant-mini-button sn-assistant-mini-button--danger" data-action="force-close" title="Shut down the assistant" aria-label="Shut down the assistant">
-            <span class="sn-assistant-icon sn-assistant-icon--power" aria-hidden="true"></span>
-          </button>
-          <button type="button" class="sn-assistant-mini-button" data-action="close-panel" title="Close panel" aria-label="Close panel">
-            <span class="sn-assistant-icon sn-assistant-icon--close" aria-hidden="true"></span>
-          </button>
-        </div>
-      </div>
-      ${collapsed ? "" : `
-            <div class="sn-assistant-panel__body">
-              <div class="sn-assistant-chip-row">
-                <span class="sn-assistant-chip"><strong>Office</strong> ${escapeHtml(state.settings.officeName)}</span>
-                <span class="sn-assistant-chip sn-assistant-chip--person">
-                  <span class="sn-assistant-chip__icon" aria-hidden="true">\u{1F464}</span>
-                  <strong>User</strong> ${escapeHtml(context.user.fullName || context.user.email || "Not detected")}
-                </span>
-              </div>
-              ${ciLookupMarkup}
-              ${selectorMarkup}
-              ${suggestionsMarkup}
-              ${renderManualDraftFallback(state)}
-              ${showPiSearch ? '<div class="sn-assistant-row"><button type="button" class="sn-assistant-button sn-assistant-button--secondary" data-action="run-pi-search">Find PI</button></div>' : ""}
-              <details class="sn-assistant-preview-collapsible" ${!state.ui.previewExpanded ? "" : "open"}>
-                <summary class="sn-assistant-preview__summary">\u{1F441}\uFE0F Preview</summary>
-                <div class="sn-assistant-preview">${renderPreview(renderedTemplate)}</div>
-              </details>
-              ${renderedTemplate && isDraftCapableTemplate(renderedTemplate) ? (() => {
-      const missingFields = getMissingFields(renderedTemplate, { context, settings: state.settings });
-      return missingFields.length > 0 ? `<div class="sn-assistant-missing-fields">
-                             ${missingFields.map(
-        (field) => `<span class="sn-assistant-missing-field-chip">\u26A0\uFE0F ${escapeHtml(field)} not found</span>`
-      ).join("")}
-                           </div>` : "";
-    })() : ""}
-              ${isResolutionTemplate(renderedTemplate) && context.state && !isResolved(context.state) ? `
-              <div class="sn-assistant-note sn-assistant-note--info">
-                Close note template selected.
-                <button type="button" class="sn-assistant-button sn-assistant-button--secondary sn-assistant-button--compact" data-action="suggest-resolved" style="margin-left:8px;" ${pending ? "disabled" : ""}>Mark Resolved</button>
-              </div>
-              ` : ""}
-              <div class="sn-assistant-panel__footer">
-                <button type="button" class="sn-assistant-button sn-assistant-button--secondary" data-action="copy-template" ${pending ? "disabled" : ""}>Copy</button>
-                <button type="button" class="sn-assistant-button sn-assistant-button--secondary" data-action="insert-template" ${pending || !renderedTemplate ? "disabled" : ""}>Insert</button>
-                <button type="button" class="sn-assistant-button sn-assistant-button--primary" data-action="open-draft" ${pending || !isDraftCapableTemplate(renderedTemplate) ? "disabled" : ""}>${escapeHtml(draftButtonLabel)}</button>
-              </div>
-            </div>
-          `}
-    </div>
-  `;
-    if (root.__snAssistantMarkup !== markup) {
-      root.innerHTML = markup;
-      root.__snAssistantMarkup = markup;
-    }
-    bindPanel(root, handlers);
-    makeDraggable({
-      node: root,
-      handleSelector: '[data-drag-handle="panel"]',
-      state,
-      positionKey: "panelPosition",
-      defaultPosition: getDefaultPanelPosition,
-      onPositionChange: () => repositionSecondarySurfaces(hostDocument, root)
-    });
-    sanitizeFloatingSurface(root);
-    repositionSecondarySurfaces(hostDocument, root);
-    return root;
-  }
   function removePanel(hostDocument) {
     const root = hostDocument?.getElementById(UI_IDS.panel);
     if (root) root.remove();
@@ -40762,7 +40382,6 @@ ${text2}` : text2;
         state.ui.settingsMandatory = false;
         const passiveReason = ["heartbeat", "window-focus", "visibility-change"].includes(reason);
         const launcherMissing = !hostDocument.getElementById(UI_IDS.launcher);
-        const panelMissing = !hostDocument.getElementById(UI_IDS.panel);
         const settingsMissing = !hostDocument.getElementById(UI_IDS.settings);
         const workNotesMissing = !hostDocument.getElementById(UI_IDS.workNotes);
         if (!assistantSuppressed && (launcherMissing || contextDidChange || isLauncherRefreshReason(reason))) {
@@ -40795,27 +40414,9 @@ ${text2}` : text2;
           selection = renderedSelection.selection;
           emailSuggestions = renderedSelection.emailSuggestions;
         }
-        if (state.ui.panelOpen && (panelMissing || contextDidChange || isPanelRefreshReason(reason))) {
-          ensurePanel({
-            hostDocument,
-            state,
-            context: state.context,
-            categories: selection.categories,
-            templates: selection.templates,
-            selectedTemplateId: selection.selectedTemplateId,
-            emailSuggestions,
-            showEmailSuggestions: selection.activeCategory === "email" && selection.emailSelection?.ambiguous,
-            renderedTemplate,
-            handlers
-          });
-          const currentRecordKey2 = state.context?.recordKey || "";
-          const cachedRecordKey = state.ui.headerCounts?.recordKey || "";
-          const headerCountsStale = !state.ui.headerCounts?.ready || cachedRecordKey !== currentRecordKey2;
-          if (currentRecordKey2 && headerCountsStale && !state.ui.headerCounts?.loading) {
-            handlers.onRefreshHeaderCounts?.().catch(() => {
-            });
-          }
-        } else if (!state.ui.panelOpen) {
+        if (state.ui.panelOpen) {
+          removePanel(hostDocument);
+        } else {
           removePanel(hostDocument);
         }
         if (state.ui.workNotesOpen && (workNotesMissing || contextDidChange || isWorkNotesRefreshReason(reason))) {
@@ -41078,13 +40679,18 @@ ${text2}` : text2;
 
   // Assistant/assistant.js
   var GLOBAL_KEY = "__SN_ASSISTANT__";
-  var ACTIVE_KEY = "__SN_ASSISTANT_ACTIVE__";
+  var ACTIVE_KEY = "__SN_EP_ASSISTANT_ACTIVE__";
   function cleanStaleAssistantDom(rootWindow, logger) {
     const hostDocument = rootWindow?.document;
     if (!hostDocument) return;
+    hostDocument.querySelectorAll(".sn-assistant-panel").forEach((node) => {
+      node.remove();
+      logger?.info?.("[SN Assistant][Init] old panel removed");
+    });
     const staleSelectors = [
       "#sn-assistant-launcher",
       "#sn-assistant-panel",
+      "#sn-ep-panel",
       "#sn-assistant-settings",
       "#sn-assistant-work-notes",
       "#sn-assistant-user-info",
@@ -41105,6 +40711,22 @@ ${text2}` : text2;
         }
       });
     });
+  }
+  function clearLegacyAssistantStorage(rootWindow) {
+    try {
+      const storage = rootWindow?.localStorage;
+      if (!storage) return;
+      const keysToRemove = [];
+      for (let i = 0; i < storage.length; i += 1) {
+        const key = storage.key(i);
+        if (!key) continue;
+        if (key === "sn_ep_pinned" || key.includes("sn-assistant-panel")) {
+          keysToRemove.push(key);
+        }
+      }
+      keysToRemove.forEach((key) => storage.removeItem(key));
+    } catch {
+    }
   }
   function restoreAssistantVisibility(instance, rootWindow, logger) {
     if (!instance?.state) return;
@@ -41147,6 +40769,7 @@ ${text2}` : text2;
     const globalStore = rootWindow[GLOBAL_KEY] = rootWindow[GLOBAL_KEY] || {};
     rootWindow[ACTIVE_KEY] = rootWindow[ACTIVE_KEY] || null;
     console.info("[SN Assistant][Init] init started");
+    clearLegacyAssistantStorage(rootWindow);
     if (globalStore.instance?.version === VERSION) {
       globalStore.instance.logger.info("existing panel found");
       cleanStaleAssistantDom(rootWindow, globalStore.instance.logger);
