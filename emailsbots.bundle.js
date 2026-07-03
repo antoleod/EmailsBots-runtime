@@ -6904,6 +6904,12 @@
     node.style.bottom = "auto";
     return resolveCollision(node, { viewport, avoidRects, safeMargin });
   }
+  function forceVisibleSurface(node) {
+    if (!node) return;
+    node.style.display = "block";
+    node.style.visibility = "visible";
+    node.style.opacity = "1";
+  }
   function resolveCollision(node, { viewport, avoidRects = [], safeMargin = SAFE_MARGIN } = {}) {
     if (!node) return null;
     const ownerWindow = node.ownerDocument?.defaultView || window;
@@ -7585,6 +7591,7 @@
       root.setAttribute(ROOT_ATTRIBUTE, ROOT_VALUE);
       (hostDocument.body || hostDocument.documentElement).appendChild(root);
     }
+    forceVisibleSurface(root);
     const ownerWin = hostDocument.defaultView || window;
     if (!state.ui.edgePanelPinned) {
       const restored = loadPinState(ownerWin);
@@ -9293,6 +9300,7 @@ ${body}`) : body;
       root.setAttribute(ROOT_ATTRIBUTE, ROOT_VALUE);
       (hostDocument.body || hostDocument.documentElement).appendChild(root);
     }
+    forceVisibleSurface(root);
     const collapsed = state.ui.panelCollapsed;
     const pending = Object.values(state.pendingActions).some(Boolean);
     const showPiSearch = context.table === "sc_task";
@@ -11613,6 +11621,7 @@ ${value}` : value;
       root.setAttribute(ROOT_ATTRIBUTE, ROOT_VALUE);
       (hostDocument.body || hostDocument.documentElement).appendChild(root);
     }
+    forceVisibleSurface(root);
     root.className = "sn-assistant-floating sn-assistant-worknotes-root";
     const model = buildWorkNoteModel(context, settings, state);
     const selectedTemplate = model.templates.find((template) => template.id === model.selectedTemplateId);
@@ -13378,6 +13387,7 @@ Extension: +32 2 123 456"
       root.setAttribute(ROOT_ATTRIBUTE, ROOT_VALUE);
       (hostDocument.body || hostDocument.documentElement).appendChild(root);
     }
+    forceVisibleSurface(root);
     root.className = "sn-assistant-floating sn-assistant-user-tickets-root";
     const data = state.ui.userInfoData || {};
     const loading = Boolean(state.ui.userInfoLoading);
@@ -13534,6 +13544,7 @@ Extension: +32 2 123 456"
       root.setAttribute(ROOT_ATTRIBUTE, ROOT_VALUE);
       (hostDocument.body || hostDocument.documentElement).appendChild(root);
     }
+    forceVisibleSurface(root);
     root.className = "sn-assistant-floating sn-assistant-user-tickets-root";
     const userName = context?.user?.fullName || context?.requestedFor || context?.caller || "Unknown user";
     const isLoading = Boolean(state.ui.userTicketsLoading);
@@ -13804,6 +13815,7 @@ Extension: +32 2 123 456"
       root.setAttribute(ROOT_ATTRIBUTE, ROOT_VALUE);
       (hostDocument.body || hostDocument.documentElement).appendChild(root);
     }
+    forceVisibleSurface(root);
     root.className = "sn-assistant-floating sn-assistant-find-ci-root";
     const isLoading = Boolean(state.ui.findCiLoading);
     const allResults = Array.isArray(state.ui.findCiResults) ? [...state.ui.findCiResults] : [];
@@ -39716,6 +39728,7 @@ ${text2}` : text2;
       </div>
     </div>
   `;
+    forceVisibleSurface(panel);
     panel.addEventListener("click", (event) => {
       if (event.target.closest('[data-action="ep-links-close"]')) {
         panel.remove();
@@ -41049,14 +41062,81 @@ ${text2}` : text2;
 
   // Assistant/assistant.js
   var GLOBAL_KEY = "__SN_ASSISTANT__";
+  var ACTIVE_KEY = "__SN_ASSISTANT_ACTIVE__";
+  function cleanStaleAssistantDom(rootWindow, logger) {
+    const hostDocument = rootWindow?.document;
+    if (!hostDocument) return;
+    const staleSelectors = [
+      "#sn-assistant-launcher",
+      "#sn-assistant-panel",
+      "#sn-assistant-settings",
+      "#sn-assistant-work-notes",
+      "#sn-assistant-user-info",
+      "#sn-assistant-user-tickets",
+      "#sn-assistant-find-ci",
+      "#sn-ep-links-panel",
+      "#sn-assistant-pdf-selector",
+      "#sn-assistant-onboarding",
+      "#sn-assistant-toasts"
+    ];
+    staleSelectors.forEach((selector) => {
+      hostDocument.querySelectorAll(selector).forEach((node) => {
+        const style = rootWindow.getComputedStyle?.(node);
+        const hidden = style && (style.display === "none" || style.visibility === "hidden" || Number(style.opacity || "1") === 0);
+        if (hidden || node.dataset?.snAssistantStale === "true") {
+          node.remove();
+          logger?.info?.("[SN Assistant][Init] stale panel removed", { selector });
+        }
+      });
+    });
+  }
+  function restoreAssistantVisibility(instance, rootWindow, logger) {
+    if (!instance?.state) return;
+    const { state } = instance;
+    state.ui.assistantHidden = false;
+    state.ui.settingsOpen = false;
+    state.ui.settingsMandatory = false;
+    state.ui.panelOpen = true;
+    state.ui.panelCollapsed = false;
+    const hostDocument = rootWindow?.document;
+    const rootIds = [
+      "sn-assistant-launcher",
+      "sn-assistant-panel",
+      "sn-assistant-work-notes",
+      "sn-assistant-user-info",
+      "sn-assistant-user-tickets",
+      "sn-assistant-find-ci",
+      "sn-ep-links-panel"
+    ];
+    rootIds.forEach((id) => {
+      const node = hostDocument?.getElementById(id);
+      if (!node) return;
+      node.style.display = "block";
+      node.style.visibility = "visible";
+      node.style.opacity = "1";
+      node.dataset.snAssistantStale = "false";
+    });
+    const settingsNode = hostDocument?.getElementById("sn-assistant-settings");
+    if (settingsNode) {
+      settingsNode.style.display = "block";
+      settingsNode.style.visibility = "visible";
+      settingsNode.style.opacity = "1";
+    }
+    logger?.info?.("[SN Assistant][Init] panel restored");
+  }
   function startAssistant() {
     initEprimeAutomation();
     initDapr2lAutomation();
     const rootWindow = getRootWindow();
     const globalStore = rootWindow[GLOBAL_KEY] = rootWindow[GLOBAL_KEY] || {};
+    rootWindow[ACTIVE_KEY] = rootWindow[ACTIVE_KEY] || null;
+    console.info("[SN Assistant][Init] init started");
     if (globalStore.instance?.version === VERSION) {
-      globalStore.instance.logger.info("loader already active");
+      globalStore.instance.logger.info("existing panel found");
+      cleanStaleAssistantDom(rootWindow, globalStore.instance.logger);
+      restoreAssistantVisibility(globalStore.instance, rootWindow, globalStore.instance.logger);
       globalStore.instance.bootstrap.scheduleRecovery("duplicate-loader", 0);
+      rootWindow[ACTIVE_KEY] = globalStore.instance;
       return globalStore.instance;
     }
     if (globalStore.instance?.destroy) {
@@ -41064,6 +41144,7 @@ ${text2}` : text2;
     }
     const logger = createLogger();
     logger.info("loader started", { version: VERSION });
+    cleanStaleAssistantDom(rootWindow, logger);
     const settings = loadSettings(rootWindow, logger);
     logger.info("settings loaded", { valid: hasRequiredSettings(settings) });
     const state = createState(settings);
@@ -41077,6 +41158,9 @@ ${text2}` : text2;
       if (globalStore.instance === instance) {
         delete globalStore.instance;
       }
+      if (rootWindow[ACTIVE_KEY] === instance) {
+        rootWindow[ACTIVE_KEY] = null;
+      }
     }
     const instance = {
       version: VERSION,
@@ -41086,6 +41170,8 @@ ${text2}` : text2;
       destroy
     };
     globalStore.instance = instance;
+    rootWindow[ACTIVE_KEY] = instance;
+    logger.info("[SN Assistant][Init] panel created");
     bootstrap.start();
     return instance;
   }
