@@ -5883,7 +5883,6 @@
         workNotesRecentPhrasesReset: false,
         findCiPdfSourceSysId: "",
         favoriteTemplates: null,
-        onboardingStep: 0,
         headerCounts: {
           inc: 0,
           task: 0,
@@ -5967,8 +5966,7 @@
     favoriteTemplates: `${STORAGE_PREFIX}favorite_templates_v1`,
     // Per Module 2 spec — kept on its own key (not inside settings) so it can be
     // shared with other browser-injected scripts that look for the same key.
-    userGroup: "snlc_user_group",
-    onboarding: `${STORAGE_PREFIX}onboarding_v1`
+    userGroup: "snlc_user_group"
   };
   var LEGACY_STORAGE_KEYS = ["sn_assistant_settings_v2"];
   var HIDEABLE_BUTTON_IDS = Object.freeze([
@@ -6562,26 +6560,6 @@
     }
     return normalised;
   }
-  var _onboardingSeenInMemory = false;
-  function hasSeenOnboarding(rootWindow) {
-    if (_onboardingSeenInMemory) return true;
-    const storage = getPersistentStorage(rootWindow);
-    if (!storage) return false;
-    try {
-      return storage.getItem(STORAGE_KEYS.onboarding) === "1";
-    } catch {
-      return false;
-    }
-  }
-  function markOnboardingSeen(rootWindow) {
-    _onboardingSeenInMemory = true;
-    const storage = getPersistentStorage(rootWindow);
-    if (!storage) return;
-    try {
-      storage.setItem(STORAGE_KEYS.onboarding, "1");
-    } catch {
-    }
-  }
 
   // Assistant/application/launcher/buttons.js
   var LAUNCHER_BUTTON_IDS = Object.freeze({
@@ -6845,8 +6823,7 @@
     findCi: "sn-assistant-find-ci",
     settingsImportInput: "sn-assistant-settings-import",
     toastViewport: "sn-assistant-toasts",
-    pdfSelector: "sn-assistant-pdf-selector",
-    onboarding: "sn-assistant-onboarding"
+    pdfSelector: "sn-assistant-pdf-selector"
   };
 
   // Assistant/ui/layout.js
@@ -6903,12 +6880,6 @@
     node.style.right = "auto";
     node.style.bottom = "auto";
     return resolveCollision(node, { viewport, avoidRects, safeMargin });
-  }
-  function forceVisibleSurface(node) {
-    if (!node) return;
-    node.style.display = "block";
-    node.style.visibility = "visible";
-    node.style.opacity = "1";
   }
   function resolveCollision(node, { viewport, avoidRects = [], safeMargin = SAFE_MARGIN } = {}) {
     if (!node) return null;
@@ -7023,7 +6994,7 @@
   }
 
   // Assistant/version.js
-  var VERSION = "V2.5";
+  var VERSION = "V2.8";
 
   // Assistant/ui/launcher.js
   var ICON = {
@@ -7078,7 +7049,7 @@
       [LAUNCHER_BUTTON_IDS.openSettings]: "sn-ep__action--settings",
       [LAUNCHER_BUTTON_IDS.openEpLinks]: "sn-ep__action--links",
       [LAUNCHER_BUTTON_IDS.userOpenTickets]: "sn-ep__action--user-tickets",
-      [LAUNCHER_BUTTON_IDS.userInfo]: "sn-ep__action--user-info",
+      [LAUNCHER_BUTTON_IDS.userInfo]: "sn-ep__action--user-tickets",
       [LAUNCHER_BUTTON_IDS.findCi]: "sn-ep__action--find-ci",
       [LAUNCHER_BUTTON_IDS.generateEmailDraft]: "sn-ep__action--draft",
       [LAUNCHER_BUTTON_IDS.generateCloseNotes]: "sn-ep__action--resolution",
@@ -7270,7 +7241,7 @@
     </button>
   `;
   }
-  function renderLauncherActions(rootWindow, context, draftLabel, calendarReady, hiddenButtons = [], buttonColors = {}, editMode = false, topWorkNoteTemplates = []) {
+  function renderLauncherActions(rootWindow, context, draftLabel, calendarReady, hiddenButtons = [], buttonColors = {}, editMode = false) {
     const order = loadAssistantButtonOrder(rootWindow);
     const hidden = Array.isArray(hiddenButtons) ? hiddenButtons : [];
     const colors = buttonColors && typeof buttonColors === "object" ? buttonColors : {};
@@ -7296,16 +7267,8 @@
         if (buttonId === LAUNCHER_BUTTON_IDS.generateEmailDraft || buttonId === LAUNCHER_BUTTON_IDS.generateCloseNotes || buttonId === LAUNCHER_BUTTON_IDS.generateWorkNotes || buttonId === LAUNCHER_BUTTON_IDS.generateAllNotes) return "";
         if (buttonId === LAUNCHER_BUTTON_IDS.openWorkNotes) {
           const workNotesBtn = renderLauncherButton(buttonId, { draftLabel, calendarReady, context, buttonColor: colors[buttonId] || "", editMode });
-          const boltBtn = `<button type="button" class="sn-ep__action sn-ep__action--mini-bolt sn-ep__action--work-notes" data-action="generate-menu-toggle" title="Quick write / generate" aria-haspopup="menu" aria-expanded="false"><span class="sn-ep__icon">${ICON.draft}</span></button>`;
-          const quickWriteItems = Array.isArray(topWorkNoteTemplates) && topWorkNoteTemplates.length ? [
-            `<div class="sn-ep__generate-section-label">Quick write</div>`,
-            ...topWorkNoteTemplates.map(
-              (t) => `<button type="button" class="sn-ep__generate-item sn-ep__generate-item--template" data-action="quick-write-work-note" data-template-id="${escapeHtml(t.id)}" title="${escapeHtml(t.label)}"><span class="sn-ep__icon">${ICON.notes}</span><span>${escapeHtml(t.label)}</span></button>`
-            ),
-            `<div class="sn-ep__generate-divider"></div>`,
-            `<div class="sn-ep__generate-section-label">AI generate</div>`
-          ].join("") : "";
-          const generateItems = [
+          const boltBtn = `<button type="button" class="sn-ep__action sn-ep__action--mini-bolt sn-ep__action--work-notes" data-action="generate-menu-toggle" title="Generate notes" aria-haspopup="menu" aria-expanded="false"><span class="sn-ep__icon">${ICON.draft}</span></button>`;
+          const menuItems = [
             { action: LAUNCHER_BUTTON_IDS.generateEmailDraft, icon: ICON.draft, label: "Generate Email Draft" },
             { action: LAUNCHER_BUTTON_IDS.generateCloseNotes, icon: ICON.notes, label: "Generate Close Notes" },
             { action: LAUNCHER_BUTTON_IDS.generateWorkNotes, icon: ICON.notes, label: "Generate Work Notes" },
@@ -7313,7 +7276,7 @@
           ].map(
             (item) => `<button type="button" class="sn-ep__generate-item" data-action="${escapeHtml(item.action)}" title="${escapeHtml(item.label)}"><span class="sn-ep__icon">${item.icon}</span><span>${escapeHtml(item.label)}</span></button>`
           ).join("");
-          return `<div class="sn-ep__action-row">${workNotesBtn}${boltBtn}</div><div class="sn-ep__generate-menu" data-generate-menu>${quickWriteItems}${generateItems}</div>`;
+          return `<div class="sn-ep__action-row">${workNotesBtn}${boltBtn}</div><div class="sn-ep__generate-menu" data-generate-menu>${menuItems}</div>`;
         }
         if (buttonId === LAUNCHER_BUTTON_IDS.quickDraft) {
           const draftBtn = renderLauncherButton(buttonId, {
@@ -7425,11 +7388,11 @@
           state.ui.edgePanelPinned = false;
           if (shell) {
             shell.removeAttribute("data-ep-pinned");
-            savePinState(ownerWindow, { pinned: false, lastOpenState: false, mode: "tab" });
+            savePinState(ownerWindow, { pinned: false, lastOpenState: true, mode: "icons" });
           }
         }
-        state.ui.edgePanelMode = "tab";
-        if (shell) shell.dataset.epMode = "tab";
+        state.ui.edgePanelMode = "icons";
+        if (shell) shell.dataset.epMode = "icons";
         return;
       }
       if (action === "ep-pin") {
@@ -7456,7 +7419,7 @@
         savePinState(ownerWindow, {
           pinned: state.ui.edgePanelPinned,
           lastOpenState: state.ui.edgePanelMode !== "tab",
-          mode: state.ui.edgePanelMode === "tab" ? "icons" : state.ui.edgePanelMode || "icons"
+          mode: state.ui.edgePanelMode || "tab"
         });
         handlers.onToggleEdgePanelPinned?.(state.ui.edgePanelPinned);
         return;
@@ -7497,7 +7460,7 @@
       if (action === LAUNCHER_BUTTON_IDS.generateCloseNotes) handlers.onGenerateCloseNotes?.();
       if (action === LAUNCHER_BUTTON_IDS.generateWorkNotes) handlers.onGenerateWorkNotes?.();
       if (action === LAUNCHER_BUTTON_IDS.generateAllNotes) handlers.onGenerateAllNotes?.();
-      if (action === "quick-write-work-note") handlers.onQuickWriteWorkNote?.(button.dataset.templateId || "");
+      if (action === "copy-ticket-summary") handlers.onCopyTicketSummary?.();
       if (action === "open-my-assigned-list") openMyAssignedList(button.dataset.filter || "incident");
     });
     root.addEventListener("keydown", (event) => {
@@ -7581,18 +7544,14 @@
       handlers.onSetButtonColor?.(buttonId, color);
     });
   }
-  function ensureLauncher({ hostDocument, state, context, handlers, topWorkNoteTemplates = [] }) {
+  function ensureLauncher({ hostDocument, state, context, handlers }) {
     let root = hostDocument.getElementById(UI_IDS.launcher);
     if (!root) {
       root = hostDocument.createElement("div");
       root.id = UI_IDS.launcher;
       root.setAttribute(ROOT_ATTRIBUTE, ROOT_VALUE);
       (hostDocument.body || hostDocument.documentElement).appendChild(root);
-      console.info("[SN Assistant][Init] EP panel created");
-    } else {
-      console.info("[SN Assistant][Init] existing EP panel restored");
     }
-    forceVisibleSurface(root);
     const ownerWin = hostDocument.defaultView || window;
     if (!state.ui.edgePanelPinned) {
       const restored = loadPinState(ownerWin);
@@ -7653,11 +7612,11 @@
         </div>
 
         <div class="sn-ep__actions">
-          ${renderLauncherActions(ownerWin, context, draftLabel, calendarReady, hiddenButtons, buttonColors, editMode, topWorkNoteTemplates)}
+          ${renderLauncherActions(ownerWin, context, draftLabel, calendarReady, hiddenButtons, buttonColors, editMode)}
         </div>
 
         <div class="sn-ep__footer">
-          <span class="sn-ep__version">${escapeHtml(`v${VERSION}`)}</span>
+          <span class="sn-ep__version">${escapeHtml(VERSION)}</span>
           <div class="sn-ep__footer-actions">
             <button type="button" class="sn-ep__icon-btn" data-action="open-settings" title="Settings">${ICON.settings}</button>
             <button type="button" class="sn-ep__icon-btn${iconsOnly ? " is-active" : ""}" data-action="ep-icons" aria-pressed="${iconsOnly ? "true" : "false"}" title="${iconsOnly ? "Show full labels" : "Show icons only"}">${ICON.iconsOnly}</button>
@@ -7688,24 +7647,12 @@
   function resolveDefaultPosition(node, defaultPosition) {
     return typeof defaultPosition === "function" ? defaultPosition(node) : defaultPosition;
   }
-  function isVisibleRect(node) {
-    const rect = node.getBoundingClientRect();
-    return rect.width > 0 && rect.height > 0;
-  }
   function makeDraggable({ node, handleSelector, state, positionKey, defaultPosition, onPositionChange }) {
     if (!node) return;
     const ownerWindow = node.ownerDocument.defaultView || window;
     const storedPosition = state.ui[positionKey];
     const fallbackPosition = resolveDefaultPosition(node, defaultPosition);
     applyPosition(node, storedPosition || fallbackPosition);
-    if (storedPosition && isVisibleRect(node)) {
-      const rect = node.getBoundingClientRect();
-      const isOffscreen = rect.right < 8 || rect.bottom < 8 || rect.left > ownerWindow.innerWidth - 8 || rect.top > ownerWindow.innerHeight - 8;
-      if (isOffscreen) {
-        state.ui[positionKey] = fallbackPosition;
-        applyPosition(node, fallbackPosition);
-      }
-    }
     const sanitized = sanitizeFloatingSurface(node);
     if (sanitized) {
       state.ui[positionKey] = { left: sanitized.left, top: sanitized.top };
@@ -7776,6 +7723,88 @@
     );
   }
 
+  // Assistant/ui/preview.js
+  function renderMeta(label, value) {
+    return `
+    <div class="sn-assistant-preview__meta-block">
+      <span class="sn-assistant-preview__meta-label">${escapeHtml(label)}</span>
+      <div class="sn-assistant-preview__meta-value">${escapeHtml(value || "Not available")}</div>
+    </div>
+  `;
+  }
+  function hasUnfilledPlaceholders(text2) {
+    return /\{\{[^}]+\}\}/.test(String(text2 || ""));
+  }
+  function renderBodyWithHighlights(text2) {
+    const escaped = escapeHtml(String(text2 || ""));
+    return escaped.replace(
+      /\{\{([^}]+)\}\}/g,
+      (_, name) => `<mark class="sn-assistant-preview__unfilled">{{${escapeHtml(name)}}}</mark>`
+    );
+  }
+  function renderPreview(renderedTemplate) {
+    if (!renderedTemplate) {
+      return `<div class="sn-assistant-preview__empty">Select a template to generate a preview.</div>`;
+    }
+    const bodyText = renderedTemplate.body || "";
+    const subjectText = renderedTemplate.subject || "";
+    const hasWarnings = hasUnfilledPlaceholders(bodyText) || hasUnfilledPlaceholders(subjectText);
+    const metaBlocks = renderedTemplate.category === "email" ? `
+          <div class="sn-assistant-preview__meta">
+            ${renderMeta("Recipient", renderedTemplate.recipient || "Not detected")}
+            ${renderMeta("Subject", renderedTemplate.subject)}
+          </div>
+        ` : `
+          <div class="sn-assistant-preview__meta">
+            ${renderMeta("Target", renderedTemplate.target || "work_notes")}
+            ${renderMeta("Template", renderedTemplate.label)}
+          </div>
+        `;
+    const warningBanner = hasWarnings ? `<div class="sn-assistant-preview__warn-banner">Some placeholders were not resolved \u2014 review highlighted text before sending.</div>` : "";
+    return `
+    ${metaBlocks}
+    ${warningBanner}
+    <div class="sn-assistant-preview__body">${renderBodyWithHighlights(bodyText)}</div>
+  `;
+  }
+
+  // Assistant/ui/templates.js
+  function renderTemplateSelector({
+    categories,
+    activeCategory,
+    templates,
+    selectedTemplateId
+  }) {
+    const tabs = categories.map(
+      (category) => `
+        <button
+          type="button"
+          class="sn-assistant-tab ${category.id === activeCategory ? "is-active" : ""}"
+          data-action="select-category"
+          data-category="${escapeHtml(category.id)}"
+        >
+          ${escapeHtml(category.label)}
+        </button>
+      `
+    ).join("");
+    const options = templates.map(
+      (template) => `
+        <option value="${escapeHtml(template.id)}" ${template.id === selectedTemplateId ? "selected" : ""}>
+          ${escapeHtml(template.label)}
+        </option>
+      `
+    ).join("");
+    return `
+    <div class="sn-assistant-tabs">${tabs}</div>
+    <div class="sn-assistant-field">
+      <span class="sn-assistant-field__label">Template</span>
+      <select class="sn-assistant-select" data-action="select-template">
+        ${options}
+      </select>
+    </div>
+  `;
+  }
+
   // Assistant/templates/intelligence.js
   var TYPE_KEYWORDS = [
     { type: "workspace_quality_check", keywords: ["workspace", "new workspace", "move", "desk move", "office move", "quality check"] },
@@ -7785,7 +7814,7 @@
     { type: "appointment", keywords: ["appointment", "visit", "schedule", "rendez-vous", "rdv", "intervention planned"] },
     { type: "request_delivery", keywords: ["delivery", "deliver", "handover", "prepare", "ready for delivery", "livraison"] },
     { type: "software_request", keywords: ["software", "application", "install", "installation", "license", "adobe", "sap", "teams", "outlook", "sharepoint", "web2print"] },
-    { type: "connectivity_issue", keywords: ["vpn", "wifi", "network", "connection", "connectivity", "drops", "sync", "cannot connect", "no connection", "wired", "ethernet", "disconnect", "disconnects"] },
+    { type: "connectivity_issue", keywords: ["vpn", "wifi", "network", "connection", "connectivity", "drops", "sync", "cannot connect", "no connection"] },
     { type: "hardware_issue", keywords: ["screen", "monitor", "keyboard", "webcam", "printer", "battery", "sim", "mouse", "dock", "audio", "laptop", "desktop", "tablet", "iphone", "ipad"] },
     { type: "account_access", keywords: ["access", "login", "password", "reset", "unlock", "permission", "shared mailbox", "mailbox", "sharepoint", "eu login", "authentication"] },
     { type: "incident_resolution_check", keywords: ["resolved", "resolution", "close", "closure", "closed", "completed", "follow up"] },
@@ -7838,7 +7867,7 @@
     workspace_quality_check: "close_note_confirmation_received",
     asset_recovery: "close_note_it_material_recovered",
     incident_resolution_check: "incident_closed_after_user_confirmation",
-    connectivity_issue: "closenote_connectivity_resolved",
+    connectivity_issue: "incident_closed_after_user_confirmation",
     hardware_issue: "incident_closed_after_user_confirmation",
     incident_active: "incident_resolution_smart",
     generic: "close_note_confirmation_received",
@@ -8126,8 +8155,7 @@
     if (hasAny(text2, ["deliver", "delivery", "livraison", "remise", "handover", "ready for delivery", "preparation", "prepare", "loan", "replacement"]) && hasAny(text2, ["laptop", "desktop", "smartphone", "phone", "mobile", "tablet", "ipad", "iphone", "device", "item", "hybrid"])) return "request_delivery";
     if (hasAny(text2, ["certificate"])) return "request_user_action";
     if (hasAny(text2, ["password", "reset", "unlock", "shared mailbox", "mailbox", "sharepoint", "eu login", "login", "authentication"]) || hasAny(text2, ["access"]) && !hasAny(text2, ["install", "installation", "software", "application", "update", "web2print", "adobe", "teams", "outlook", "calendar"])) return "account_access";
-    if (hasAny(text2, ["vpn", "wifi", "wi-fi", "network", "connection", "connectivity", "sync", "drops", "drop", "no connection", "cannot connect", "wired", "ethernet", "disconnect", "disconnects"])) return "connectivity_issue";
-    if (hasAny(text2, ["outlook", "calendar", "teams"]) && hasAny(text2, ["freeze", "frozen", "crash", "not responding", "scheduling assistant", "profile"])) return "incident_active";
+    if (hasAny(text2, ["vpn", "wifi", "wi-fi", "network", "connection", "connectivity", "sync", "drops", "drop", "no connection", "cannot connect"])) return "connectivity_issue";
     if (hasAny(text2, ["screen", "keyboard", "monitor", "webcam", "printer", "battery", "sim", "dock", "docking", "audio", "speaker"]) && hasAny(text2, ["broken", "not working", "not detected", "stuck", "flickering", "missing", "response"])) return "hardware_issue";
     if (hasAny(text2, ["install", "installation", "software", "application", "license", "licence", "update", "adobe", "web2print"]) || hasAny(text2, ["outlook", "calendar", "teams", "email", "sharepoint"]) && hasAny(text2, ["request", "access", "update", "support"])) return "software_request";
     if (hasAny(text2, ["signature"]) && hasAny(text2, ["email", "outlook", "mail"])) return "incident_active";
@@ -8350,12 +8378,6 @@
     if (/\bgpupdate\b|\bgroup policy\b|\bgpo\b/.test(rawText)) {
       templateId = "worknote_gpupdate_executed";
     }
-    if (/\boutlook\b.*\bprofile\b|\bprofile\b.*\boutlook\b|\bscheduling.?assistant\b|\bfreeze\b.*\boutlook\b|\boutlook\b.*\bfreeze\b|\boutlook\b.*\bcrash\b/.test(rawText)) {
-      templateId = "worknote_outlook_profile_recreated";
-    }
-    if (/\bwired\b|\bethernet\b|\bdisconnect/.test(rawText) && context.intent === "connectivity_issue") {
-      templateId = "incident_resolution_ipconfig_vpn";
-    }
     const template = findTemplateById(templates, templateId) || templates[0] || null;
     return { context, template, templateId: template?.id || "", intent: context.intent, ticketType: context.ticketType };
   }
@@ -8382,15 +8404,13 @@
     }
     const smartGroup = detectSmartGroup(ticket, metadata);
     const closeGroupTemplateMap = {
+      outlook: "closenote_outlook_signature_completed",
       delivery: "closenote_delivered_to_user",
       return: "closenote_equipment_returned",
       mdm: "closenote_mdm_completed",
       no_answer: "closenote_closed_no_response"
     };
-    if (smartGroup === "outlook") {
-      const outlookText = normalizeText([context.shortDescription, context.description].filter(Boolean).join(" "));
-      templateId = /freeze|frozen|crash|profile|scheduling|not.?respond/.test(outlookText) ? "closenote_outlook_client_resolved" : "closenote_outlook_signature_completed";
-    } else if (smartGroup !== "generic" && closeGroupTemplateMap[smartGroup]) {
+    if (smartGroup !== "generic" && closeGroupTemplateMap[smartGroup]) {
       templateId = closeGroupTemplateMap[smartGroup];
     }
     const template = findTemplateById(templates, templateId) || templates[0] || null;
@@ -9037,6 +9057,25 @@
     const cleanSubject = cleanText(subject).replace(new RegExp(`\\b${ticket}\\b`, "ig"), "").replace(/\bSCTASK\d{4,}\b/ig, "").replace(/\s*-\s*/g, " - ").replace(/\s{2,}/g, " ").replace(/^-\s*|\s*-\s*$/g, "").trim();
     return cleanSubject ? `${ticket} - ${cleanSubject}` : ticket;
   }
+  function getMissingFields(template, { context, settings }) {
+    if (!template) return [];
+    const placeholders = buildPlaceholderMap({ context, settings });
+    const missingFields = [];
+    const criticalFields = {
+      user_name: "User name",
+      user_email: "User email",
+      requested_for: "Recipient name",
+      ticket_number: "Ticket number",
+      configuration_item: "Configuration item"
+    };
+    Object.entries(criticalFields).forEach(([fieldKey, fieldLabel]) => {
+      const value = placeholders[fieldKey];
+      if (!value || String(value).trim() === "") {
+        missingFields.push(fieldLabel);
+      }
+    });
+    return missingFields;
+  }
   function renderTemplate(template, { context, settings }) {
     if (!template) return null;
     const placeholders = buildPlaceholderMap({ context, settings });
@@ -9080,6 +9119,285 @@ ${body}`) : body;
   }
 
   // Assistant/ui/panel.js
+  function getDefaultPanelPosition(node) {
+    const ownerWindow = node.ownerDocument.defaultView || window;
+    return {
+      left: Math.max(ownerWindow.innerWidth - 404, 12),
+      top: 136
+    };
+  }
+  function renderCmdbCiLookup(context, state) {
+    const currentValue = state.ui.ciLookupQuery || context.configurationItem || context.configurationItemDisplay || context.configurationItemValue || "";
+    const results = Array.isArray(state.ui.ciLookupResults) ? state.ui.ciLookupResults : [];
+    const showResults = state.ui.ciLookupOpen || state.ui.ciLookupLoading || results.length > 0;
+    const resultMarkup = state.ui.ciLookupLoading ? '<div class="sn-assistant-note sn-assistant-note--empty">Searching Configuration Item...</div>' : results.length ? results.map(
+      (item) => `
+              <button
+                type="button"
+                class="sn-assistant-ci-lookup__result"
+                data-action="select-ci-suggestion"
+                data-ci-sys-id="${escapeHtml(item.sys_id || "")}"
+                data-ci-name="${escapeHtml(item.name || "")}"
+              >
+                <strong>${escapeHtml(item.name || "")}</strong>
+                <span>${escapeHtml(item.sys_id || "")}</span>
+              </button>
+            `
+    ).join("") : '<div class="sn-assistant-note sn-assistant-note--empty">No Configuration Item found.</div>';
+    return `
+    <div class="sn-assistant-ci-lookup">
+      <div class="sn-assistant-field">
+        <span class="sn-assistant-field__label">Configuration Item</span>
+        <input
+          class="sn-assistant-input sn-assistant-ci-lookup__input"
+          name="ciLookupQuery"
+          value="${escapeHtml(currentValue)}"
+          placeholder="Search Configuration Item"
+          autocomplete="off"
+        />
+      </div>
+      ${showResults ? `<div class="sn-assistant-ci-lookup__results">${resultMarkup}</div>` : ""}
+    </div>
+  `;
+  }
+  function isDraftCapableTemplate(renderedTemplate) {
+    return ["email", "appointment"].includes(String(renderedTemplate?.category || "").trim());
+  }
+  function isResolutionTemplate(renderedTemplate) {
+    return String(renderedTemplate?.category || "").trim() === "close_note";
+  }
+  function isResolved(stateText) {
+    const s = String(stateText || "").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+    return s === "resolved" || s === "resolu" || s.includes("closed") || s.includes("ferme");
+  }
+  function renderManualDraftFallback(state) {
+    const composeUrl = String(state.ui.lastDraftComposeUrl || "");
+    if (!composeUrl) return "";
+    return `
+    <div class="sn-assistant-note sn-assistant-note--warning">
+      <div>Draft created, but automatic opening was blocked or unavailable.</div>
+      <div class="sn-assistant-row" style="margin-top:8px;">
+        <a class="sn-assistant-button sn-assistant-button--secondary" href="${escapeHtml(composeUrl)}" target="_blank" rel="noopener noreferrer">Open draft manually</a>
+      </div>
+    </div>
+  `;
+  }
+  function bindPanel(root, handlers) {
+    if (root.dataset.snAssistantBound === "true") return;
+    root.dataset.snAssistantBound = "true";
+    root.addEventListener("click", (event) => {
+      const button = event.target.closest("[data-action]");
+      if (!button) return;
+      const { action, category } = button.dataset;
+      if (action === "close-panel") handlers.onClosePanel();
+      if (action === "force-close") handlers.onForceClose();
+      if (action === "toggle-collapse") handlers.onToggleCollapse();
+      if (action === "open-settings") handlers.onOpenSettings();
+      if (action === "select-category") handlers.onSelectCategory(category);
+      if (action === "select-suggested-template") handlers.onSelectTemplate(button.dataset.templateId || "");
+      if (action === "copy-template") handlers.onCopy();
+      if (action === "insert-template") handlers.onInsert();
+      if (action === "open-draft") handlers.onDraft();
+      if (action === "run-pi-search") handlers.onPiSearch();
+      if (action === "suggest-resolved") handlers.onSuggestResolved?.();
+      if (action === "select-ci-suggestion") {
+        handlers.onSelectCiSuggestion(button.dataset.ciSysId || "", button.dataset.ciName || "");
+      }
+      if (action === "open-my-assigned-list") openMyAssignedList(button.dataset.filter || "incident");
+    });
+    root.addEventListener("change", (event) => {
+      const select = event.target.closest('select[data-action="select-template"]');
+      if (!select) return;
+      handlers.onSelectTemplate(select.value);
+    });
+    root.addEventListener("focusin", (event) => {
+      const field = event.target.closest('[name="ciLookupQuery"]');
+      if (!field) return;
+      handlers.onCiLookupOpen();
+    });
+    root.addEventListener("blur", (event) => {
+      const field = event.target.closest('[name="ciLookupQuery"]');
+      if (!field) return;
+      handlers.onCiLookupBlur();
+    }, true);
+    root.addEventListener("input", (event) => {
+      const field = event.target.closest('[name="ciLookupQuery"]');
+      if (!field) return;
+      handlers.onCiLookupChange(field.value);
+    });
+    root.addEventListener("toggle", (event) => {
+      const details = event.target.closest(".sn-assistant-preview-collapsible");
+      if (!details) return;
+      handlers.onPreviewToggle?.(details.open);
+    });
+  }
+  function ensurePanel({
+    hostDocument,
+    state,
+    context,
+    categories,
+    templates,
+    selectedTemplateId,
+    emailSuggestions = [],
+    showEmailSuggestions = false,
+    renderedTemplate,
+    handlers
+  }) {
+    let root = hostDocument.getElementById(UI_IDS.panel);
+    if (!root) {
+      root = hostDocument.createElement("div");
+      root.id = UI_IDS.panel;
+      root.className = "sn-assistant-floating";
+      root.setAttribute(ROOT_ATTRIBUTE, ROOT_VALUE);
+      (hostDocument.body || hostDocument.documentElement).appendChild(root);
+    }
+    const collapsed = state.ui.panelCollapsed;
+    const pending = Object.values(state.pendingActions).some(Boolean);
+    const showPiSearch = context.table === "sc_task";
+    const headerCounts = getHeaderCounts(state);
+    const incDisabled = headerCounts.ready && headerCounts.inc === 0;
+    const taskDisabled = headerCounts.ready && headerCounts.task === 0;
+    const headerCountsMarkup = `
+    <div id="assistant-header-counts" class="sn-assistant-header-counts" aria-label="Open tickets for current user">
+      <button type="button" id="inc-badge"
+        class="sn-assistant-header-counts__badge sn-assistant-header-counts__badge--inc"
+        data-action="open-my-assigned-list"
+        data-filter="incident"
+        data-loading="${headerCounts.loading ? "true" : "false"}"
+        data-ready="${headerCounts.ready ? "true" : "false"}"
+        ${incDisabled ? 'disabled aria-disabled="true"' : ""}
+        title="${incDisabled ? "No open incidents assigned to me" : "Show my open incidents"}">
+        INC ${headerCounts.loading && !headerCounts.ready ? "\u2026" : headerCounts.error ? "!" : escapeHtml(String(headerCounts.inc))}
+      </button>
+      <button type="button" id="task-badge"
+        class="sn-assistant-header-counts__badge sn-assistant-header-counts__badge--task"
+        data-action="open-my-assigned-list"
+        data-filter="sc_task"
+        data-loading="${headerCounts.loading ? "true" : "false"}"
+        data-ready="${headerCounts.ready ? "true" : "false"}"
+        ${taskDisabled ? 'disabled aria-disabled="true"' : ""}
+        title="${taskDisabled ? "No open SCTASKs assigned to me" : "Show my open SCTASKs"}">
+        TASK ${headerCounts.loading && !headerCounts.ready ? "\u2026" : headerCounts.error ? "!" : escapeHtml(String(headerCounts.task))}
+      </button>
+    </div>
+  `;
+    const draftButtonLabel = state.settings?.draftButtonLabel || "Prepare Draft";
+    const selectorMarkup = renderTemplateSelector({
+      categories,
+      activeCategory: state.ui.activeCategory,
+      templates,
+      selectedTemplateId
+    });
+    const ciLookupMarkup = renderCmdbCiLookup(context, state);
+    const suggestionsMarkup = showEmailSuggestions && emailSuggestions.length ? `
+          <div class="sn-assistant-suggestions">
+            <div class="sn-assistant-suggestions__title">Short description is unclear. Choose a template:</div>
+            <div class="sn-assistant-suggestions__list">
+              ${emailSuggestions.map(
+      (suggestion) => `
+                    <button
+                      type="button"
+                      class="sn-assistant-suggestions__item ${suggestion.templateId === selectedTemplateId ? "is-selected" : ""}"
+                      data-action="select-suggested-template"
+                      data-template-id="${escapeHtml(suggestion.templateId)}"
+                    >
+                      <div class="sn-assistant-suggestions__label">${escapeHtml(suggestion.label || suggestion.templateId)}</div>
+                      <div class="sn-assistant-suggestions__subject">${escapeHtml(suggestion.subject || "No subject")}</div>
+                      <div class="sn-assistant-suggestions__body">${escapeHtml((suggestion.body || "").slice(0, 180))}</div>
+                    </button>
+                  `
+    ).join("")}
+            </div>
+          </div>
+        ` : "";
+    const markup = `
+    <div class="sn-assistant-panel">
+      <div class="sn-assistant-panel__header" data-drag-handle="panel">
+        <div class="sn-assistant-panel__title">
+          <span class="sn-assistant-panel__eyebrow">SN Assistant</span>
+          <span class="sn-assistant-panel__version">${escapeHtml(`v${VERSION}`)}</span>
+          <div class="sn-assistant-panel__generator">
+            <span class="sn-assistant-panel__generator-icon" aria-hidden="true">\u{1F916}</span>
+            <span class="sn-assistant-panel__generator-label">Bot EU</span>
+          </div>
+          ${headerCountsMarkup}
+          <div class="sn-assistant-panel__subheading">${escapeHtml(context.ticketNumber || context.tableLabel || "Record")} \xB7 ${escapeHtml(context.tableLabel)} | ${escapeHtml(
+      context.recordKey
+    )}</div>
+        </div>
+        <div class="sn-assistant-panel__header-actions">
+          <button type="button" class="sn-assistant-mini-button" data-action="toggle-collapse" title="Collapse">
+            ${collapsed ? "+" : "-"}
+          </button>
+          <button type="button" class="sn-assistant-mini-button" data-action="open-settings" title="Settings">
+            <span class="sn-assistant-icon sn-assistant-icon--gear" aria-hidden="true"></span>
+          </button>
+          <button type="button" class="sn-assistant-mini-button sn-assistant-mini-button--danger" data-action="force-close" title="Shut down the assistant" aria-label="Shut down the assistant">
+            <span class="sn-assistant-icon sn-assistant-icon--power" aria-hidden="true"></span>
+          </button>
+          <button type="button" class="sn-assistant-mini-button" data-action="close-panel" title="Close panel" aria-label="Close panel">
+            <span class="sn-assistant-icon sn-assistant-icon--close" aria-hidden="true"></span>
+          </button>
+        </div>
+      </div>
+      ${collapsed ? "" : `
+            <div class="sn-assistant-panel__body">
+              <div class="sn-assistant-chip-row">
+                <span class="sn-assistant-chip"><strong>Office</strong> ${escapeHtml(state.settings.officeName)}</span>
+                <span class="sn-assistant-chip sn-assistant-chip--person">
+                  <span class="sn-assistant-chip__icon" aria-hidden="true">\u{1F464}</span>
+                  <strong>User</strong> ${escapeHtml(context.user.fullName || context.user.email || "Not detected")}
+                </span>
+              </div>
+              ${ciLookupMarkup}
+              ${selectorMarkup}
+              ${suggestionsMarkup}
+              ${renderManualDraftFallback(state)}
+              ${showPiSearch ? '<div class="sn-assistant-row"><button type="button" class="sn-assistant-button sn-assistant-button--secondary" data-action="run-pi-search">Find PI</button></div>' : ""}
+              <details class="sn-assistant-preview-collapsible" ${!state.ui.previewExpanded ? "" : "open"}>
+                <summary class="sn-assistant-preview__summary">\u{1F441}\uFE0F Preview</summary>
+                <div class="sn-assistant-preview">${renderPreview(renderedTemplate)}</div>
+              </details>
+              ${renderedTemplate && isDraftCapableTemplate(renderedTemplate) ? (() => {
+      const missingFields = getMissingFields(renderedTemplate, { context, settings: state.settings });
+      return missingFields.length > 0 ? `<div class="sn-assistant-missing-fields">
+                             ${missingFields.map(
+        (field) => `<span class="sn-assistant-missing-field-chip">\u26A0\uFE0F ${escapeHtml(field)} not found</span>`
+      ).join("")}
+                           </div>` : "";
+    })() : ""}
+              ${isResolutionTemplate(renderedTemplate) && context.state && !isResolved(context.state) ? `
+              <div class="sn-assistant-note sn-assistant-note--info">
+                Close note template selected.
+                <button type="button" class="sn-assistant-button sn-assistant-button--secondary sn-assistant-button--compact" data-action="suggest-resolved" style="margin-left:8px;" ${pending ? "disabled" : ""}>Mark Resolved</button>
+              </div>
+              ` : ""}
+              <div class="sn-assistant-panel__footer">
+                <button type="button" class="sn-assistant-button sn-assistant-button--secondary" data-action="copy-template" ${pending ? "disabled" : ""}>Copy</button>
+                <button type="button" class="sn-assistant-button sn-assistant-button--secondary" data-action="insert-template" ${pending || !renderedTemplate ? "disabled" : ""}>Insert</button>
+                <button type="button" class="sn-assistant-button sn-assistant-button--primary" data-action="open-draft" ${pending || !isDraftCapableTemplate(renderedTemplate) ? "disabled" : ""}>${escapeHtml(draftButtonLabel)}</button>
+              </div>
+            </div>
+          `}
+    </div>
+  `;
+    if (root.__snAssistantMarkup !== markup) {
+      root.innerHTML = markup;
+      root.__snAssistantMarkup = markup;
+    }
+    bindPanel(root, handlers);
+    makeDraggable({
+      node: root,
+      handleSelector: '[data-drag-handle="panel"]',
+      state,
+      positionKey: "panelPosition",
+      defaultPosition: getDefaultPanelPosition,
+      onPositionChange: () => repositionSecondarySurfaces(hostDocument, root)
+    });
+    sanitizeFloatingSurface(root);
+    repositionSecondarySurfaces(hostDocument, root);
+    return root;
+  }
   function removePanel(hostDocument) {
     const root = hostDocument?.getElementById(UI_IDS.panel);
     if (root) root.remove();
@@ -9326,24 +9644,6 @@ ${configurationItemLine}`, action, closing, SIGN_OFF].filter(Boolean).join("\n\n
       subject: "Closure of your request {{ticket_number}}",
       keywords: ["confirmed", "valid\xE9", "resolved"],
       body: "Dear {{requested_for}},\n\nThank you for confirming that your request has been resolved.\n\nThis ticket is now closed.\nShould you require any further assistance, please do not hesitate to contact the IT Service Desk.\n\nKind regards,\n{{agent_name}}"
-    },
-    {
-      id: "closenote_connectivity_resolved",
-      category: "close_note",
-      label: "Close Note - Connectivity Resolved",
-      target: "close_notes",
-      subject: "Resolution of your connectivity issue {{ticket_number}}",
-      keywords: ["connectivity", "network", "vpn", "wifi", "wired", "ethernet", "connection", "disconnect"],
-      body: "Dear {{user_name}},\n\nYour connectivity issue has been resolved and network access has been validated.\n\nShould you experience any further issues, please do not hesitate to contact the IT Service Desk.\n\nKind regards,\n{{agent_name}}"
-    },
-    {
-      id: "closenote_outlook_client_resolved",
-      category: "close_note",
-      label: "Close Note - Outlook Issue Resolved",
-      target: "close_notes",
-      subject: "Resolution of your Outlook issue {{ticket_number}}",
-      keywords: ["outlook", "freeze", "frozen", "crash", "profile", "scheduling assistant", "client"],
-      body: "Dear {{requested_for}},\n\nYour Outlook issue has been resolved. The necessary configuration has been applied and the application is now functioning correctly.\n\nShould you require any further assistance, please do not hesitate to contact the IT Service Desk.\n\nKind regards,\n{{agent_name}}"
     }
   ];
 
@@ -9391,7 +9691,7 @@ ${configurationItemLine}`, action, closing, SIGN_OFF].filter(Boolean).join("\n\n
       category: "work_note",
       label: "Escalation recommended",
       target: "work_notes",
-      body: "Initial troubleshooting did not resolve the reported issue.\nEscalation is recommended; the ticket has been reassigned to the appropriate support team for further analysis.\nPriority: {{short_description}}.\nFurther diagnostics and follow-up will be handled by the receiving team."
+      body: "Initial troubleshooting did not resolve the reported issue.\nEscalation is recommended; the ticket has been reassigned to the appropriate support team for further analysis and follow-up with the requester."
     },
     withReminder2(
       {
@@ -9451,14 +9751,6 @@ ${configurationItemLine}`, action, closing, SIGN_OFF].filter(Boolean).join("\n\n
       target: "work_notes",
       keywords: ["outlook", "signature", "email", "calendar", "messagerie"],
       body: 'Outlook assistance has been provided for the request "{{short_description}}".\nThe request was reviewed, the necessary configuration was applied, and the change has been validated end-to-end.\n{{requested_for}} has been informed of the outcome and confirmed that the issue is no longer reproducible.'
-    },
-    {
-      id: "worknote_outlook_profile_recreated",
-      category: "work_note",
-      label: "Outlook Profile Recreated",
-      target: "work_notes",
-      keywords: ["outlook", "profile", "scheduling", "freeze", "frozen", "crash", "scheduling assistant"],
-      body: "Created a new Outlook profile via Control Panel \u2192 Mail \u2192 Show Profiles \u2192 Add.\nConfigured the new Outlook profile and validated end-to-end functionality.\nIssue resolved successfully."
     },
     withReminder2(
       {
@@ -11253,7 +11545,6 @@ ${value}` : value;
       root.setAttribute(ROOT_ATTRIBUTE, ROOT_VALUE);
       (hostDocument.body || hostDocument.documentElement).appendChild(root);
     }
-    forceVisibleSurface(root);
     root.className = "sn-assistant-floating sn-assistant-worknotes-root";
     const model = buildWorkNoteModel(context, settings, state);
     const selectedTemplate = model.templates.find((template) => template.id === model.selectedTemplateId);
@@ -11320,14 +11611,13 @@ ${value}` : value;
                   title="${escapeHtml(phrase)}"
                 >
                   <span class="sn-assistant-worknotes__canned-label">${escapeHtml(phrase)}</span>
-                  <button
-                    type="button"
+                  <span
                     class="sn-assistant-worknotes__canned-remove"
                     data-action="work-notes-remove-canned-phrase"
                     data-phrase="${escapeHtml(phrase)}"
                     title="Remove phrase"
                     aria-label="Remove phrase"
-                  >\xD7</button>
+                  >\xD7</span>
                 </button>
               `).join("") : '<div class="sn-assistant-note sn-assistant-note--empty">No quick phrases yet. Select or write a note to build them.</div>'}
             </div>
@@ -11401,6 +11691,7 @@ ${value}` : value;
         }
       }
     }
+    root.dataset.snAssistantBound = root.dataset.snAssistantBound || "false";
     if (root.dataset.snAssistantBound !== "true") {
       root.dataset.snAssistantBound = "true";
       root.addEventListener("click", (event) => {
@@ -11457,11 +11748,9 @@ ${value}` : value;
       onPositionChange: () => repositionSecondarySurfaces(hostDocument, root),
       defaultPosition: (node) => {
         const ownerWindow = node.ownerDocument.defaultView || window;
-        const width = Math.min(360, Math.max(320, ownerWindow.innerWidth - 24));
-        const height = Math.min(560, Math.max(320, ownerWindow.innerHeight - 24));
         return {
-          left: Math.max(12, Math.round((ownerWindow.innerWidth - width) / 2)),
-          top: Math.max(12, Math.round((ownerWindow.innerHeight - height) / 2))
+          left: Math.max(ownerWindow.innerWidth - 360, 12),
+          top: 110
         };
       }
     });
@@ -13021,7 +13310,6 @@ Extension: +32 2 123 456"
       root.setAttribute(ROOT_ATTRIBUTE, ROOT_VALUE);
       (hostDocument.body || hostDocument.documentElement).appendChild(root);
     }
-    forceVisibleSurface(root);
     root.className = "sn-assistant-floating sn-assistant-user-tickets-root";
     const data = state.ui.userInfoData || {};
     const loading = Boolean(state.ui.userInfoLoading);
@@ -13178,7 +13466,6 @@ Extension: +32 2 123 456"
       root.setAttribute(ROOT_ATTRIBUTE, ROOT_VALUE);
       (hostDocument.body || hostDocument.documentElement).appendChild(root);
     }
-    forceVisibleSurface(root);
     root.className = "sn-assistant-floating sn-assistant-user-tickets-root";
     const userName = context?.user?.fullName || context?.requestedFor || context?.caller || "Unknown user";
     const isLoading = Boolean(state.ui.userTicketsLoading);
@@ -13449,7 +13736,6 @@ Extension: +32 2 123 456"
       root.setAttribute(ROOT_ATTRIBUTE, ROOT_VALUE);
       (hostDocument.body || hostDocument.documentElement).appendChild(root);
     }
-    forceVisibleSurface(root);
     root.className = "sn-assistant-floating sn-assistant-find-ci-root";
     const isLoading = Boolean(state.ui.findCiLoading);
     const allResults = Array.isArray(state.ui.findCiResults) ? [...state.ui.findCiResults] : [];
@@ -13849,96 +14135,6 @@ Extension: +32 2 123 456"
     });
   }
 
-  // Assistant/ui/onboarding.js
-  var ONBOARDING_TOTAL_STEPS = 3;
-  var STEPS = [
-    {
-      icon: `<svg width="48" height="48" viewBox="0 0 48 48" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="24" cy="24" r="20"/><path d="M16 24c0-4.4 3.6-8 8-8s8 3.6 8 8-3.6 8-8 8"/><circle cx="24" cy="24" r="3"/><path d="M24 17v-4M24 35v-4M17 24h-4M35 24h-4"/></svg>`,
-      title: "Bienvenido al Asistente SN",
-      body: "Tu asistente integrado para ServiceNow. Genera emails, work notes y notas de resoluci\xF3n autom\xE1ticamente desde cualquier ticket.",
-      cta: "Siguiente",
-      skip: "Saltar configuraci\xF3n"
-    },
-    {
-      icon: `<svg width="48" height="48" viewBox="0 0 48 48" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 8h24a4 4 0 0 1 4 4v6H8v-6a4 4 0 0 1 4-4z"/><path d="M8 18v18a4 4 0 0 0 4 4h24a4 4 0 0 0 4-4V18"/><path d="M20 28h8M20 34h5"/><circle cx="32" cy="34" r="6"/><path d="M30 34l1.5 1.5L35 31"/></svg>`,
-      title: "\xBFQu\xE9 puedes hacer?",
-      body: null,
-      bullets: [
-        "\u{1F4E7}  Genera borradores de email en 1 clic con tus plantillas",
-        "\u{1F4DD}  A\xF1ade work notes predefinidas a cualquier ticket",
-        "\u2705  Rellena notas de resoluci\xF3n autom\xE1ticamente al cerrar",
-        "\u{1F50D}  Busca el CI del usuario sin salir del ticket"
-      ],
-      cta: "Siguiente",
-      skip: "Saltar configuraci\xF3n"
-    },
-    {
-      icon: `<svg width="48" height="48" viewBox="0 0 48 48" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="24" cy="24" r="20"/><path d="M24 14v10l6 6"/><path d="M14 24h2M32 24h2M24 14v2M24 34v2"/><circle cx="24" cy="24" r="3" fill="currentColor"/></svg>`,
-      title: "Config\xFAralo en 2 minutos",
-      body: "Antes de empezar necesitas configurar tu nombre, email y las plantillas que m\xE1s uses. Solo tienes que hacerlo una vez.",
-      cta: "Abrir configuraci\xF3n \u2192",
-      skip: "Configurar m\xE1s tarde"
-    }
-  ];
-  function renderStep(step, stepIndex) {
-    const s = STEPS[stepIndex];
-    const bulletsHtml = Array.isArray(s.bullets) ? `<ul class="sn-ob__bullets">${s.bullets.map((b) => `<li>${escapeHtml(b)}</li>`).join("")}</ul>` : "";
-    const bodyHtml = s.body ? `<p class="sn-ob__body">${escapeHtml(s.body)}</p>` : "";
-    const dotsHtml = Array.from(
-      { length: ONBOARDING_TOTAL_STEPS },
-      (_, i) => `<span class="sn-ob__dot${i === stepIndex ? " sn-ob__dot--active" : ""}" aria-hidden="true"></span>`
-    ).join("");
-    return `
-    <div class="sn-ob__card" role="dialog" aria-modal="true" aria-label="${escapeHtml(s.title)}">
-      <div class="sn-ob__icon" aria-hidden="true">${s.icon}</div>
-      <h2 class="sn-ob__title">${escapeHtml(s.title)}</h2>
-      ${bodyHtml}
-      ${bulletsHtml}
-      <div class="sn-ob__actions">
-        <button type="button" class="sn-ob__btn sn-ob__btn--primary" data-action="ob-next">
-          ${escapeHtml(s.cta)}
-        </button>
-        <button type="button" class="sn-ob__btn sn-ob__btn--ghost" data-action="ob-skip">
-          ${escapeHtml(s.skip)}
-        </button>
-      </div>
-      <div class="sn-ob__dots" aria-hidden="true">${dotsHtml}</div>
-    </div>
-  `;
-  }
-  function bindOnboarding(root, handlers) {
-    if (root.dataset.snObBound === "true") return;
-    root.dataset.snObBound = "true";
-    root.addEventListener("click", (event) => {
-      const btn = event.target.closest("[data-action]");
-      if (!btn) return;
-      const { action } = btn.dataset;
-      if (action === "ob-next") handlers.onOnboardingNext?.();
-      if (action === "ob-skip") handlers.onOnboardingSkip?.();
-    });
-  }
-  function ensureOnboarding({ hostDocument, state, handlers }) {
-    let root = hostDocument.getElementById(UI_IDS.onboarding);
-    if (!root) {
-      root = hostDocument.createElement("div");
-      root.id = UI_IDS.onboarding;
-      root.setAttribute(ROOT_ATTRIBUTE, ROOT_VALUE);
-      (hostDocument.body || hostDocument.documentElement).appendChild(root);
-    }
-    const step = Math.max(0, Math.min(state.ui.onboardingStep - 1, ONBOARDING_TOTAL_STEPS - 1));
-    const markup = renderStep(step, step);
-    if (root.__snObMarkup !== markup) {
-      root.innerHTML = `<div class="sn-ob__backdrop">${markup}</div>`;
-      root.__snObMarkup = markup;
-    }
-    bindOnboarding(root, handlers);
-    return root;
-  }
-  function removeOnboarding(hostDocument) {
-    const root = hostDocument?.getElementById(UI_IDS.onboarding);
-    if (root) root.remove();
-  }
-
   // Assistant/application/runtime/ui-surfaces.js
   function removeUiFromDocument(documentRef) {
     removeLauncher(documentRef);
@@ -13949,7 +14145,6 @@ Extension: +32 2 123 456"
     removeUserTicketsPanel(documentRef);
     removeFindCiPanel(documentRef);
     removePdfSelection(documentRef);
-    removeOnboarding(documentRef);
     purgeToasts(documentRef);
   }
   function removeUiFromOtherDocuments(hostDocument) {
@@ -18116,9 +18311,11 @@ Extension: +32 2 123 456"
     0 0 0 5px rgba(37, 99, 235, 0.35);
 }
 
-/* When pinned the close button unpins+closes \u2014 keep it clickable, just dim it slightly. */
+/* Show close button as disabled while pinned so the user knows it exists but is locked. */
 .sn-ep[data-ep-pinned="true"] .sn-ep__icon-btn--header {
-  opacity: 0.6;
+  opacity: 0.35;
+  cursor: not-allowed;
+  pointer-events: none;
 }
 
 /* Header Settings Button */
@@ -18381,39 +18578,6 @@ Extension: +32 2 123 456"
 
 .sn-ep__action:hover {
   background: var(--ep-neutral-bg);
-}
-
-.sn-ep__generate-section-label {
-  padding: 4px 10px 2px;
-  font-size: 10px;
-  font-weight: 700;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
-  color: var(--ep-muted, #94a3b8);
-  background: transparent;
-  border-top: 1px solid var(--ep-border);
-}
-
-.sn-ep__generate-section-label:first-child {
-  border-top: none;
-}
-
-.sn-ep__generate-divider {
-  height: 0;
-  border-top: 1px solid var(--ep-border);
-  margin: 2px 0;
-}
-
-.sn-ep__generate-item--template {
-  font-size: 11.5px;
-  font-weight: 500;
-  max-width: 100%;
-}
-
-.sn-ep__generate-item--template span:last-child {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
 }
 
 .sn-ep[style*="--btn-opacity"] .sn-ep__action--draft { background: rgba(37, 99, 235, calc(0.12 * var(--btn-opacity, 1))); }
@@ -19644,152 +19808,6 @@ Extension: +32 2 123 456"
 /* \u2500\u2500 Positioned panel: hide native left/right edge classes \u2500\u2500 */
 .sn-ep[class*="sn-ep--snap-"] .sn-ep__tab {
   /* keep tab visible for non-bc positions */
-}
-
-/* \u2500\u2500\u2500 Onboarding welcome modal \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500 */
-#sn-assistant-onboarding {
-  position: fixed;
-  inset: 0;
-  z-index: 2147483640;
-  pointer-events: auto;
-}
-
-.sn-ob__backdrop {
-  position: absolute;
-  inset: 0;
-  background: rgba(15, 23, 42, 0.55);
-  backdrop-filter: blur(3px);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: 16px;
-}
-
-.sn-ob__card {
-  background: #fff;
-  border-radius: 20px;
-  box-shadow: 0 24px 64px rgba(15, 23, 42, 0.22);
-  padding: 40px 36px 32px;
-  max-width: 420px;
-  width: 100%;
-  text-align: center;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 0;
-  animation: sn-ob-in 0.25s ease;
-}
-
-@keyframes sn-ob-in {
-  from { opacity: 0; transform: translateY(12px) scale(0.97); }
-  to   { opacity: 1; transform: translateY(0) scale(1); }
-}
-
-.sn-ob__icon {
-  color: #0d5a6d;
-  margin-bottom: 20px;
-  opacity: 0.9;
-}
-
-.sn-ob__title {
-  font-size: 20px;
-  font-weight: 700;
-  color: #0f172a;
-  margin: 0 0 12px;
-  line-height: 1.3;
-}
-
-.sn-ob__body {
-  font-size: 14px;
-  color: #475569;
-  margin: 0 0 24px;
-  line-height: 1.6;
-}
-
-.sn-ob__bullets {
-  list-style: none;
-  padding: 0;
-  margin: 0 0 24px;
-  text-align: left;
-  width: 100%;
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-}
-
-.sn-ob__bullets li {
-  font-size: 13.5px;
-  color: #334155;
-  padding: 8px 12px;
-  background: #f8fafc;
-  border-radius: 8px;
-  border: 1px solid #e2e8f0;
-  line-height: 1.4;
-}
-
-.sn-ob__actions {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  width: 100%;
-  margin-bottom: 20px;
-}
-
-.sn-ob__btn {
-  padding: 11px 20px;
-  border-radius: 10px;
-  font-size: 14px;
-  font-weight: 600;
-  cursor: pointer;
-  border: none;
-  transition: background 0.15s, transform 0.1s, box-shadow 0.15s;
-  width: 100%;
-}
-
-.sn-ob__btn:active {
-  transform: scale(0.98);
-}
-
-.sn-ob__btn--primary {
-  background: #0d5a6d;
-  color: #fff;
-  box-shadow: 0 2px 8px rgba(13, 90, 109, 0.3);
-}
-
-.sn-ob__btn--primary:hover {
-  background: #0a4a5a;
-  box-shadow: 0 4px 12px rgba(13, 90, 109, 0.4);
-}
-
-.sn-ob__btn--ghost {
-  background: transparent;
-  color: #64748b;
-  border: 1px solid #e2e8f0;
-}
-
-.sn-ob__btn--ghost:hover {
-  background: #f8fafc;
-  color: #475569;
-}
-
-.sn-ob__dots {
-  display: flex;
-  gap: 6px;
-  justify-content: center;
-}
-
-.sn-ob__dot {
-  width: 6px;
-  height: 6px;
-  border-radius: 50%;
-  background: #cbd5e1;
-  transition: background 0.2s, width 0.2s;
-}
-
-.sn-ob__dot--active {
-  background: #0d5a6d;
-  width: 18px;
-  border-radius: 3px;
 }
 `;
 
@@ -37332,9 +37350,6 @@ Verification completed with ${requestedFor}. Ticket moved to Resolved.`;
   function clearHeaderCounts(state) {
     state.ui.headerCounts = { inc: 0, task: 0, loading: false, ready: false, error: false, recordKey: "", fetchedAt: 0, lastNotifiedInc: 0, lastNotifiedTask: 0 };
   }
-  function setOnboardingStep(state, step) {
-    state.ui.onboardingStep = typeof step === "number" ? step : 0;
-  }
 
   // Assistant/handlers/userTickets.js
   function createUserTicketsHandlers({
@@ -38670,35 +38685,6 @@ ${text2}` : text2;
         store.dispatch(setWorkNotesRecentPhrases, next);
         saveRecentWorkNotePhrases(rootWindow, next);
         scheduleRecovery("work-notes-quick-phrase-remove", 0);
-      },
-      // Quick-write: applies a template and writes directly to the SN work notes
-      // field without opening the full work notes panel.
-      onQuickWriteWorkNote(templateId) {
-        runAction("workNotes", async () => {
-          const currentContext = state.context || getCurrentContext(rootWindow);
-          if (!currentContext?.table && !currentContext?.recordNumber && !currentContext?.ticketNumber) {
-            throw new Error("No ticket context detected");
-          }
-          const settings = getEffectiveSettings();
-          const model = buildWorkNoteModel(currentContext, settings, state);
-          const template = model.templates.find((t) => t.id === cleanText(templateId));
-          if (!template) throw new Error("Template not found");
-          const rendered = renderTemplate(template, { context: currentContext, settings });
-          const text2 = cleanText(rendered?.body || "");
-          if (!text2) throw new Error("Template rendered empty");
-          const result = writeWorkNoteToField(text2, currentContext, { append: true });
-          if (!result.ok) throw new Error("Work notes could not be written");
-          noteWorkNoteTemplateUsage(state, rootWindow, template.id);
-          pushRecentWorkNote(rootWindow, template.id, template.label || "");
-          logger.info("work-notes:quick-write", {
-            templateId: template.id,
-            ticketNumber: currentContext?.ticketNumber || currentContext?.recordNumber || "unknown"
-          });
-          showToast(state.host.document, {
-            message: `Work note written: ${template.label || template.id}`,
-            tone: "success"
-          });
-        });
       }
     };
   }
@@ -39362,7 +39348,6 @@ ${text2}` : text2;
       </div>
     </div>
   `;
-    forceVisibleSurface(panel);
     panel.addEventListener("click", (event) => {
       if (event.target.closest('[data-action="ep-links-close"]')) {
         panel.remove();
@@ -39738,28 +39723,6 @@ ${text2}` : text2;
     };
   }
 
-  // Assistant/handlers/onboarding.js
-  function createOnboardingHandlers({ store, state, rootWindow, scheduleRecovery }) {
-    return {
-      onOnboardingNext() {
-        const next = (state.ui.onboardingStep || 1) + 1;
-        if (next > ONBOARDING_TOTAL_STEPS) {
-          markOnboardingSeen(rootWindow);
-          store.dispatch(setOnboardingStep, 0);
-          scheduleRecovery("onboarding-done", 0);
-        } else {
-          store.dispatch(setOnboardingStep, next);
-          scheduleRecovery("onboarding-step", 0);
-        }
-      },
-      onOnboardingSkip() {
-        markOnboardingSeen(rootWindow);
-        store.dispatch(setOnboardingStep, 0);
-        scheduleRecovery("onboarding-skip", 0);
-      }
-    };
-  }
-
   // Assistant/core/bootstrap.js
   function getAutoHideDelayMs(settings) {
     const value = cleanText(settings?.autoHideAssistantDelay || "off").toLowerCase();
@@ -39868,7 +39831,7 @@ ${text2}` : text2;
       return sanitizeSettings(state.ui.settingsDraft || state.settings);
     }
     function isAssistantSuppressed() {
-      return Boolean(state.ui.settingsOpen);
+      return Boolean(state.ui.workNotesOpen || state.ui.settingsOpen);
     }
     function clearAutoHideTimer() {
       if (state.lifecycle.autoHideTimer) {
@@ -40242,8 +40205,7 @@ ${text2}` : text2;
       createEmailHandlers(handlerDeps),
       createWorkNotesHandlers(handlerDeps),
       createAssignHandlers(handlerDeps),
-      createHeaderCountsHandlers(handlerDeps),
-      createOnboardingHandlers(handlerDeps)
+      createHeaderCountsHandlers(handlerDeps)
     );
     try {
       const gForm = getBestGForm(rootWindow)?.gForm;
@@ -40342,23 +40304,11 @@ ${text2}` : text2;
             logger.info("first-run settings required");
             state.flags.missingSettingsLogged = true;
           }
+          openSettings(state, true);
           removeLauncher(hostDocument);
           removePanel(hostDocument);
           removePdfSelection(hostDocument);
-          const onboardingPending = !hasSeenOnboarding(rootWindow);
-          const onboardingActive = onboardingPending && state.ui.onboardingStep > 0;
-          const onboardingJustFinished = !onboardingPending && reason.startsWith("onboarding-");
-          if (onboardingPending && !onboardingActive) {
-            store.dispatch(setOnboardingStep, 1);
-          }
-          if (state.ui.onboardingStep > 0) {
-            removeSettingsModal(hostDocument);
-            ensureOnboarding({ hostDocument, state, handlers });
-            return;
-          }
-          removeOnboarding(hostDocument);
-          openSettings(state, true);
-          const shouldRefreshMissingSettings = !hostDocument.getElementById(UI_IDS.settings) || contextDidChange || onboardingJustFinished || reason.startsWith("settings-") || reason === "initial-start" || reason === "dom-mutation";
+          const shouldRefreshMissingSettings = !hostDocument.getElementById(UI_IDS.settings) || contextDidChange || reason.startsWith("settings-") || reason === "initial-start" || reason === "dom-mutation";
           if (shouldRefreshMissingSettings) {
             const draftSettings = getDraftSettings();
             const templateGroups = getTemplateGroups(draftSettings);
@@ -40375,22 +40325,19 @@ ${text2}` : text2;
           }
           return;
         }
-        removeOnboarding(hostDocument);
         state.flags.missingSettingsLogged = false;
         state.ui.settingsMandatory = false;
         const passiveReason = ["heartbeat", "window-focus", "visibility-change"].includes(reason);
         const launcherMissing = !hostDocument.getElementById(UI_IDS.launcher);
+        const panelMissing = !hostDocument.getElementById(UI_IDS.panel);
         const settingsMissing = !hostDocument.getElementById(UI_IDS.settings);
         const workNotesMissing = !hostDocument.getElementById(UI_IDS.workNotes);
         if (!assistantSuppressed && (launcherMissing || contextDidChange || isLauncherRefreshReason(reason))) {
-          const workNoteModel = buildWorkNoteModel(nextContext || {}, getEffectiveSettings(), state);
-          const topWorkNoteTemplates = workNoteModel.templates.slice(0, 5).map((t) => ({ id: t.id, label: t.label || t.id }));
           ensureLauncher({
             hostDocument,
             state,
             context: nextContext,
-            handlers,
-            topWorkNoteTemplates
+            handlers
           });
         } else if (assistantSuppressed) {
           removeLauncher(hostDocument);
@@ -40412,9 +40359,27 @@ ${text2}` : text2;
           selection = renderedSelection.selection;
           emailSuggestions = renderedSelection.emailSuggestions;
         }
-        if (state.ui.panelOpen) {
-          removePanel(hostDocument);
-        } else {
+        if (state.ui.panelOpen && (panelMissing || contextDidChange || isPanelRefreshReason(reason))) {
+          ensurePanel({
+            hostDocument,
+            state,
+            context: state.context,
+            categories: selection.categories,
+            templates: selection.templates,
+            selectedTemplateId: selection.selectedTemplateId,
+            emailSuggestions,
+            showEmailSuggestions: selection.activeCategory === "email" && selection.emailSelection?.ambiguous,
+            renderedTemplate,
+            handlers
+          });
+          const currentRecordKey2 = state.context?.recordKey || "";
+          const cachedRecordKey = state.ui.headerCounts?.recordKey || "";
+          const headerCountsStale = !state.ui.headerCounts?.ready || cachedRecordKey !== currentRecordKey2;
+          if (currentRecordKey2 && headerCountsStale && !state.ui.headerCounts?.loading) {
+            handlers.onRefreshHeaderCounts?.().catch(() => {
+            });
+          }
+        } else if (!state.ui.panelOpen) {
           removePanel(hostDocument);
         }
         if (state.ui.workNotesOpen && (workNotesMissing || contextDidChange || isWorkNotesRefreshReason(reason))) {
@@ -40500,8 +40465,7 @@ ${text2}` : text2;
       if (restoredPinState.pinned) {
         state.ui.edgePanelPinned = true;
         state.ui.assistantHidden = false;
-        const restoredMode = restoredPinState.mode === "tab" ? "icons" : restoredPinState.mode || (restoredPinState.lastOpenState ? "expanded" : "icons");
-        state.ui.edgePanelMode = restoredMode;
+        state.ui.edgePanelMode = restoredPinState.mode || (restoredPinState.lastOpenState ? "expanded" : "icons");
       }
       state.lifecycle.focusHandler = () => scheduleRecovery("window-focus", 0);
       state.lifecycle.activityHandler = () => registerAssistantActivity("assistant-activity");
@@ -40677,104 +40641,14 @@ ${text2}` : text2;
 
   // Assistant/assistant.js
   var GLOBAL_KEY = "__SN_ASSISTANT__";
-  var ACTIVE_KEY = "__SN_EP_ASSISTANT_ACTIVE__";
-  function cleanStaleAssistantDom(rootWindow, logger) {
-    const hostDocument = rootWindow?.document;
-    if (!hostDocument) return;
-    hostDocument.querySelectorAll(".sn-assistant-panel").forEach((node) => {
-      node.remove();
-      logger?.info?.("[SN Assistant][Init] old panel removed");
-    });
-    const staleSelectors = [
-      "#sn-assistant-launcher",
-      "#sn-assistant-panel",
-      "#sn-ep-panel",
-      "#sn-assistant-settings",
-      "#sn-assistant-work-notes",
-      "#sn-assistant-user-info",
-      "#sn-assistant-user-tickets",
-      "#sn-assistant-find-ci",
-      "#sn-ep-links-panel",
-      "#sn-assistant-pdf-selector",
-      "#sn-assistant-onboarding",
-      "#sn-assistant-toasts"
-    ];
-    staleSelectors.forEach((selector) => {
-      hostDocument.querySelectorAll(selector).forEach((node) => {
-        const style = rootWindow.getComputedStyle?.(node);
-        const hidden = style && (style.display === "none" || style.visibility === "hidden" || Number(style.opacity || "1") === 0);
-        if (hidden || node.dataset?.snAssistantStale === "true") {
-          node.remove();
-          logger?.info?.("[SN Assistant][Init] stale panel removed", { selector });
-        }
-      });
-    });
-  }
-  function clearLegacyAssistantStorage(rootWindow) {
-    try {
-      const storage = rootWindow?.localStorage;
-      if (!storage) return;
-      const keysToRemove = [];
-      for (let i = 0; i < storage.length; i += 1) {
-        const key = storage.key(i);
-        if (!key) continue;
-        if (key === "sn_ep_pinned" || key.includes("sn-assistant-panel") || key.includes("panelPosition") || key.includes("sn-assistant-pin-state")) {
-          keysToRemove.push(key);
-        }
-      }
-      keysToRemove.forEach((key) => storage.removeItem(key));
-    } catch {
-    }
-  }
-  function restoreAssistantVisibility(instance, rootWindow, logger) {
-    if (!instance?.state) return;
-    const { state } = instance;
-    state.ui.assistantHidden = false;
-    state.ui.settingsOpen = false;
-    state.ui.settingsMandatory = false;
-    state.ui.panelOpen = true;
-    state.ui.panelCollapsed = false;
-    const hostDocument = rootWindow?.document;
-    const rootIds = [
-      "sn-assistant-launcher",
-      "sn-assistant-panel",
-      "sn-assistant-work-notes",
-      "sn-assistant-user-info",
-      "sn-assistant-user-tickets",
-      "sn-assistant-find-ci",
-      "sn-ep-links-panel"
-    ];
-    rootIds.forEach((id) => {
-      const node = hostDocument?.getElementById(id);
-      if (!node) return;
-      node.style.display = "block";
-      node.style.visibility = "visible";
-      node.style.opacity = "1";
-      node.dataset.snAssistantStale = "false";
-    });
-    const settingsNode = hostDocument?.getElementById("sn-assistant-settings");
-    if (settingsNode) {
-      settingsNode.style.display = "block";
-      settingsNode.style.visibility = "visible";
-      settingsNode.style.opacity = "1";
-    }
-    hostDocument?.querySelectorAll(".sn-assistant-panel").forEach((node) => node.remove());
-    logger?.info?.("[SN Assistant][Init] panel restored");
-  }
   function startAssistant() {
     initEprimeAutomation();
     initDapr2lAutomation();
     const rootWindow = getRootWindow();
     const globalStore = rootWindow[GLOBAL_KEY] = rootWindow[GLOBAL_KEY] || {};
-    rootWindow[ACTIVE_KEY] = rootWindow[ACTIVE_KEY] || null;
-    console.info("[SN Assistant][Init] init started");
-    clearLegacyAssistantStorage(rootWindow);
     if (globalStore.instance?.version === VERSION) {
-      globalStore.instance.logger.info("existing panel found");
-      cleanStaleAssistantDom(rootWindow, globalStore.instance.logger);
-      restoreAssistantVisibility(globalStore.instance, rootWindow, globalStore.instance.logger);
+      globalStore.instance.logger.info("loader already active");
       globalStore.instance.bootstrap.scheduleRecovery("duplicate-loader", 0);
-      rootWindow[ACTIVE_KEY] = globalStore.instance;
       return globalStore.instance;
     }
     if (globalStore.instance?.destroy) {
@@ -40782,7 +40656,6 @@ ${text2}` : text2;
     }
     const logger = createLogger();
     logger.info("loader started", { version: VERSION });
-    cleanStaleAssistantDom(rootWindow, logger);
     const settings = loadSettings(rootWindow, logger);
     logger.info("settings loaded", { valid: hasRequiredSettings(settings) });
     const state = createState(settings);
@@ -40796,9 +40669,6 @@ ${text2}` : text2;
       if (globalStore.instance === instance) {
         delete globalStore.instance;
       }
-      if (rootWindow[ACTIVE_KEY] === instance) {
-        rootWindow[ACTIVE_KEY] = null;
-      }
     }
     const instance = {
       version: VERSION,
@@ -40808,8 +40678,6 @@ ${text2}` : text2;
       destroy
     };
     globalStore.instance = instance;
-    rootWindow[ACTIVE_KEY] = instance;
-    logger.info("[SN Assistant][Init] panel created");
     bootstrap.start();
     return instance;
   }
