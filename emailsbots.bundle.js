@@ -7150,7 +7150,6 @@
       shell.style.transform = "translateY(-50%)";
     }
     shell.classList.toggle("sn-ep--left", edge === "left");
-    sanitizeFloatingSurface(shell);
   }
   function makePanelDraggable(root, state) {
     if (root.dataset.snEpDragBound === "true") return;
@@ -7213,7 +7212,6 @@
           shell.style.left = "";
           shell.style.right = "";
           shell.classList.toggle("sn-ep--left", newEdge === "left");
-          sanitizeFloatingSurface(shell);
           repositionSecondarySurfaces(root.ownerDocument, shell);
         }
       }
