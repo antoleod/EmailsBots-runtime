@@ -7023,7 +7023,7 @@
   }
 
   // Assistant/version.js
-  var VERSION = "V2.7";
+  var VERSION = "V2.5";
 
   // Assistant/ui/launcher.js
   var ICON = {
@@ -40720,7 +40720,7 @@ ${text2}` : text2;
       for (let i = 0; i < storage.length; i += 1) {
         const key = storage.key(i);
         if (!key) continue;
-        if (key === "sn_ep_pinned" || key.includes("sn-assistant-panel")) {
+        if (key === "sn_ep_pinned" || key.includes("sn-assistant-panel") || key.includes("panelPosition") || key.includes("sn-assistant-pin-state")) {
           keysToRemove.push(key);
         }
       }
@@ -40760,6 +40760,7 @@ ${text2}` : text2;
       settingsNode.style.visibility = "visible";
       settingsNode.style.opacity = "1";
     }
+    hostDocument?.querySelectorAll(".sn-assistant-panel").forEach((node) => node.remove());
     logger?.info?.("[SN Assistant][Init] panel restored");
   }
   function startAssistant() {
