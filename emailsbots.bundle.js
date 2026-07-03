@@ -7687,12 +7687,24 @@
   function resolveDefaultPosition(node, defaultPosition) {
     return typeof defaultPosition === "function" ? defaultPosition(node) : defaultPosition;
   }
+  function isVisibleRect(node) {
+    const rect = node.getBoundingClientRect();
+    return rect.width > 0 && rect.height > 0;
+  }
   function makeDraggable({ node, handleSelector, state, positionKey, defaultPosition, onPositionChange }) {
     if (!node) return;
     const ownerWindow = node.ownerDocument.defaultView || window;
     const storedPosition = state.ui[positionKey];
     const fallbackPosition = resolveDefaultPosition(node, defaultPosition);
     applyPosition(node, storedPosition || fallbackPosition);
+    if (storedPosition && isVisibleRect(node)) {
+      const rect = node.getBoundingClientRect();
+      const isOffscreen = rect.right < 8 || rect.bottom < 8 || rect.left > ownerWindow.innerWidth - 8 || rect.top > ownerWindow.innerHeight - 8;
+      if (isOffscreen) {
+        state.ui[positionKey] = fallbackPosition;
+        applyPosition(node, fallbackPosition);
+      }
+    }
     const sanitized = sanitizeFloatingSurface(node);
     if (sanitized) {
       state.ui[positionKey] = { left: sanitized.left, top: sanitized.top };
@@ -9170,9 +9182,11 @@ ${body}`) : body;
   // Assistant/ui/panel.js
   function getDefaultPanelPosition(node) {
     const ownerWindow = node.ownerDocument.defaultView || window;
+    const width = Math.min(404, Math.max(320, ownerWindow.innerWidth - 24));
+    const height = Math.min(560, Math.max(320, ownerWindow.innerHeight - 24));
     return {
-      left: Math.max(ownerWindow.innerWidth - 404, 12),
-      top: 136
+      left: Math.max(12, Math.round((ownerWindow.innerWidth - width) / 2)),
+      top: Math.max(12, Math.round((ownerWindow.innerHeight - height) / 2))
     };
   }
   function renderCmdbCiLookup(context, state) {
@@ -11825,9 +11839,11 @@ ${value}` : value;
       onPositionChange: () => repositionSecondarySurfaces(hostDocument, root),
       defaultPosition: (node) => {
         const ownerWindow = node.ownerDocument.defaultView || window;
+        const width = Math.min(360, Math.max(320, ownerWindow.innerWidth - 24));
+        const height = Math.min(560, Math.max(320, ownerWindow.innerHeight - 24));
         return {
-          left: Math.max(ownerWindow.innerWidth - 360, 12),
-          top: 110
+          left: Math.max(12, Math.round((ownerWindow.innerWidth - width) / 2)),
+          top: Math.max(12, Math.round((ownerWindow.innerHeight - height) / 2))
         };
       }
     });
