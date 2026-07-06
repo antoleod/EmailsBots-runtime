@@ -11672,13 +11672,18 @@ ${value}` : value;
         const body = String(t?.body || "").trim().slice(0, 220) || "(No preview)";
         const rankLabel = idx === 0 ? "Best match" : `Option ${idx + 1}`;
         const toneClass = idx === 0 ? "is-green" : idx === 1 ? "is-amber" : "is-red";
+        const isMsg = String(t?.format || "").toLowerCase() === "msg";
         return `
-        <button type="button" class="sn-assistant-toptpl__card ${idx === 0 ? "is-best" : ""}" data-action="pick-template" data-template-id="${escapeHtml(t?.id || "")}">
+        <article class="sn-assistant-toptpl__card ${idx === 0 ? "is-best" : ""}">
           <span class="sn-assistant-toptpl__rank ${toneClass}">${escapeHtml(rankLabel)}</span>
           <strong class="sn-assistant-toptpl__title">${escapeHtml(title)}</strong>
+          ${isMsg ? '<span class="sn-assistant-toptpl__format">Outlook MSG</span>' : ""}
           <span class="sn-assistant-toptpl__subject">${escapeHtml(subject)}</span>
           <span class="sn-assistant-toptpl__body">${escapeHtml(body)}</span>
-        </button>
+          <button type="button" class="sn-assistant-button sn-assistant-button--primary sn-assistant-toptpl__use" data-action="pick-template" data-template-id="${escapeHtml(t?.id || "")}">
+            ${isMsg ? "Use MSG template" : "Use template"}
+          </button>
+        </article>
       `;
       }).join("");
       const modalMarkup = `
@@ -14187,7 +14192,8 @@ Extension: +32 2 123 456"
     logger,
     rootWindow,
     hydrateUser = false,
-    categoryOverride
+    categoryOverride,
+    templateOverride = null
   }) {
     const baseContext = state.context || getCurrentContext(rootWindow);
     if (!baseContext?.supported) {
@@ -14220,8 +14226,10 @@ Extension: +32 2 123 456"
         configurationItemValue: context.configurationItemValue || context.configurationItem
       };
     }
-    const selection = resolveTemplateSelection(state, settings, categoryOverride);
-    const renderedTemplate = selection.selectedTemplate ? renderTemplate(selection.selectedTemplate, { context, settings }) : null;
+    const baseSelection = resolveTemplateSelection(state, settings, categoryOverride);
+    const selectedTemplate = templateOverride || baseSelection.selectedTemplate;
+    const selection = templateOverride ? { ...baseSelection, selectedTemplate, selectedTemplateId: templateOverride.id } : baseSelection;
+    const renderedTemplate = selectedTemplate ? renderTemplate(selectedTemplate, { context, settings }) : null;
     const emailSuggestions = selection.activeCategory === "email" && selection.emailSelection?.ambiguous ? (selection.emailSelection.candidates || []).slice(0, 3).map((candidate) => {
       const template = selection.templates.find((item) => item.id === candidate.templateId);
       if (!template) return null;
@@ -14330,6 +14338,7 @@ Extension: +32 2 123 456"
     logger,
     rootWindow,
     categoryOverride = "email",
+    templateOverride = null,
     cacheDraftContent,
     resetDraftContentCache,
     confirmValidationIssues,
@@ -14342,7 +14351,8 @@ Extension: +32 2 123 456"
       logger,
       rootWindow,
       hydrateUser: true,
-      categoryOverride
+      categoryOverride,
+      templateOverride
     });
     if (!renderedTemplate || !isDraftCapableCategory(renderedTemplate.category)) {
       throw new Error("Draft is only available for email-like templates");
@@ -19013,6 +19023,24 @@ Extension: +32 2 123 456"
   overflow-x: hidden;
   scrollbar-width: none;
   -ms-overflow-style: none;
+}
+
+.sn-assistant-toptpl__format {
+  align-self: flex-start;
+  padding: 2px 6px;
+  border-radius: 999px;
+  background: rgba(37, 99, 235, 0.10);
+  color: var(--sn-assistant-accent-strong);
+  font-size: 9px;
+  font-weight: 800;
+  letter-spacing: .04em;
+  text-transform: uppercase;
+}
+
+.sn-assistant-toptpl__use {
+  width: 100%;
+  justify-content: center;
+  margin-top: auto;
 }
 
 .sn-assistant-panel--user-tickets::-webkit-scrollbar { display: none; }
@@ -38069,7 +38097,7 @@ ${assignedTo}`
             return;
           }
           store.dispatch(setSelectedTemplate2, { category: "email", templateId: selected.id });
-          const opened = await runDraftFlow2({ categoryOverride: "email" });
+          const opened = await runDraftFlow2({ categoryOverride: "email", templateOverride: selected });
           if (opened) {
             showToast(state.host.document, { message: `Draft opened \xB7 ${selected.label || selected.id}`, tone: "info" });
           }
