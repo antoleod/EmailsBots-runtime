@@ -5853,6 +5853,7 @@
         selectedTemplates: {
           email: "",
           reminder: "",
+          close_ticket: "",
           close_note: "",
           work_note: "",
           appointment: ""
@@ -5860,6 +5861,7 @@
         templateSearch: {
           email: "",
           reminder: "",
+          close_ticket: "",
           close_note: "",
           work_note: "",
           appointment: ""
@@ -5867,6 +5869,7 @@
         templateSubcategory: {
           email: "all",
           reminder: "all",
+          close_ticket: "all",
           close_note: "all",
           work_note: "all",
           appointment: "all"
@@ -6003,6 +6006,7 @@
     templateOverrides: {
       email: {},
       reminder: {},
+      close_ticket: {},
       close_note: {},
       work_note: {},
       appointment: {}
@@ -6099,7 +6103,7 @@
     };
   }
   function sanitizeTemplateOverrides(rawValue) {
-    const categories = ["email", "reminder", "close_note", "work_note", "appointment"];
+    const categories = ["email", "reminder", "close_ticket", "close_note", "work_note", "appointment"];
     const output = {};
     categories.forEach((category) => {
       output[category] = {};
@@ -6114,7 +6118,7 @@
   function sanitizeCustomTemplateEntry(value) {
     const entry = value && typeof value === "object" ? value : {};
     const rawCategory = cleanText(entry.category);
-    const category = ["email", "reminder", "close_note", "work_note", "appointment"].includes(rawCategory) ? rawCategory : rawCategory === "resolution" ? "close_note" : rawCategory === "internal" ? "work_note" : "email";
+    const category = ["email", "reminder", "close_ticket", "close_note", "work_note", "appointment"].includes(rawCategory) ? rawCategory : rawCategory === "resolution" ? "close_note" : rawCategory === "internal" ? "work_note" : "email";
     const id = cleanText(entry.id);
     return {
       id,
@@ -7755,7 +7759,7 @@
     const bodyText = renderedTemplate.body || "";
     const subjectText = renderedTemplate.subject || "";
     const hasWarnings = hasUnfilledPlaceholders(bodyText) || hasUnfilledPlaceholders(subjectText);
-    const metaBlocks = renderedTemplate.category === "email" ? `
+    const metaBlocks = ["email", "close_ticket"].includes(renderedTemplate.category) ? `
           <div class="sn-assistant-preview__meta">
             ${renderMeta("Recipient", renderedTemplate.recipient || "Not detected")}
             ${renderMeta("Subject", renderedTemplate.subject)}
@@ -7785,11 +7789,11 @@
       (category) => `
         <button
           type="button"
-          class="sn-assistant-tab ${category.id === activeCategory ? "is-active" : ""}"
+          class="sn-assistant-tab ${category.id === activeCategory ? "is-active" : ""} ${category.badge === "green" ? "sn-assistant-tab--close-ticket" : ""}"
           data-action="select-category"
           data-category="${escapeHtml(category.id)}"
         >
-          ${escapeHtml(category.label)}
+          ${escapeHtml(category.label)}${category.badge === "green" ? '<span class="sn-assistant-category-badge">Close</span>' : ""}
         </button>
       `
     ).join("");
@@ -7800,6 +7804,17 @@
         </option>
       `
     ).join("");
+    const selectedTemplate = templates.find((template) => template.id === selectedTemplateId) || null;
+    const recommendation = selectedTemplate?.recommendedUsage || selectedTemplate?.preview || "";
+    const tags = Array.isArray(selectedTemplate?.tags) ? selectedTemplate.tags : [];
+    const templateMeta = activeCategory === "close_ticket" && selectedTemplate ? `<div class="sn-assistant-template-guidance">
+         <div class="sn-assistant-template-guidance__top">
+           <span class="sn-assistant-best-match">Best Match</span>
+           <span class="sn-assistant-confidence">${escapeHtml(String(selectedTemplate.confidenceScore || 0))}% confidence</span>
+         </div>
+         <div>${escapeHtml(recommendation)}</div>
+         ${tags.length ? `<div class="sn-assistant-template-tags">${tags.map((tag) => `<span>${escapeHtml(tag)}</span>`).join("")}</div>` : ""}
+       </div>` : "";
     return `
     <div class="sn-assistant-tabs">${tabs}</div>
     <div class="sn-assistant-field">
@@ -7808,6 +7823,7 @@
         ${options}
       </select>
     </div>
+    ${templateMeta}
   `;
   }
 
@@ -8421,6 +8437,47 @@
     }
     const template = findTemplateById(templates, templateId) || templates[0] || null;
     return { context, template, templateId: template?.id || "", intent: context.intent, ticketType: context.ticketType };
+  }
+  function selectCloseTicketTemplate(templates = [], ticket = {}, metadata = {}) {
+    const context = detectContext(ticket, metadata);
+    const stateText = normalizeText([
+      ticket.state,
+      ticket.stateDisplay,
+      ticket.state_display,
+      metadata.state
+    ].filter(Boolean).join(" "));
+    const notesText = normalizeText([
+      ticket.latestWorkNote,
+      ticket.latest_work_note,
+      ticket.workNotes,
+      ticket.work_notes,
+      metadata.latestWorkNote,
+      metadata.workNotes
+    ].filter(Boolean).join(" "));
+    const lifecycleText = `${stateText} ${notesText}`.trim();
+    const completionSignal = /\b(resolved|pending closure|closed|closed complete|completed|complete|solution applied|fixed|fulfilled|delivered|ready to close|no response|no reply|unreachable)\b/.test(lifecycleText);
+    const ranked = templates.map((template2, index) => {
+      const signalScore = scoreKeywords(lifecycleText, template2.signals || template2.tags || []);
+      const confidence = Number(template2.confidenceScore || 0);
+      return { template: template2, index, score: signalScore * 100 + confidence };
+    }).sort((left, right) => right.score - left.score || left.index - right.index);
+    let template = ranked[0]?.template || templates[0] || null;
+    if (/\bclosed(?: complete)?\b/.test(stateText)) {
+      template = findTemplateById(templates, "close_ticket_closed") || template;
+    } else if (/\b(no response|no reply|unreachable|awaiting user)\b/.test(lifecycleText)) {
+      template = findTemplateById(templates, "close_ticket_no_response") || template;
+    } else if (/\b(pending closure|completed|complete|fulfilled|delivered|ready to close)\b/.test(lifecycleText)) {
+      template = findTemplateById(templates, "close_ticket_ready_to_close") || template;
+    } else if (/\b(resolved|solution applied|fixed|working now)\b/.test(lifecycleText)) {
+      template = findTemplateById(templates, "close_ticket_resolution_confirmed") || template;
+    }
+    return {
+      context,
+      template,
+      templateId: template?.id || "",
+      confidence: Number(template?.confidenceScore || 0),
+      recommended: completionSignal
+    };
   }
   function cleanIssueTitle(shortDescription = "", description = "") {
     const raw = cleanText(shortDescription || description).replace(/^\s*(?:fw|re|fwd)\s*:\s*/i, "").replace(/\b(?:ritm|req|sctask|inc)\d{4,}\b/gi, " ").replace(/\b[a-z][a-z0-9._-]{2,}\b/gi, " ").replace(/[|]+/g, " ").replace(/--+/g, " ").replace(/\s{2,}/g, " ").trim();
@@ -9043,7 +9100,8 @@
       equipment_asset_tag: cleanText(context?.equipmentAssetTag || context?.equipment_asset_tag),
       equipment_summary: cleanText(context?.equipmentSummary || context?.equipment_summary),
       dynamic_resolution: dynamicResolution,
-      resolution_summary: dynamicResolution
+      resolution_summary: dynamicResolution,
+      closure_period: cleanText(settings?.closeTicketClosurePeriod) || "3 business days"
     };
   }
   function replacePlaceholders(value, placeholders) {
@@ -9098,20 +9156,20 @@
       context
     );
     subject = subject.replace(/^[\s-]+/, "").trim();
-    if (template.category === "email" || template.category === "reminder" || template.category === "appointment") {
+    if (["email", "close_ticket", "reminder", "appointment"].includes(template.category)) {
       subject = subject || buildSubject(subjectContext, template) || `${cleanText(subjectContext?.ticketNumber || subjectContext?.recordNumber || "your ticket")} - reported issue follow-up`;
     }
     const rawBody = finalizeTemplateText(cleanupRenderedText(replacePlaceholders(template.body, placeholders)), {
       paragraphSpacing: template.paragraphSpacing
     });
     const signature = cleanText(settings?.emailSignature);
-    const isOutbound = ["email", "reminder", "appointment"].includes(String(template.category || "").trim());
+    const isOutbound = ["email", "close_ticket", "reminder", "appointment"].includes(String(template.category || "").trim());
     let body = isOutbound && signature ? `${rawBody}
 
 --
 ${signature}` : rawBody;
     body = body.replace(/\bundefined\b/gi, "").replace(/\bnull\b/gi, "").replace(/on your \./gi, "on your request.").replace(/about the \./gi, "about the reported issue.").replace(/\s{2,}/g, " ").trim();
-    const clipboardText = template.category === "email" ? finalizeTemplateText(`Subject: ${subject}
+    const clipboardText = ["email", "close_ticket"].includes(template.category) ? finalizeTemplateText(`Subject: ${subject}
 
 ${body}`) : body;
     return {
@@ -9167,7 +9225,7 @@ ${body}`) : body;
   `;
   }
   function isDraftCapableTemplate(renderedTemplate) {
-    return ["email", "appointment"].includes(String(renderedTemplate?.category || "").trim());
+    return ["email", "close_ticket", "appointment"].includes(String(renderedTemplate?.category || "").trim());
   }
   function isResolutionTemplate(renderedTemplate) {
     return String(renderedTemplate?.category || "").trim() === "close_note";
@@ -10666,10 +10724,67 @@ ${configurationItemLine}`, action, closing, SIGN_OFF].filter(Boolean).join("\n\n
     }
   ];
 
+  // Assistant/templates/closeTicketTemplates.json
+  var closeTicketTemplates_default = [
+    {
+      id: "close_ticket_resolution_confirmed",
+      category: "close_ticket",
+      label: "Resolution Confirmed",
+      subject: "{{ticket_number}} - Please confirm the issue is resolved",
+      body: "Dear {{user_name}},\n\nThe issue reported in ticket {{ticket_number}} ({{short_description}}) appears to be resolved.\n\nCould you please confirm that everything is working as expected? Once confirmed, we will close the ticket.\n\nKind regards,\n{{agent_name}}",
+      preview: "Ask the user to confirm that the resolution is successful before closure.",
+      tags: ["resolved", "confirmation", "issue fixed"],
+      recommendedUsage: "Use when a solution has been applied but user confirmation is still required.",
+      confidenceScore: 92,
+      placeholders: ["user_name", "ticket_number", "short_description", "agent_name"],
+      signals: ["resolved", "solution applied", "working now", "fixed"]
+    },
+    {
+      id: "close_ticket_ready_to_close",
+      category: "close_ticket",
+      label: "Ready to Close",
+      subject: "{{ticket_number}} - Request completed",
+      body: "Dear {{user_name}},\n\nYour request {{ticket_number}} regarding {{short_description}} has been completed.\n\nUnless you need any additional assistance, the ticket will now be closed. Please reply if there is anything else we can help you with.\n\nKind regards,\n{{agent_name}}",
+      preview: "Confirm completion and advise that the ticket is ready to close.",
+      tags: ["completed", "ready to close", "request fulfilled"],
+      recommendedUsage: "Use after a request or task has been fully completed and no further action is expected.",
+      confidenceScore: 90,
+      placeholders: ["user_name", "ticket_number", "short_description", "agent_name"],
+      signals: ["completed", "fulfilled", "delivered", "pending closure", "ready to close"]
+    },
+    {
+      id: "close_ticket_no_response",
+      category: "close_ticket",
+      label: "No Response",
+      subject: "{{ticket_number}} - Follow-up before closure",
+      body: "Dear {{user_name}},\n\nWe have not yet received a reply regarding ticket {{ticket_number}} ({{short_description}}).\n\nIf we do not hear from you within {{closure_period}}, we will close the ticket. You can reply before then if you still need assistance.\n\nKind regards,\n{{agent_name}}",
+      preview: "Friendly final reminder before closing an inactive ticket.",
+      tags: ["no response", "reminder", "closure period"],
+      recommendedUsage: "Use after previous contact attempts when the user has not responded.",
+      confidenceScore: 88,
+      placeholders: ["user_name", "ticket_number", "short_description", "closure_period", "agent_name"],
+      signals: ["no response", "no reply", "unreachable", "awaiting user", "follow up"]
+    },
+    {
+      id: "close_ticket_closed",
+      category: "close_ticket",
+      label: "Ticket Closed",
+      subject: "{{ticket_number}} - Ticket closed",
+      body: "Dear {{user_name}},\n\nTicket {{ticket_number}} regarding {{short_description}} has now been closed.\n\nIf you need further assistance, please contact the Service Desk and we will be happy to help.\n\nKind regards,\n{{agent_name}}",
+      preview: "Notify the user that the ticket has been closed.",
+      tags: ["closed", "completed", "service desk"],
+      recommendedUsage: "Use after the ticket state has been changed to Closed.",
+      confidenceScore: 95,
+      placeholders: ["user_name", "ticket_number", "short_description", "agent_name"],
+      signals: ["closed", "closed complete", "closure complete"]
+    }
+  ];
+
   // Assistant/templates/registry.js
   var CATEGORY_META = [
     { id: "email", label: "Emails" },
     { id: "reminder", label: "Reminder" },
+    { id: "close_ticket", label: "Close Ticket", badge: "green" },
     { id: "close_note", label: "Close Note" },
     { id: "work_note", label: "Work Notes" },
     { id: "appointment", label: "Appointment" }
@@ -10677,11 +10792,12 @@ ${configurationItemLine}`, action, closing, SIGN_OFF].filter(Boolean).join("\n\n
   var DEFAULT_GROUPS = {
     email: EMAIL_TEMPLATES,
     reminder: [],
+    close_ticket: closeTicketTemplates_default,
     close_note: RESOLUTION_TEMPLATES,
     work_note: WORK_NOTE_TEMPLATES,
     appointment: APPOINTMENT_TEMPLATES
   };
-  var SUPPORTED_CATEGORIES = ["email", "reminder", "close_note", "work_note", "appointment"];
+  var SUPPORTED_CATEGORIES = CATEGORY_META.map((category) => category.id);
   function normalizeTemplateCategory(value) {
     const category = String(value || "").trim();
     if (SUPPORTED_CATEGORIES.includes(category)) return category;
@@ -10696,6 +10812,7 @@ ${configurationItemLine}`, action, closing, SIGN_OFF].filter(Boolean).join("\n\n
     const contentByCategory = {
       email: template.body,
       reminder: template.body,
+      close_ticket: template.body,
       close_note: template.close_note || template.body,
       work_note: template.work_note || template.body,
       appointment: template.event_desc || template.body
@@ -10732,6 +10849,7 @@ ${configurationItemLine}`, action, closing, SIGN_OFF].filter(Boolean).join("\n\n
     const output = {
       email: [],
       reminder: [],
+      close_ticket: [],
       close_note: [],
       work_note: [],
       appointment: []
@@ -12514,7 +12632,7 @@ ${value}` : value;
           />
         </div>
       </div>
-      ${category === "email" || category === "reminder" || category === "close_note" || category === "appointment" ? `
+      ${category === "email" || category === "close_ticket" || category === "reminder" || category === "close_note" || category === "appointment" ? `
             <div class="sn-assistant-field">
               <span class="sn-assistant-field__label">Subject</span>
               <textarea
@@ -12550,7 +12668,7 @@ ${value}` : value;
             <div class="sn-assistant-template-help__label">Target field</div>
             <div class="sn-assistant-template-help__text">Use <code>comments</code> for emails, <code>work_notes</code> for internal notes, and <code>close_notes</code> for user-facing close notes.</div>
           </div>
-          ${category === "email" || category === "reminder" || category === "close_note" || category === "appointment" ? `
+          ${category === "email" || category === "close_ticket" || category === "reminder" || category === "close_note" || category === "appointment" ? `
                 <div class="sn-assistant-template-help__block">
                   <div class="sn-assistant-template-help__label">Subject</div>
                   <div class="sn-assistant-template-help__text">Email subject line. You can keep placeholders like <code>{{ticket_number}}</code>.</div>
@@ -14356,7 +14474,7 @@ Extension: +32 2 123 456"
 
   // Assistant/application/templates/selection.js
   function isDraftCapableCategory(category = "") {
-    return ["email", "appointment"].includes(cleanText(category));
+    return ["email", "close_ticket", "appointment"].includes(cleanText(category));
   }
   function getSafeCategory(requestedCategory = "", groups = {}) {
     const category = cleanText(requestedCategory);
@@ -14382,7 +14500,9 @@ Extension: +32 2 123 456"
     const categories = getCategories();
     const fallbackCategory = categories.find((category) => groups[category.id]?.length)?.id || categories[0]?.id || "email";
     const normalizedRequestedCategory = getSafeCategory(requestedCategory, groups);
-    const activeCategory = groups[normalizedRequestedCategory]?.length ? normalizedRequestedCategory : fallbackCategory;
+    const closeTicketSelection = selectCloseTicketTemplate(groups.close_ticket || [], state.context || {});
+    const shouldPreferCloseTicket = normalizedRequestedCategory === "email" && closeTicketSelection.recommended;
+    const activeCategory = shouldPreferCloseTicket ? "close_ticket" : groups[normalizedRequestedCategory]?.length ? normalizedRequestedCategory : fallbackCategory;
     const ticketContext = detectContext(state.context || {});
     let selectedTemplate = null;
     let selectedTemplateId = "";
@@ -14402,6 +14522,9 @@ Extension: +32 2 123 456"
       const selection = selectCloseNoteTemplate(groups.close_note || [], state.context || {}, ticketContext);
       selectedTemplate = selection.template;
       selectedTemplateId = selection.templateId;
+    } else if (activeCategory === "close_ticket") {
+      selectedTemplate = closeTicketSelection.template;
+      selectedTemplateId = closeTicketSelection.templateId;
     } else if (activeCategory === "appointment") {
       const templates2 = groups.appointment || [];
       selectedTemplate = templates2[0] || null;
@@ -19824,6 +19947,46 @@ Extension: +32 2 123 456"
 /* \u2500\u2500 Positioned panel: hide native left/right edge classes \u2500\u2500 */
 .sn-ep[class*="sn-ep--snap-"] .sn-ep__tab {
   /* keep tab visible for non-bc positions */
+}
+
+.sn-assistant-tab--close-ticket { gap: 4px; }
+.sn-assistant-tab--close-ticket.is-active {
+  color: #166534;
+  border-color: rgba(22, 163, 74, 0.35);
+  background: rgba(22, 163, 74, 0.10);
+}
+.sn-assistant-category-badge,
+.sn-assistant-best-match {
+  display: inline-flex;
+  align-items: center;
+  border-radius: 999px;
+  background: #15803d;
+  color: #fff;
+  padding: 1px 5px;
+  font-size: 8px;
+  font-weight: 800;
+  letter-spacing: .04em;
+  text-transform: uppercase;
+}
+.sn-assistant-template-guidance {
+  display: grid;
+  gap: 5px;
+  padding: 8px;
+  border: 1px solid rgba(22, 163, 74, 0.22);
+  border-radius: 8px;
+  background: rgba(22, 163, 74, 0.06);
+  color: var(--sn-assistant-muted);
+  font-size: 10px;
+  line-height: 1.4;
+}
+.sn-assistant-template-guidance__top,
+.sn-assistant-template-tags { display: flex; align-items: center; gap: 4px; flex-wrap: wrap; }
+.sn-assistant-confidence { color: #166534; font-weight: 700; }
+.sn-assistant-template-tags span {
+  padding: 1px 5px;
+  border-radius: 999px;
+  background: var(--sn-assistant-panel);
+  border: 1px solid var(--sn-assistant-border);
 }
 
 /* User Info remains scrollable when required, without nested or visible bars. */
@@ -38767,15 +38930,15 @@ ${text2}` : text2;
   }
   function getDefaultCustomTemplate(category) {
     const rawCategory = cleanText(category);
-    const safeCategory = ["email", "reminder", "close_note", "work_note", "appointment"].includes(rawCategory) ? rawCategory : rawCategory === "resolution" ? "close_note" : rawCategory === "internal" ? "work_note" : "email";
-    if (safeCategory === "reminder") {
+    const safeCategory = ["email", "reminder", "close_ticket", "close_note", "work_note", "appointment"].includes(rawCategory) ? rawCategory : rawCategory === "resolution" ? "close_note" : rawCategory === "internal" ? "work_note" : "email";
+    if (safeCategory === "reminder" || safeCategory === "close_ticket") {
       return {
         id: createCustomTemplateId(safeCategory),
         category: safeCategory,
-        label: "New reminder template",
+        label: safeCategory === "close_ticket" ? "New close ticket template" : "New reminder template",
         target: "comments",
-        subject: "Reminder: {{ticket_number}}",
-        body: "Dear {{user_name}},\n\nReminder regarding ticket {{ticket_number}}.\n\nWe are following up on the previous message and kindly ask you to confirm your availability or share the missing details.\n\nKind regards,\n{{agent_name}}",
+        subject: safeCategory === "close_ticket" ? "{{ticket_number}} - Ticket update" : "Reminder: {{ticket_number}}",
+        body: safeCategory === "close_ticket" ? "Dear {{user_name}},\n\nYour ticket {{ticket_number}} regarding {{short_description}} is ready to close.\n\nKind regards,\n{{agent_name}}" : "Dear {{user_name}},\n\nReminder regarding ticket {{ticket_number}}.\n\nWe are following up on the previous message and kindly ask you to confirm your availability or share the missing details.\n\nKind regards,\n{{agent_name}}",
         isCustom: true
       };
     }
@@ -38823,7 +38986,7 @@ ${text2}` : text2;
   }
   function duplicateTemplateAsCustom(category, templateId, settings) {
     const rawCategory = cleanText(category);
-    const safeCategory = ["email", "reminder", "close_note", "work_note", "appointment"].includes(rawCategory) ? rawCategory : rawCategory === "resolution" ? "close_note" : rawCategory === "internal" ? "work_note" : "email";
+    const safeCategory = ["email", "reminder", "close_ticket", "close_note", "work_note", "appointment"].includes(rawCategory) ? rawCategory : rawCategory === "resolution" ? "close_note" : rawCategory === "internal" ? "work_note" : "email";
     const sourceTemplate = getTemplate(safeCategory, templateId, settings);
     if (!sourceTemplate) {
       return getDefaultCustomTemplate(safeCategory);
