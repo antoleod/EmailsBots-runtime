@@ -6881,6 +6881,12 @@
     node.style.bottom = "auto";
     return resolveCollision(node, { viewport, avoidRects, safeMargin });
   }
+  function forceVisibleSurface(node) {
+    if (!node) return;
+    node.style.display = "block";
+    node.style.visibility = "visible";
+    node.style.opacity = "1";
+  }
   function resolveCollision(node, { viewport, avoidRects = [], safeMargin = SAFE_MARGIN } = {}) {
     if (!node) return null;
     const ownerWindow = node.ownerDocument?.defaultView || window;
@@ -13466,6 +13472,7 @@ Extension: +32 2 123 456"
       root.setAttribute(ROOT_ATTRIBUTE, ROOT_VALUE);
       (hostDocument.body || hostDocument.documentElement).appendChild(root);
     }
+    forceVisibleSurface(root);
     root.className = "sn-assistant-floating sn-assistant-user-tickets-root";
     const userName = context?.user?.fullName || context?.requestedFor || context?.caller || "Unknown user";
     const isLoading = Boolean(state.ui.userTicketsLoading);
