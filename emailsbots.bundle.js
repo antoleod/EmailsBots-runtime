@@ -5971,7 +5971,6 @@
     // shared with other browser-injected scripts that look for the same key.
     userGroup: "snlc_user_group"
   };
-  var LEGACY_STORAGE_KEYS = ["sn_assistant_settings_v2"];
   var HIDEABLE_BUTTON_IDS = Object.freeze([
     "quick-draft",
     "open-work-notes",
@@ -6080,18 +6079,6 @@
   function getPersistentStorage(rootWindow) {
     return getLocalStorage(rootWindow) || getSessionStorage(rootWindow);
   }
-  function getLegacySettings(rootWindow) {
-    const storages = [getLocalStorage(rootWindow), getSessionStorage(rootWindow)].filter(Boolean);
-    for (const storage of storages) {
-      for (const key of LEGACY_STORAGE_KEYS) {
-        const rawValue = storage.getItem(key);
-        if (rawValue) {
-          return rawValue;
-        }
-      }
-    }
-    return "";
-  }
   function sanitizeTemplateOverrideEntry(value) {
     const entry = value && typeof value === "object" ? value : {};
     return {
@@ -6107,7 +6094,7 @@
     const output = {};
     categories.forEach((category) => {
       output[category] = {};
-      const rawCategory = rawValue && typeof rawValue === "object" ? category === "close_note" ? rawValue[category] || rawValue.resolution : category === "work_note" ? rawValue[category] || rawValue.internal : rawValue[category] : null;
+      const rawCategory = rawValue && typeof rawValue === "object" ? rawValue[category] : null;
       if (!rawCategory || typeof rawCategory !== "object") return;
       Object.entries(rawCategory).forEach(([templateId, override]) => {
         output[category][templateId] = sanitizeTemplateOverrideEntry(override);
@@ -6118,7 +6105,7 @@
   function sanitizeCustomTemplateEntry(value) {
     const entry = value && typeof value === "object" ? value : {};
     const rawCategory = cleanText(entry.category);
-    const category = ["email", "reminder", "close_ticket", "close_note", "work_note", "appointment"].includes(rawCategory) ? rawCategory : rawCategory === "resolution" ? "close_note" : rawCategory === "internal" ? "work_note" : "email";
+    const category = ["email", "reminder", "close_ticket", "close_note", "work_note", "appointment"].includes(rawCategory) ? rawCategory : "email";
     const id = cleanText(entry.id);
     return {
       id,
@@ -6266,7 +6253,7 @@
       logger?.warn("browser storage unavailable, using defaults");
       return getDefaultSettings();
     }
-    const rawValue = storage.getItem(STORAGE_KEYS.settings) || getLegacySettings(rootWindow);
+    const rawValue = storage.getItem(STORAGE_KEYS.settings);
     const parsed = parseJson(rawValue, getDefaultSettings());
     return sanitizeSettings(parsed);
   }
@@ -6771,7 +6758,6 @@
 
   // Assistant/application/persistence/panelPinState.js
   var PIN_STATE_KEY = "sn-assistant-pin-state";
-  var LEGACY_PIN_KEY = "sn_ep_pinned";
   function loadPinState(rootWindow) {
     const fallback = { pinned: false, lastOpenState: false };
     try {
@@ -6787,10 +6773,6 @@
         };
         if (mode) state.mode = mode;
         return state;
-      }
-      const legacy = storage.getItem(LEGACY_PIN_KEY);
-      if (legacy === "true") {
-        return { pinned: true, lastOpenState: false };
       }
     } catch {
     }
@@ -6810,7 +6792,6 @@
         PIN_STATE_KEY,
         JSON.stringify(payload)
       );
-      storage.removeItem(LEGACY_PIN_KEY);
     } catch {
     }
   }
@@ -7004,7 +6985,7 @@
   }
 
   // Assistant/version.js
-  var VERSION = "V2.8";
+  var VERSION = "V2.9";
 
   // Assistant/ui/launcher.js
   var ICON = {
@@ -10801,8 +10782,6 @@ ${configurationItemLine}`, action, closing, SIGN_OFF].filter(Boolean).join("\n\n
   function normalizeTemplateCategory(value) {
     const category = String(value || "").trim();
     if (SUPPORTED_CATEGORIES.includes(category)) return category;
-    if (category === "resolution") return "close_note";
-    if (category === "internal") return "work_note";
     if (category === "event") return "appointment";
     return "";
   }
@@ -10862,6 +10841,12 @@ ${configurationItemLine}`, action, closing, SIGN_OFF].filter(Boolean).join("\n\n
     });
     return output;
   }
+  function mergeTemplatesById(baseTemplates = [], customTemplates = []) {
+    const templates = /* @__PURE__ */ new Map();
+    baseTemplates.forEach((template) => templates.set(template.id, template));
+    customTemplates.forEach((template) => templates.set(template.id, template));
+    return Array.from(templates.values());
+  }
   function buildReminderTemplate(template) {
     const reminderBody = buildReminderBody(template);
     const reminderSubject = buildReminderSubject(template);
@@ -10918,10 +10903,7 @@ ${configurationItemLine}`, action, closing, SIGN_OFF].filter(Boolean).join("\n\n
         const baseTemplates = category === "reminder" ? reminderTemplates : templates.map((template) => applyTemplateOverride(template, overrides[category]?.[template.id]));
         return [
           category,
-          [
-            ...baseTemplates,
-            ...customTemplates[category]
-          ]
+          mergeTemplatesById(baseTemplates, customTemplates[category])
         ];
       })
     );
@@ -14478,8 +14460,6 @@ Extension: +32 2 123 456"
   }
   function getSafeCategory(requestedCategory = "", groups = {}) {
     const category = cleanText(requestedCategory);
-    if (category === "resolution") return "close_note";
-    if (category === "internal") return "work_note";
     return groups[category] ? category : "";
   }
   function mergeResolvedUser(currentUser = {}, resolvedUser = {}) {
@@ -16815,7 +16795,7 @@ Extension: +32 2 123 456"
 /* \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
    TOAST NOTIFICATION
    \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500 */
-.sn-assistant-toast {
+.sn-assistant-clipboard-toast {
   position: fixed;
   bottom: 16px;
   right: 16px;
@@ -16834,7 +16814,7 @@ Extension: +32 2 123 456"
   z-index: 9999;
 }
 
-.sn-assistant-toast__content {
+.sn-assistant-clipboard-toast__content {
   display: flex;
   align-items: center;
   gap: 10px;
@@ -16848,11 +16828,11 @@ Extension: +32 2 123 456"
   line-height: 1;
 }
 
-.sn-assistant-toast__message {
+.sn-assistant-clipboard-toast__message {
   flex: 1 1 auto;
 }
 
-.sn-assistant-toast__message code {
+.sn-assistant-clipboard-toast__message code {
   background: var(--sn-assistant-surface);
   padding: 2px 6px;
   border-radius: 4px;
@@ -16861,7 +16841,7 @@ Extension: +32 2 123 456"
   word-break: break-all;
 }
 
-.sn-assistant-toast--dismissing {
+.sn-assistant-clipboard-toast--dismissing {
   animation: slideOutToast 0.3s cubic-bezier(0.16, 1, 0.3, 1) forwards;
 }
 
@@ -17968,7 +17948,7 @@ Extension: +32 2 123 456"
 /* \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
    EDGE PANEL  (Samsung Edge Panel style)
    \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500 */
-:root {
+.sn-ep {
   --ep-green:        #1A9E72;
   --ep-green-bg:     #E6F5EF;
   --ep-green-border: rgba(26, 158, 114, 0.26);
@@ -18147,6 +18127,7 @@ Extension: +32 2 123 456"
 }
 
 .sn-ep__tab {
+  position: relative;
   flex-shrink: 0;
   width: 30px;
   min-height: 82px;
@@ -19275,10 +19256,6 @@ Extension: +32 2 123 456"
   animation: shake 0.3s ease-in-out infinite;
 }
 
-.sn-ep__tab {
-  position: relative; /* needed for .sn-ep__sla-dot absolute positioning */
-}
-
 .sn-ep__sla-badge {
   display: inline-flex;
   align-items: center;
@@ -19306,6 +19283,9 @@ Extension: +32 2 123 456"
 }
 
 .sn-assistant-worknotes__canned-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
   font-size: 10px;
   padding: 2px 7px;
   background: var(--sn-assistant-accent-soft);
@@ -19316,12 +19296,6 @@ Extension: +32 2 123 456"
 .sn-assistant-worknotes__canned-chip:hover {
   background: var(--sn-assistant-accent);
   color: #fff;
-}
-
-.sn-assistant-worknotes__canned-chip {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
 }
 
 .sn-assistant-worknotes__canned-label {
@@ -20560,7 +20534,7 @@ Are you sure you want to download this calendar event?`
     if (!assetPath) return [];
     const candidates = [];
     const runtimeRepoBase = "https://raw.githubusercontent.com/antoleod/bot/main/";
-    const configBase = cleanText(rootWindow?.__SN_SMART_EMAIL__?.CONFIG?.PDF_BASE_URL) || cleanText(rootWindow?.__SN_ASSISTANT_PDF_BASE_URL__) || cleanText(rootWindow?.__SN_SMART_EMAIL__?.CONFIG?.PDF_ASSET_BASE_URL);
+    const configBase = cleanText(rootWindow?.__SN_ASSISTANT_PDF_BASE_URL__);
     const pushFromBase = (baseUrl) => {
       try {
         const normalizedBaseUrl = normalizePdfAssetBaseUrl(baseUrl);
@@ -20574,7 +20548,7 @@ Are you sure you want to download this calendar event?`
     }
     pushFromBase(runtimeRepoBase);
     try {
-      const bundleBase = cleanText(rootWindow?.__SN_ASSISTANT_BUNDLE_BASE_URL__ || rootWindow?.__SN_SMART_EMAIL__?.CONFIG?.BUNDLE_BASE_URL);
+      const bundleBase = cleanText(rootWindow?.__SN_ASSISTANT_BUNDLE_BASE_URL__);
       if (bundleBase) {
         pushFromBase(bundleBase);
         pushFromBase(new URL("./dist/", bundleBase).href);
@@ -20585,7 +20559,7 @@ Are you sure you want to download this calendar event?`
     try {
       const scripts = Array.from(rootWindow?.document?.scripts || []);
       const scriptSources = scripts.map((script) => cleanText(script.src)).filter(Boolean);
-      const bundleSource = scriptSources.find((src) => /emailsbots\.bundle\.js|smart-email\.js/i.test(src));
+      const bundleSource = scriptSources.find((src) => /emailsbots\.bundle\.js/i.test(src));
       const currentScriptSource = cleanText(rootWindow?.document?.currentScript?.src);
       const selectedSource = bundleSource || currentScriptSource || scriptSources[scriptSources.length - 1] || "";
       if (selectedSource) {
@@ -38930,7 +38904,7 @@ ${text2}` : text2;
   }
   function getDefaultCustomTemplate(category) {
     const rawCategory = cleanText(category);
-    const safeCategory = ["email", "reminder", "close_ticket", "close_note", "work_note", "appointment"].includes(rawCategory) ? rawCategory : rawCategory === "resolution" ? "close_note" : rawCategory === "internal" ? "work_note" : "email";
+    const safeCategory = ["email", "reminder", "close_ticket", "close_note", "work_note", "appointment"].includes(rawCategory) ? rawCategory : "email";
     if (safeCategory === "reminder" || safeCategory === "close_ticket") {
       return {
         id: createCustomTemplateId(safeCategory),
@@ -38986,7 +38960,7 @@ ${text2}` : text2;
   }
   function duplicateTemplateAsCustom(category, templateId, settings) {
     const rawCategory = cleanText(category);
-    const safeCategory = ["email", "reminder", "close_ticket", "close_note", "work_note", "appointment"].includes(rawCategory) ? rawCategory : rawCategory === "resolution" ? "close_note" : rawCategory === "internal" ? "work_note" : "email";
+    const safeCategory = ["email", "reminder", "close_ticket", "close_note", "work_note", "appointment"].includes(rawCategory) ? rawCategory : "email";
     const sourceTemplate = getTemplate(safeCategory, templateId, settings);
     if (!sourceTemplate) {
       return getDefaultCustomTemplate(safeCategory);
