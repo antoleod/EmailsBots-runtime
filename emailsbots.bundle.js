@@ -19281,13 +19281,22 @@ Extension: +32 2 123 456"
 .sn-assistant-panel--user-tickets {
   width: 520px;
   max-width: calc(100vw - 24px);
+  overflow-x: hidden;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
 }
+
+.sn-assistant-panel--user-tickets::-webkit-scrollbar { display: none; }
 
 .sn-assistant-tickets-table-wrapper {
   overflow-x: auto;
   overflow-y: auto;
   max-height: min(55vh, 440px);
+  scrollbar-width: none;
+  -ms-overflow-style: none;
 }
+
+.sn-assistant-tickets-table-wrapper::-webkit-scrollbar { display: none; }
 
 .sn-assistant-tickets-table {
   width: 100%;
