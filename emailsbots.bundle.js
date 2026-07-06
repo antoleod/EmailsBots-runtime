@@ -7430,7 +7430,13 @@
       }
       if (action === LAUNCHER_BUTTON_IDS.quickDraft) handlers.onQuickDraft();
       if (action === LAUNCHER_BUTTON_IDS.quickDraftTop3) handlers.onQuickDraftTop3?.();
-      if (action === LAUNCHER_BUTTON_IDS.openWorkNotes) handlers.onOpenWorkNotes();
+      if (action === LAUNCHER_BUTTON_IDS.openWorkNotes) {
+        try {
+          handlers.onOpenWorkNotes?.();
+        } catch (err) {
+          console.error("[Launcher] Error in onOpenWorkNotes:", err);
+        }
+      }
       if (action === LAUNCHER_BUTTON_IDS.openReminder) handlers.onOpenReminder();
       if (action === LAUNCHER_BUTTON_IDS.incidentResolutionNotes) handlers.onIncidentResolutionNotes?.();
       if (action === LAUNCHER_BUTTON_IDS.createCalendarEvent) handlers.onCreateCalendarEvent();
