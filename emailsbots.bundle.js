@@ -6985,7 +6985,7 @@
   }
 
   // Assistant/version.js
-  var VERSION = "V2.9";
+  var VERSION = "V3.0";
 
   // Assistant/ui/launcher.js
   var ICON = {
@@ -9448,122 +9448,25 @@ ${body}`) : body;
     if (root) root.remove();
   }
 
-  // Assistant/templates/emailTemplates.js
-  var GREETING = "Dear {{user_name}}";
-  var SIGN_OFF = "Kind regards,\n{{agent_name}}";
-  var CLOSINGS = {
-    reply: "Thank you in advance for your reply. Should you need any assistance in the meantime, please do not hesitate to contact us.",
-    confirm: "Thank you in advance for your confirmation. Should you have any questions, please do not hesitate to contact us.",
-    review: "We will keep you informed as soon as there is an update on your request. Should you have any questions in the meantime, please do not hesitate to contact us.",
-    schedule: "Thank you in advance for your feedback so that we can schedule this at a time that suits you.",
-    info: "Should you require any further clarification, please do not hesitate to contact us."
-  };
-  var aboutTicket = (topic) => `We are contacting you regarding ticket {{ticket_number}} concerning ${topic}.`;
-  var reminderAbout = (topic) => `This is a friendly reminder regarding ticket {{ticket_number}} concerning ${topic}.`;
-  var buildEmail = ({ greeting = GREETING, context, action, closing = CLOSINGS.reply }) => [`${greeting},`, context, action, closing, SIGN_OFF].filter(Boolean).join("\n\n");
-  var buildDeliveryEmailBody = ({ greeting = GREETING, context, intro, deviceLine = "Device: {{device_label}}", configurationItemLine = "PI / Configuration item: {{configuration_item}}", action, closing = CLOSINGS.confirm }) => [`${greeting},`, context, `${intro}
-
-${deviceLine}
-${configurationItemLine}`, action, closing, SIGN_OFF].filter(Boolean).join("\n\n");
-  var withReminder = (template, reminder = {}) => ({ ...template, reminderSubject: reminder.subject || "", reminderBody: reminder.body || "", reminderWorkNote: reminder.workNote || "" });
-  var makeEmail = (id, label, subject, context, action, closing = CLOSINGS.reply) => ({ id, category: "email", label, target: "comments", subject, body: buildEmail({ context, action, closing }) });
-  var makeDeliveryEmail = (id, label, subject, context, intro, action, closing = CLOSINGS.confirm, deviceLine = "Device: {{device_label}}", configurationItemLine = "PI / Configuration item: {{configuration_item}}") => ({ id, category: "email", label, target: "comments", subject, body: buildDeliveryEmailBody({ context, intro, action, closing, deviceLine, configurationItemLine }) });
-  var makeReminderEmail = (base, subject, body, workNote = "") => withReminder(base, { subject, body, workNote });
-  var aliasTemplate = (template, overrides = {}) => ({ ...template, ...overrides });
-  var catalog = [
-    { id: "generic_follow_up", label: "Generic Follow-up", subject: "{{ticket_number}} - Request follow-up", context: aboutTicket("your request"), action: "We are following up on your request and will continue to review it. Please let us know if there is any additional detail that could help us proceed." },
-    { id: "generic_reminder", label: "Generic Reminder", subject: "{{ticket_number}} - Friendly reminder", context: reminderAbout("your request"), action: "We would appreciate your feedback so that we can continue with the next step or close the request if everything is complete.", reminder: true },
-    { id: "generic_clarification", label: "Generic Clarification", subject: "{{ticket_number}} - Additional information required", context: aboutTicket("your request"), action: "Could you please provide any missing details, including the device, application, or exact error message concerned, so that we can direct this to the right team?", closing: CLOSINGS.info },
-    { id: "request_more_information", label: "Request More Information", subject: "{{ticket_number}} - More information required", context: aboutTicket("your request"), action: "To continue our analysis, we kindly ask you to share any relevant context, screenshots, timing details, or steps already tried." },
-    { id: "incident_investigation", label: "Incident Investigation", subject: "{{ticket_number}} - Incident under investigation", context: aboutTicket("the incident reported in this ticket"), action: "We are currently investigating the issue. If the problem is still present, please confirm the latest symptoms or share any new error message so that we can continue the analysis.", closing: CLOSINGS.review },
-    { id: "resolution_confirmation", label: "Resolution Confirmation", subject: "{{ticket_number}} - Resolution confirmation", context: aboutTicket("the issue reported in this ticket"), action: "Could you please confirm whether the issue is now resolved and whether the expected service is working as normal?", closing: CLOSINGS.confirm },
-    { id: "ticket_closure_confirmation", label: "Ticket Closure Confirmation", subject: "{{ticket_number}} - Closure confirmation", context: aboutTicket("the ticket closure"), action: "Please confirm whether we may proceed with ticket closure. If anything is still pending, let us know and we will continue to assist.", closing: CLOSINGS.confirm },
-    { id: "general_communication", label: "General Communication", subject: "{{ticket_number}} - Update", context: aboutTicket("the request currently assigned to us"), action: "We will keep you updated as soon as we have new information. In the meantime, please reply if you need to add anything to your request.", closing: CLOSINGS.review, reminder: true, reminderAction: "We are still working on your request. Please reply if you need to add anything to your request or if the issue has already been resolved.", reminderSubject: "{{ticket_number}} - Update reminder" },
-    { id: "equipment_delivery", label: "Equipment Delivery", subject: "{{ticket_number}} - Equipment delivery", context: aboutTicket("the delivery of your equipment"), intro: "Your equipment has been prepared and tested, and is ready for handover.", action: "Please confirm your availability so that we can arrange the handover at {{office_location}}. If you have timing constraints, let us know and we will adapt where possible.", closing: CLOSINGS.confirm, delivery: true, deviceLine: "Equipment: {{device_label}}", reminder: true, reminderAction: "Could you please confirm your availability so that we can arrange the handover at {{office_location}}?", reminderSubject: "{{ticket_number}} - Equipment delivery reminder" },
-    { id: "equipment_collection_return", label: "Equipment Collection / Return", subject: "{{ticket_number}} - Equipment return coordination", context: aboutTicket("the return of IT equipment currently assigned to you"), action: "According to our records, the equipment below should be returned:\n\n{{equipment_model}}\nAsset tag: {{equipment_asset_tag}}\n\nPlease confirm when you would be available for the return, or let us know whether you prefer an appointment or a different handover location.", closing: CLOSINGS.confirm, reminder: true, reminderAction: "According to our records, the equipment below should be returned:\n\n{{equipment_model}}\nAsset tag: {{equipment_asset_tag}}\n\nCould you please confirm when you would be available for the return?", reminderSubject: "{{ticket_number}} - Equipment return coordination reminder" },
-    { id: "device_preparation", label: "Device Preparation", subject: "{{ticket_number}} - Device being prepared", context: aboutTicket("the preparation of your device"), action: "Your device is currently being prepared and configured. We will contact you again as soon as it is ready for handover or delivery.", closing: CLOSINGS.review, reminder: true, reminderAction: "Your device is still being prepared. We will contact you again as soon as it is ready for handover or delivery.", reminderSubject: "{{ticket_number}} - Device preparation reminder" },
-    { id: "appointment_scheduling", label: "Appointment Scheduling", subject: "{{ticket_number}} - Appointment required", context: aboutTicket("your request, for which an appointment is required to proceed"), action: "Please share two or three time slots when you would be available so that we can schedule the appointment at {{office_location}}.", closing: CLOSINGS.schedule },
-    { id: "appointment_confirmation", label: "Appointment Confirmation", subject: "{{ticket_number}} - Appointment confirmation", context: aboutTicket("your scheduled support appointment"), intro: "Please find the appointment details below.", action: "Could you please confirm whether this time slot is still convenient for you?", closing: CLOSINGS.confirm, delivery: true, deviceLine: "Location: {{office_location}}", configurationItemLine: "Contact: {{phone}}", reminder: true, reminderAction: "Could you please confirm whether this time slot is still convenient for you?", reminderSubject: "{{ticket_number}} - Appointment confirmation reminder" },
-    { id: "approval_validation", label: "Approval / Validation", subject: "{{ticket_number}} - Request under validation", context: aboutTicket("your request, which is currently under validation and approval"), action: "We will notify you as soon as the review has been completed, or sooner if any additional information is required from your side.", closing: CLOSINGS.review },
-    { id: "quality_check", label: "Quality Check", subject: "{{ticket_number}} - Post-change quality check", context: aboutTicket("a quality check after a recent change"), action: "Could you please confirm that everything is working correctly in your current setup, including your workstation, network connection, and any additional equipment you use?" },
-    { id: "access_request", label: "Access Request", subject: "{{ticket_number}} - Access request review", context: aboutTicket("your access request"), action: "Please confirm the exact application, mailbox, or resource involved and whether the required approval has already been obtained." },
-    { id: "software_installation", label: "Software Installation", subject: "{{ticket_number}} - Software installation request", context: aboutTicket("your software request for {{software_name}}"), action: "Please confirm the required version and the target device so that we can proceed with the installation." },
-    { id: "connectivity_issue", label: "Connectivity Issue", subject: "{{ticket_number}} - Connectivity follow-up", context: aboutTicket("the connectivity issue reported in this ticket"), action: "Please confirm whether the issue is still occurring, and share the time of the last occurrence, the location, and any error message displayed." },
-    { id: "hardware_issue", label: "Hardware Issue", subject: "{{ticket_number}} - Hardware issue follow-up", context: aboutTicket("the hardware issue reported in this ticket"), action: "Please confirm whether the issue is still present, and describe any visible symptoms such as physical damage, screen problems, or intermittent failures." },
-    { id: "account_authentication_issue", label: "Account / Authentication Issue", subject: "{{ticket_number}} - Account access follow-up", context: aboutTicket("the account or authentication issue reported in this ticket"), action: "Please confirm whether access is still failing and, if possible, share the exact step where the process stops or the message displayed." }
+  // Assistant/templates/generated/emailTemplateCatalog.json
+  var emailTemplateCatalog_default = [
+    {
+      id: "ticket_hardware_issue_follow_up",
+      category: "email",
+      label: "Ticket - Hardware issue follow-up",
+      target: "comments",
+      subject: "{{ticket_number}} - Follow-up",
+      body: "Dear {{user_name}},\nI am following up regarding the issue you reported (Ticket {{ticket_number}}): {{short_description}}.\nCould you please confirm whether you are still experiencing the issue or if it has been resolved?\nIf the issue persists, we can arrange either a remote or on-site intervention to investigate further. Please let us know your preferred date and time, and we will be happy to schedule it accordingly.\nOnce we receive your reply, we will continue working on your request and take the appropriate next steps.\nThank you in advance for your feedback.\nKind regards,\n \n\n{{agent_name}}\nIT support External Consultant \n\nEuropean Parliament\nDirectorate-General for Information Technologies and Cybersecurity\nDirectorate for Customers and Digital Workplace\nMembers' Digital Experience Unit\nDigital Workplace Support\nBRU - Remard 02J006\nTel +32 228 43913\njuan.dioses@ext.europarl.europa.eu\nwww.europarl.europa.eu",
+      recipient: "{{user_email}}",
+      preview: "Dear {{user_name}}, I am following up regarding the issue you reported (Ticket {{ticket_number}}): {{short_description}}. Could you please confirm whether you are still experiencin",
+      tags: [
+        "hardware"
+      ],
+      source: "Assistant/templates/email/{Ticket} - Hardware issue follow-up.msg",
+      format: "msg",
+      contentHash: "cb28e26f45318900a5f85c03bddf9f1d72a4eef1c7517a1cc3e4ec671450d920"
+    }
   ];
-  var EMAIL_TEMPLATES = catalog.map((item) => {
-    const base = item.delivery ? makeDeliveryEmail(item.id, item.label, item.subject, item.context, item.intro, item.action, item.closing, item.deviceLine, item.configurationItemLine) : makeEmail(item.id, item.label, item.subject, item.context, item.action, item.closing);
-    if (!item.reminder) return base;
-    const reminderSubject = item.reminderSubject || `${item.subject} reminder`;
-    const reminderBody = item.delivery ? buildDeliveryEmailBody({
-      context: reminderAbout(item.context.split("concerning ")[1] || "your request"),
-      intro: item.intro || "Your item has been prepared and is ready for handover.",
-      deviceLine: item.deviceLine,
-      configurationItemLine: item.configurationItemLine,
-      action: item.reminderAction || item.action,
-      closing: item.closing || CLOSINGS.confirm
-    }) : buildEmail({
-      context: item.context.replace(/^We are contacting/, "This is a friendly reminder regarding"),
-      action: item.reminderAction || item.action,
-      closing: item.closing || CLOSINGS.reply
-    });
-    return makeReminderEmail(base, reminderSubject, reminderBody);
-  }).concat([
-    aliasTemplate(
-      makeDeliveryEmail(
-        "smartphone_delivery_initial",
-        "Smartphone Delivery - Initial",
-        "{{ticket_number}} - Smartphone delivery scheduling",
-        aboutTicket("the delivery of your corporate smartphone"),
-        "Your new device has been prepared and tested, and is now ready for handover.\n\nDevice: {{model}}\nPI / Configuration item: {{configuration_item}}",
-        "As part of the iPhone Replacement Plan 2026, we kindly ask you to confirm your availability so that we can arrange the delivery and proceed with the closure of the request. You may come to the IT Welcome Desk at your convenience, or we can arrange a visit to your office if you prefer.",
-        CLOSINGS.confirm,
-        "Device: {{model}}",
-        "PI / Configuration item: {{configuration_item}}"
-      ),
-      {
-        reminderBody: buildDeliveryEmailBody({
-          context: "This is a kind reminder regarding ticket {{ticket_number}} concerning the delivery of your corporate smartphone.",
-          intro: "Your device has been prepared and tested, and is ready for handover.",
-          deviceLine: "Device: {{model}}",
-          action: "As part of the iPhone Replacement Plan 2026, we would appreciate it if you could let us know your availability so that we can arrange the delivery and close the request. You may come to the IT Welcome Desk at your convenience, or we can arrange a visit to your office if you prefer.",
-          closing: CLOSINGS.confirm
-        }),
-        reminderSubject: "{{ticket_number}} - Smartphone delivery scheduling (reminder)"
-      }
-    ),
-    aliasTemplate(
-      makeReminderEmail(
-        makeDeliveryEmail(
-          "smartphone_delivery_reminder",
-          "Smartphone Delivery Reminder",
-          "{{ticket_number}} - Smartphone delivery reminder",
-          aboutTicket("the delivery of your corporate smartphone"),
-          "Your device has been prepared and tested, and is ready for handover.",
-          "We kindly ask you to share your availability so that we can arrange the handover at the IT Welcome Desk ({{office_location}}). If you have any timing constraints, please let us know so that we can assist you accordingly.",
-          CLOSINGS.confirm,
-          "Device: {{model}}",
-          "PI / Configuration item: {{configuration_item}}"
-        ),
-        "{{ticket_number}} - Smartphone delivery reminder",
-        buildDeliveryEmailBody({
-          context: reminderAbout("the delivery of your corporate smartphone"),
-          intro: "Your device has been prepared and tested, and is ready for handover.",
-          deviceLine: "Device: {{model}}",
-          action: "We kindly ask you to share your availability so that we can arrange the handover at the IT Welcome Desk ({{office_location}}). If you have any timing constraints, please let us know so that we can assist you accordingly.",
-          closing: CLOSINGS.confirm
-        })
-      )
-    ),
-    aliasTemplate(makeEmail("smartphone_delivery_schedule", "Schedule Smartphone Delivery", "{{ticket_number}} - Smartphone delivery scheduling", aboutTicket("the delivery of your corporate smartphone"), "Your device has been prepared and tested, and is ready for handover. Please confirm your availability so that we can arrange the delivery.", CLOSINGS.confirm)),
-    aliasTemplate(makeEmail("vpn_connectivity_issue", "VPN Connectivity Issue", "{{ticket_number}} - VPN connectivity follow-up", aboutTicket("the reported VPN connectivity issue"), "Could you please confirm whether the connection remains unstable, and share the approximate time of the last disconnection along with your network environment (office or remote)?")),
-    aliasTemplate(makeEmail("wifi_connectivity_issue", "WiFi Connectivity Issue", "{{ticket_number}} - Wi-Fi connectivity follow-up", aboutTicket("the reported Wi-Fi connectivity issue"), "Could you please confirm whether the issue is still occurring, and whether it affects only your corporate laptop or other devices as well? Your building or floor location would also help us investigate.")),
-    aliasTemplate(makeEmail("incident_hardware_issue", "Incident - Hardware Issue", "{{ticket_number}} - Hardware issue follow-up", aboutTicket("the hardware issue reported on your {{device_type}}"), "Could you please confirm whether the issue is still present, and describe any visible symptoms, such as physical damage, screen problems, or intermittent failures?")),
-    aliasTemplate(makeEmail("account_access_support", "Account Access Support", "{{ticket_number}} - Account access follow-up", aboutTicket("your account access request"), "Could you please confirm whether access is still failing, and share the exact step or error message encountered, if possible?")),
-    aliasTemplate(makeEmail("request_software_install", "Request Software Install", "{{ticket_number}} - Software installation request", aboutTicket("your software request for {{software_name}}"), "Could you please confirm the required version and the target device so that we can proceed with the installation?")),
-    aliasTemplate(makeEmail("loss_or_theft_follow_up", "Loss or Theft Follow-Up", "{{ticket_number}} - Reported loss or theft follow-up", aboutTicket("the reported loss or theft of IT equipment"), "We kindly ask you to confirm whether a formal report has already been filed, and whether you require any supporting documentation or further assistance."))
-  ]);
 
   // Assistant/templates/appointmentTemplates.js
   var APPOINTMENT_TEMPLATES = [
@@ -9693,7 +9596,7 @@ ${configurationItemLine}`, action, closing, SIGN_OFF].filter(Boolean).join("\n\n
   ];
 
   // Assistant/templates/workNoteTemplates.js
-  function withReminder2(template, reminderBody = "") {
+  function withReminder(template, reminderBody = "") {
     return {
       ...template,
       reminderBody
@@ -9707,7 +9610,7 @@ ${configurationItemLine}`, action, closing, SIGN_OFF].filter(Boolean).join("\n\n
       target: "work_notes",
       body: "WiFi certificate installed successfully on the user's device.\nNetwork connectivity has been validated end-to-end.\nDevice is now connected to the EP PRIVATE network as expected."
     },
-    withReminder2(
+    withReminder(
       {
         id: "appointment_proposed",
         category: "work_note",
@@ -9738,7 +9641,7 @@ ${configurationItemLine}`, action, closing, SIGN_OFF].filter(Boolean).join("\n\n
       target: "work_notes",
       body: "Initial troubleshooting did not resolve the reported issue.\nEscalation is recommended; the ticket has been reassigned to the appropriate support team for further analysis and follow-up with the requester."
     },
-    withReminder2(
+    withReminder(
       {
         id: "out_of_office",
         category: "work_note",
@@ -9748,7 +9651,7 @@ ${configurationItemLine}`, action, closing, SIGN_OFF].filter(Boolean).join("\n\n
       },
       "Requester remains out of office until {{due_date}}.\nReminder planned after this date."
     ),
-    withReminder2(
+    withReminder(
       {
         id: "user_not_present",
         category: "work_note",
@@ -9758,7 +9661,7 @@ ${configurationItemLine}`, action, closing, SIGN_OFF].filter(Boolean).join("\n\n
       },
       "Requester not present on site.\nFollow-up call attempt unsuccessful.\nReminder sent by email."
     ),
-    withReminder2(
+    withReminder(
       {
         id: "ivote_ipad_support",
         category: "work_note",
@@ -9797,7 +9700,7 @@ ${configurationItemLine}`, action, closing, SIGN_OFF].filter(Boolean).join("\n\n
       keywords: ["outlook", "signature", "email", "calendar", "messagerie"],
       body: 'Outlook assistance has been provided for the request "{{short_description}}".\nThe request was reviewed, the necessary configuration was applied, and the change has been validated end-to-end.\n{{requested_for}} has been informed of the outcome and confirmed that the issue is no longer reproducible.'
     },
-    withReminder2(
+    withReminder(
       {
         id: "worknote_user_contacted",
         category: "work_note",
@@ -9808,7 +9711,7 @@ ${configurationItemLine}`, action, closing, SIGN_OFF].filter(Boolean).join("\n\n
       },
       "Follow-up sent to {{requested_for}}.\nAwaiting their reply before continuing with the request."
     ),
-    withReminder2(
+    withReminder(
       {
         id: "worknote_waiting_for_user",
         category: "work_note",
@@ -9819,7 +9722,7 @@ ${configurationItemLine}`, action, closing, SIGN_OFF].filter(Boolean).join("\n\n
       },
       "Reminder sent to {{requested_for}}.\nThe ticket remains on hold pending their response."
     ),
-    withReminder2(
+    withReminder(
       {
         id: "worknote_no_answer_multiple_attempts",
         category: "work_note",
@@ -9968,221 +9871,6 @@ ${configurationItemLine}`, action, closing, SIGN_OFF].filter(Boolean).join("\n\n
 
   // Assistant/templates/customTemplates.json
   var customTemplates_default = [
-    {
-      id: "generic_email_followup",
-      title: "Generic Email Follow-up",
-      type: "email",
-      category: "generic",
-      priority: 0,
-      enabled: true,
-      record_type: "generic",
-      keywords: {
-        short_desc: "",
-        description: ""
-      },
-      exclusions: [],
-      subject: "Follow-up on your request - {{ticket_number}}",
-      body: "Dear {{user_name}},\n\nI am following up on your request {{ticket_number}} ({{short_description}}).\n\nCould you please provide an update on the current status? If you have any questions or need further assistance, do not hesitate to reach out.\n\nKind regards,\n{{assigned_to}}",
-      work_note: "",
-      close_note: "",
-      event_title: "",
-      event_desc: "",
-      pdf_block: "",
-      placeholders: [
-        "user_name",
-        "ticket_number",
-        "short_description",
-        "assigned_to"
-      ],
-      notes: "Fallback template used when no other matches.",
-      lastModified: "2026-04-30T00:00:00.000Z"
-    },
-    {
-      id: "generic_ticket_closure_no_response",
-      title: "Ticket Closure \u2013 No Response",
-      type: "email",
-      category: "generic",
-      priority: 10,
-      enabled: true,
-      record_type: "generic",
-      keywords: {
-        short_desc: "no response",
-        description: "no response"
-      },
-      exclusions: [],
-      subject: "Closing ticket {{ticket_number}} \u2013 no response received",
-      body: "Dear {{user_name}},\n\nDespite our attempts to contact you regarding ticket {{ticket_number}} ({{short_description}}), we have not received a response.\n\nWe will proceed to close this ticket. If you still require assistance, please open a new request.\n\nKind regards,\n{{assigned_to}}",
-      work_note: "",
-      close_note: "Ticket closed due to no response from the user after multiple contact attempts.",
-      event_title: "",
-      event_desc: "",
-      pdf_block: "",
-      placeholders: [
-        "user_name",
-        "ticket_number",
-        "short_description",
-        "assigned_to"
-      ],
-      notes: "",
-      lastModified: "2026-04-30T00:00:00.000Z"
-    },
-    {
-      id: "smartphone_delivery_schedule",
-      title: "Smartphone Delivery \u2013 Schedule Appointment",
-      type: "email",
-      category: "delivery",
-      priority: 80,
-      enabled: true,
-      record_type: "RITM",
-      keywords: {
-        short_desc: "smartphone",
-        description: "delivery"
-      },
-      exclusions: [
-        "return",
-        "broken",
-        "repair"
-      ],
-      subject: "Appointment \u2013 Smartphone delivery {{ticket_number}}",
-      body: "Dear {{user_name}},\n\nYour corporate smartphone is ready for collection.\n\nTicket: {{ticket_number}}\nDevice / PI: {{configuration_item}}\nLocation: {{location}}\n\nPlease confirm your availability so we can schedule the handover at the IT Welcome Desk.\n\nKind regards,\n{{assigned_to}}",
-      work_note: "",
-      close_note: "",
-      event_title: "Smartphone delivery \u2013 {{ticket_number}}",
-      event_desc: "Handover of corporate smartphone for {{requested_for}}. Ticket: {{ticket_number}}. Device: {{configuration_item}}.",
-      pdf_block: "",
-      placeholders: [
-        "user_name",
-        "ticket_number",
-        "configuration_item",
-        "location",
-        "requested_for",
-        "assigned_to"
-      ],
-      notes: "Triggered by 'smartphone' in short_desc.",
-      lastModified: "2026-04-30T00:00:00.000Z"
-    },
-    {
-      id: "equipment_return_request",
-      title: "Equipment Return \u2013 Initial Request",
-      type: "email",
-      category: "return",
-      priority: 80,
-      enabled: true,
-      record_type: "RITM",
-      keywords: {
-        short_desc: "return",
-        description: "equipment"
-      },
-      exclusions: [
-        "delivery",
-        "new device"
-      ],
-      subject: "Equipment return \u2013 {{ticket_number}}",
-      body: "Dear {{user_name}},\n\nWe are contacting you regarding the return of IT equipment linked to ticket {{ticket_number}}.\n\nAsset: {{asset_tag}}\nItem: {{configuration_item}}\n\nPlease let us know your availability so we can arrange the collection. You may drop the equipment at the IT Welcome Desk at your earliest convenience.\n\nKind regards,\n{{assigned_to}}",
-      work_note: "",
-      close_note: "",
-      event_title: "Equipment return \u2013 {{ticket_number}}",
-      event_desc: "Collection of IT equipment from {{requested_for}}. Asset: {{asset_tag}}. Ticket: {{ticket_number}}.",
-      pdf_block: "",
-      placeholders: [
-        "user_name",
-        "ticket_number",
-        "asset_tag",
-        "configuration_item",
-        "requested_for",
-        "assigned_to"
-      ],
-      notes: "Use asset_tag over configuration_item when available.",
-      lastModified: "2026-04-30T00:00:00.000Z"
-    },
-    {
-      id: "equipment_return_reminder",
-      title: "Equipment Return \u2013 Reminder",
-      type: "email",
-      category: "return",
-      priority: 70,
-      enabled: true,
-      record_type: "RITM",
-      keywords: {
-        short_desc: "return reminder",
-        description: "equipment reminder"
-      },
-      exclusions: [],
-      subject: "Reminder: Equipment return pending \u2013 {{ticket_number}}",
-      body: "Dear {{user_name}},\n\nThis is a friendly reminder that we are still awaiting the return of IT equipment linked to ticket {{ticket_number}}.\n\nAsset: {{asset_tag}}\n\nPlease contact us as soon as possible to arrange the return.\n\nKind regards,\n{{assigned_to}}",
-      work_note: "",
-      close_note: "",
-      event_title: "",
-      event_desc: "",
-      pdf_block: "",
-      placeholders: [
-        "user_name",
-        "ticket_number",
-        "asset_tag",
-        "assigned_to"
-      ],
-      notes: "",
-      lastModified: "2026-04-30T00:00:00.000Z"
-    },
-    {
-      id: "quality_check_after_move",
-      title: "Quality Check After Move",
-      type: "email",
-      category: "quality",
-      priority: 70,
-      enabled: true,
-      record_type: "SCTASK",
-      keywords: {
-        short_desc: "move",
-        description: "quality check"
-      },
-      exclusions: [],
-      subject: "Quality check after move \u2013 {{ticket_number}}",
-      body: "Dear {{user_name}},\n\nFollowing the completion of your move, we would like to confirm that all IT equipment has been set up correctly at your new location.\n\nTicket: {{ticket_number}}\nLocation: {{location}}\n\nPlease let us know if everything is working as expected or if you require any adjustments.\n\nKind regards,\n{{assigned_to}}",
-      work_note: "",
-      close_note: "Quality check completed. User confirmed all equipment is operational at the new location.",
-      event_title: "",
-      event_desc: "",
-      pdf_block: "",
-      placeholders: [
-        "user_name",
-        "ticket_number",
-        "location",
-        "assigned_to"
-      ],
-      notes: "",
-      lastModified: "2026-04-30T00:00:00.000Z"
-    },
-    {
-      id: "mdm_installation_appointment",
-      title: "MDM Installation \u2013 Schedule Appointment",
-      type: "email",
-      category: "mdm",
-      priority: 85,
-      enabled: true,
-      record_type: "RITM",
-      keywords: {
-        short_desc: "mdm",
-        description: "mobile device management"
-      },
-      exclusions: [],
-      subject: "MDM installation appointment \u2013 {{ticket_number}}",
-      body: "Dear {{user_name}},\n\nWe need to schedule the installation of the Mobile Device Management (MDM) profile on your device.\n\nTicket: {{ticket_number}}\nDevice: {{configuration_item}}\n\nPlease share your availability so we can arrange a convenient time slot. The process typically takes 15\u201320 minutes.\n\nKind regards,\n{{assigned_to}}",
-      work_note: "",
-      close_note: "",
-      event_title: "MDM installation \u2013 {{ticket_number}}",
-      event_desc: "MDM profile installation for {{requested_for}}. Device: {{configuration_item}}. Ticket: {{ticket_number}}.",
-      pdf_block: "",
-      placeholders: [
-        "user_name",
-        "ticket_number",
-        "configuration_item",
-        "requested_for",
-        "assigned_to"
-      ],
-      notes: "Triggered by 'mdm' or 'mobile device management' in description.",
-      lastModified: "2026-04-30T00:00:00.000Z"
-    },
     {
       id: "worknote_user_contacted",
       title: "Work Note \u2013 User Contacted",
@@ -10645,63 +10333,6 @@ ${configurationItemLine}`, action, closing, SIGN_OFF].filter(Boolean).join("\n\n
       ],
       notes: "",
       lastModified: "2026-04-30T00:00:00.000Z"
-    },
-    {
-      id: "equipment_return_mobile_devices_offboarding",
-      title: "Recover Mobile Devices / IT Material - Offboarding",
-      type: "email",
-      category: "return",
-      priority: 95,
-      enabled: true,
-      record_type: "RITM",
-      keywords: {
-        short_desc: "recover mobile devices",
-        description: "recover it material"
-      },
-      exclusions: [
-        "delivery",
-        "installation"
-      ],
-      subject: "IT Equipment Return Required Before {{follow_up_date}} - {{ticket_number}}",
-      body: "Dear {{requested_for}},\n\nYou are scheduled to leave on {{follow_up_date}}. Please return all IT equipment assigned under request {{ticket_number}} before this date.\n\nAssigned equipment:\n{{asset_tag}} - {{configuration_item}}\n\nReturn location:\nITEC Service Desk Brussels - ASP 01E035\n\nIf you cannot return the equipment in person, please contact us to arrange an alternative.\n\nPlease confirm once completed.\n\nKind regards,\n{{assigned_to}}",
-      work_note: "Reminder sent to {{requested_for}} for IT equipment return ({{ticket_number}}).\nAssets, location, and deadline ({{follow_up_date}}) communicated.\nAwaiting confirmation.",
-      close_note: "",
-      event_title: "",
-      event_desc: "",
-      pdf_block: "",
-      placeholders: [
-        "requested_for",
-        "follow_up_date",
-        "ticket_number",
-        "asset_tag",
-        "configuration_item"
-      ],
-      notes: "Offboarding return template for mobile devices / IT material.",
-      lastModified: "2026-05-04T07:31:03.367Z"
-    },
-    {
-      id: "test_bulk_1",
-      title: "Test Bulk Template",
-      type: "email",
-      category: "test",
-      priority: 100,
-      enabled: true,
-      record_type: "INC",
-      keywords: {
-        short_desc: "bulk test",
-        description: ""
-      },
-      exclusions: [],
-      subject: "Test Subject",
-      body: "Test Body",
-      work_note: "",
-      close_note: "",
-      event_title: "",
-      event_desc: "",
-      pdf_block: "",
-      placeholders: [],
-      notes: "Bulk import test",
-      lastModified: "2026-05-05T07:07:35.604Z"
     }
   ];
 
@@ -10771,7 +10402,7 @@ ${configurationItemLine}`, action, closing, SIGN_OFF].filter(Boolean).join("\n\n
     { id: "appointment", label: "Appointment" }
   ];
   var DEFAULT_GROUPS = {
-    email: EMAIL_TEMPLATES,
+    email: emailTemplateCatalog_default,
     reminder: [],
     close_ticket: closeTicketTemplates_default,
     close_note: RESOLUTION_TEMPLATES,
@@ -10836,6 +10467,7 @@ ${configurationItemLine}`, action, closing, SIGN_OFF].filter(Boolean).join("\n\n
     templates.forEach((template) => {
       if (!template || !template.id) return;
       const category = normalizeTemplateCategory(template.category);
+      if (category === "email") return;
       if (!output[category]) return;
       output[category].push({ ...deepClone(template), category });
     });
@@ -10894,13 +10526,13 @@ ${configurationItemLine}`, action, closing, SIGN_OFF].filter(Boolean).join("\n\n
   function getTemplateGroups(settings) {
     const overrides = settings?.templateOverrides || {};
     const customTemplates = getCustomTemplatesByCategory(settings);
-    const baseEmailTemplates = EMAIL_TEMPLATES.map((template) => applyTemplateOverride(template, overrides.email?.[template.id]));
+    const baseEmailTemplates = emailTemplateCatalog_default.map((template) => deepClone(template));
     const reminderTemplates = baseEmailTemplates.map(
       (template) => applyTemplateOverride(buildReminderTemplate(template), overrides.reminder?.[`reminder_${template.id}`])
     );
     return Object.fromEntries(
       Object.entries(DEFAULT_GROUPS).map(([category, templates]) => {
-        const baseTemplates = category === "reminder" ? reminderTemplates : templates.map((template) => applyTemplateOverride(template, overrides[category]?.[template.id]));
+        const baseTemplates = category === "email" ? baseEmailTemplates : category === "reminder" ? reminderTemplates : templates.map((template) => applyTemplateOverride(template, overrides[category]?.[template.id]));
         return [
           category,
           mergeTemplatesById(baseTemplates, customTemplates[category])
@@ -13131,14 +12763,14 @@ ${value}` : value;
             <div class="sn-assistant-row">
               <div class="sn-assistant-panel__heading" style="font-size:14px;">Existing templates</div>
               <div class="sn-assistant-row">
-                <button type="button" class="sn-assistant-button sn-assistant-button--secondary sn-assistant-button--compact" data-action="new-custom-template" data-category="${escapeHtml(activeCategory)}">New template</button>
+                ${activeCategory === "email" ? '<span class="sn-assistant-note sn-assistant-note--info">Email templates are managed from <code>Assistant/templates/email/</code>.</span>' : `<button type="button" class="sn-assistant-button sn-assistant-button--secondary sn-assistant-button--compact" data-action="new-custom-template" data-category="${escapeHtml(activeCategory)}">New template</button>`}
                 <button
                   type="button"
                   class="sn-assistant-button sn-assistant-button--secondary sn-assistant-button--compact"
                   data-action="duplicate-template"
                   data-category="${escapeHtml(activeCategory)}"
                   data-template-id="${escapeHtml(selectedTemplateId || "")}"
-                  ${selectedTemplateId ? "" : "disabled"}
+                  ${selectedTemplateId && activeCategory !== "email" ? "" : "disabled"}
                 >
                   Duplicate selected
                 </button>
@@ -30840,8 +30472,8 @@ Are you sure you want to download this calendar event?`
         var isValidCatalog = function(obj) {
           return obj instanceof PDFDict_default && obj.lookup(PDFName_default.of("Type")) === PDFName_default.of("Catalog");
         };
-        var catalog2 = this.context.lookup(this.context.trailerInfo.Root);
-        if (!isValidCatalog(catalog2)) {
+        var catalog = this.context.lookup(this.context.trailerInfo.Root);
+        if (!isValidCatalog(catalog)) {
           var indirectObjects = this.context.enumerateIndirectObjects();
           for (var idx = 0, len = indirectObjects.length; idx < len; idx++) {
             var _a = indirectObjects[idx], ref = _a[0], object = _a[1];
@@ -34784,19 +34416,19 @@ Are you sure you want to download this calendar event?`
       }
       PDFJavaScript2.prototype.embed = function() {
         return __awaiter(this, void 0, void 0, function() {
-          var _a, catalog2, context, ref, Names, Javascript, JSNames;
+          var _a, catalog, context, ref, Names, Javascript, JSNames;
           return __generator(this, function(_b) {
             switch (_b.label) {
               case 0:
                 if (!!this.alreadyEmbedded) return [3, 2];
-                _a = this.doc, catalog2 = _a.catalog, context = _a.context;
+                _a = this.doc, catalog = _a.catalog, context = _a.context;
                 return [4, this.embedder.embedIntoContext(this.doc.context, this.ref)];
               case 1:
                 ref = _b.sent();
-                if (!catalog2.has(PDFName_default.of("Names"))) {
-                  catalog2.set(PDFName_default.of("Names"), context.obj({}));
+                if (!catalog.has(PDFName_default.of("Names"))) {
+                  catalog.set(PDFName_default.of("Names"), context.obj({}));
                 }
-                Names = catalog2.lookup(PDFName_default.of("Names"), PDFDict_default);
+                Names = catalog.lookup(PDFName_default.of("Names"), PDFDict_default);
                 if (!Names.has(PDFName_default.of("JavaScript"))) {
                   Names.set(PDFName_default.of("JavaScript"), context.obj({}));
                 }
@@ -34935,14 +34567,14 @@ Are you sure you want to download this calendar event?`
           options = {};
         }
         return __awaiter(this, void 0, void 0, function() {
-          var _a, updateMetadata, context, pageTree, pageTreeRef, catalog2;
+          var _a, updateMetadata, context, pageTree, pageTreeRef, catalog;
           return __generator(this, function(_b) {
             _a = options.updateMetadata, updateMetadata = _a === void 0 ? true : _a;
             context = PDFContext_default.create();
             pageTree = PDFPageTree_default.withContext(context);
             pageTreeRef = context.register(pageTree);
-            catalog2 = PDFCatalog_default.withContextAndPages(context, pageTreeRef);
-            context.trailerInfo.Root = context.register(catalog2);
+            catalog = PDFCatalog_default.withContextAndPages(context, pageTreeRef);
+            context.trailerInfo.Root = context.register(catalog);
             return [2, new PDFDocument2(context, false, updateMetadata)];
           });
         });
@@ -39224,6 +38856,10 @@ ${text2}` : text2;
         scheduleRecovery("settings-template-restore", 0);
       },
       onNewCustomTemplate(category) {
+        if ((category || state.ui.templateManagerCategory || "email") === "email") {
+          showToast(state.host.document, { message: "Add email templates in Assistant/templates/email/ and rebuild.", tone: "info" });
+          return;
+        }
         const draft = cloneSettings(ensureSettingsDraft(state));
         const template = getDefaultCustomTemplate(category || state.ui.templateManagerCategory || "email");
         upsertCustomTemplate(draft, template);
@@ -39243,6 +38879,10 @@ ${text2}` : text2;
       onDuplicateTemplate(category, templateId) {
         const draft = cloneSettings(ensureSettingsDraft(state));
         const sourceCategory = category || state.ui.templateManagerCategory || "email";
+        if (sourceCategory === "email") {
+          showToast(state.host.document, { message: "External email templates cannot be duplicated in Settings.", tone: "info" });
+          return;
+        }
         const sourceTemplateId = templateId || state.ui.selectedTemplates?.[sourceCategory] || "";
         const template = duplicateTemplateAsCustom(sourceCategory, sourceTemplateId, draft);
         upsertCustomTemplate(draft, template);
