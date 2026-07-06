@@ -19809,6 +19809,42 @@ Extension: +32 2 123 456"
 .sn-ep[class*="sn-ep--snap-"] .sn-ep__tab {
   /* keep tab visible for non-bc positions */
 }
+
+/* Final narrow-viewport guardrails for all ServiceNow-injected surfaces. */
+@media (max-width: 768px) {
+  .sn-assistant-panel,
+  .sn-assistant-panel--user-tickets,
+  .sn-assistant-panel--find-ci,
+  .sn-assistant-worknotes-panel,
+  .sn-assistant-user-info-panel,
+  .sn-assistant-ep-links-panel {
+    left: 4px !important;
+    right: 4px !important;
+    width: auto !important;
+    max-width: none !important;
+    max-height: calc(100dvh - 8px);
+  }
+  .sn-assistant-panel__footer,
+  .sn-assistant-user-info__actions,
+  .sn-assistant-ci-item__actions { flex-wrap: wrap; }
+  .sn-assistant-tickets-table-wrapper { max-width: 100%; overscroll-behavior-x: contain; }
+}
+
+@media (max-width: 400px) {
+  .sn-assistant-modal { padding: 4px; }
+  .sn-assistant-ci-item { align-items: flex-start; flex-wrap: wrap; }
+  .sn-assistant-ci-item__info { flex-basis: calc(100% - 34px); }
+  .sn-ep[data-ep-mode="expanded"] {
+    width: calc(100vw - 8px) !important;
+    max-width: calc(100vw - 8px);
+  }
+  #sn-assistant-toasts {
+    left: 8px !important;
+    right: 8px !important;
+    width: auto !important;
+    max-width: none !important;
+  }
+}
 `;
 
   // Assistant/ui/styles.js
