@@ -13310,7 +13310,7 @@ Extension: +32 2 123 456"
       root.setAttribute(ROOT_ATTRIBUTE, ROOT_VALUE);
       (hostDocument.body || hostDocument.documentElement).appendChild(root);
     }
-    root.className = "sn-assistant-floating sn-assistant-user-tickets-root";
+    root.className = "sn-assistant-floating sn-assistant-user-info-root";
     const data = state.ui.userInfoData || {};
     const loading = Boolean(state.ui.userInfoLoading);
     const error2 = String(state.ui.userInfoError || "").trim();
@@ -13343,7 +13343,7 @@ Extension: +32 2 123 456"
       </div>
     `;
     const markup = `
-    <div class="sn-assistant-panel sn-assistant-panel--find-ci">
+    <div class="sn-assistant-panel sn-assistant-panel--find-ci sn-assistant-panel--user-info">
       <div class="sn-assistant-panel__header" data-drag-handle="user-info">
         <div class="sn-assistant-panel__title">
           <span class="sn-assistant-panel__eyebrow">User Info</span>
@@ -19808,6 +19808,26 @@ Extension: +32 2 123 456"
 /* \u2500\u2500 Positioned panel: hide native left/right edge classes \u2500\u2500 */
 .sn-ep[class*="sn-ep--snap-"] .sn-ep__tab {
   /* keep tab visible for non-bc positions */
+}
+
+/* User Info remains scrollable when required, without nested or visible bars. */
+.sn-assistant-user-info-root { overflow: visible; }
+.sn-assistant-panel--user-info {
+  overflow-x: hidden;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+.sn-assistant-panel--user-info::-webkit-scrollbar { display: none; }
+.sn-assistant-panel--user-info .sn-assistant-panel__body,
+.sn-assistant-panel--user-info .sn-assistant-ci-list {
+  overflow-x: hidden;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+.sn-assistant-panel--user-info .sn-assistant-ci-list::-webkit-scrollbar { display: none; }
+.sn-assistant-panel--user-info .sn-assistant-ci-item__meta {
+  overflow-wrap: anywhere;
+  word-break: break-word;
 }
 
 /* Final narrow-viewport guardrails for all ServiceNow-injected surfaces. */
