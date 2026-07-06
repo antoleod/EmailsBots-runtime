@@ -11692,6 +11692,7 @@ ${value}` : value;
         <div class="sn-assistant-modal__dialog" role="dialog" aria-modal="true" tabindex="-1">
           <div class="sn-assistant-modal__header">
             <div class="sn-assistant-modal__title">\u26A1 Top Email Templates</div>
+            <button type="button" class="sn-assistant-mini-button sn-assistant-mini-button--danger" data-action="toptpl-close" aria-label="Close Top Email Templates" title="Close">\xD7</button>
           </div>
           <div class="sn-assistant-modal__body">
             <div class="sn-assistant-toptpl__grid">
@@ -11712,19 +11713,28 @@ ${value}` : value;
       (hostDocument.body || hostDocument.documentElement).appendChild(root);
       const releaseFocusTrap = installModalFocusTrap(root, hostDocument);
       const backdrop = root.querySelector(".sn-assistant-modal__backdrop");
-      const cancelBtn = root.querySelector('[data-action="toptpl-cancel"]');
+      let settled = false;
       function cleanup(value = "") {
+        if (settled) return;
+        settled = true;
         releaseFocusTrap();
         root.remove();
         resolve(value);
       }
       root.addEventListener("click", (event) => {
         const btn = event.target.closest('[data-action="pick-template"]');
-        if (!btn) return;
-        cleanup(btn.getAttribute("data-template-id") || "");
+        if (btn) {
+          cleanup(btn.getAttribute("data-template-id") || "");
+          return;
+        }
+        if (event.target.closest('[data-action="toptpl-close"], [data-action="toptpl-cancel"]')) cleanup("");
       });
-      cancelBtn?.addEventListener("click", () => cleanup(""));
       backdrop?.addEventListener("click", () => cleanup(""));
+      root.addEventListener("keydown", (event) => {
+        if (event.key !== "Escape") return;
+        event.preventDefault();
+        cleanup("");
+      });
     });
   }
   function showGroupPickerModal(hostDocument, groups = []) {
