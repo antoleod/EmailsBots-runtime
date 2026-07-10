@@ -5815,7 +5815,6 @@
         workNotesGeneratedTemplateId: "",
         workNoteTemplateUsage: {},
         workNotesRecentPhrases: [],
-        workNotesPosition: null,
         userInfoOpen: false,
         userInfoLoading: false,
         userInfoData: null,
@@ -11301,84 +11300,6 @@ ${body}`) : body;
     };
   }
 
-  // Assistant/ui/drag.js
-  var INTERACTIVE_SELECTOR = 'button, input, select, textarea, label, a, [role="button"], [data-no-drag="true"]';
-  function applyPosition(node, position) {
-    if (!position) return;
-    node.style.left = `${position.left}px`;
-    node.style.top = `${position.top}px`;
-  }
-  function resolveDefaultPosition(node, defaultPosition) {
-    return typeof defaultPosition === "function" ? defaultPosition(node) : defaultPosition;
-  }
-  function makeDraggable({ node, handleSelector, state, positionKey, defaultPosition }) {
-    if (!node) return;
-    const ownerWindow = node.ownerDocument.defaultView || window;
-    const storedPosition = state.ui[positionKey];
-    const fallbackPosition = resolveDefaultPosition(node, defaultPosition);
-    applyPosition(node, storedPosition || fallbackPosition);
-    if (node.dataset.snAssistantDragBound === "true") return;
-    node.dataset.snAssistantDragBound = "true";
-    let dragState = null;
-    let suppressClickUntil = 0;
-    const onPointerMove = (event) => {
-      if (!dragState) return;
-      const deltaX = event.clientX - dragState.startX;
-      const deltaY = event.clientY - dragState.startY;
-      const distance = Math.abs(deltaX) + Math.abs(deltaY);
-      if (distance < 4 && !dragState.moved) return;
-      dragState.moved = true;
-      event.preventDefault();
-      const nextLeft = clamp(
-        event.clientX - dragState.offsetX,
-        8,
-        Math.max(ownerWindow.innerWidth - dragState.width - 8, 8)
-      );
-      const nextTop = clamp(
-        event.clientY - dragState.offsetY,
-        8,
-        Math.max(ownerWindow.innerHeight - dragState.height - 8, 8)
-      );
-      state.ui[positionKey] = { left: nextLeft, top: nextTop };
-      applyPosition(node, state.ui[positionKey]);
-    };
-    const onPointerUp = () => {
-      if (dragState?.moved) {
-        suppressClickUntil = Date.now() + 120;
-      }
-      dragState = null;
-      ownerWindow.removeEventListener("pointermove", onPointerMove);
-      ownerWindow.removeEventListener("pointerup", onPointerUp);
-    };
-    node.addEventListener("pointerdown", (event) => {
-      if (event.button !== 0) return;
-      if (!event.target.closest(handleSelector)) return;
-      if (event.target.closest(INTERACTIVE_SELECTOR)) return;
-      const rect = node.getBoundingClientRect();
-      dragState = {
-        startX: event.clientX,
-        startY: event.clientY,
-        offsetX: event.clientX - rect.left,
-        offsetY: event.clientY - rect.top,
-        width: rect.width,
-        height: rect.height,
-        moved: false
-      };
-      ownerWindow.addEventListener("pointermove", onPointerMove, { passive: false });
-      ownerWindow.addEventListener("pointerup", onPointerUp);
-    });
-    node.addEventListener(
-      "click",
-      (event) => {
-        if (Date.now() < suppressClickUntil) {
-          event.preventDefault();
-          event.stopPropagation();
-        }
-      },
-      true
-    );
-  }
-
   // Assistant/sn/actions.js
   var USER_POPUP_SELECTORS = [
     ".popover",
@@ -12900,6 +12821,84 @@ ${value}` : value;
   }
   function removeLauncher(hostDocument) {
     hostDocument.getElementById(UI_IDS.launcher)?.remove();
+  }
+
+  // Assistant/ui/drag.js
+  var INTERACTIVE_SELECTOR = 'button, input, select, textarea, label, a, [role="button"], [data-no-drag="true"]';
+  function applyPosition(node, position) {
+    if (!position) return;
+    node.style.left = `${position.left}px`;
+    node.style.top = `${position.top}px`;
+  }
+  function resolveDefaultPosition(node, defaultPosition) {
+    return typeof defaultPosition === "function" ? defaultPosition(node) : defaultPosition;
+  }
+  function makeDraggable({ node, handleSelector, state, positionKey, defaultPosition }) {
+    if (!node) return;
+    const ownerWindow = node.ownerDocument.defaultView || window;
+    const storedPosition = state.ui[positionKey];
+    const fallbackPosition = resolveDefaultPosition(node, defaultPosition);
+    applyPosition(node, storedPosition || fallbackPosition);
+    if (node.dataset.snAssistantDragBound === "true") return;
+    node.dataset.snAssistantDragBound = "true";
+    let dragState = null;
+    let suppressClickUntil = 0;
+    const onPointerMove = (event) => {
+      if (!dragState) return;
+      const deltaX = event.clientX - dragState.startX;
+      const deltaY = event.clientY - dragState.startY;
+      const distance = Math.abs(deltaX) + Math.abs(deltaY);
+      if (distance < 4 && !dragState.moved) return;
+      dragState.moved = true;
+      event.preventDefault();
+      const nextLeft = clamp(
+        event.clientX - dragState.offsetX,
+        8,
+        Math.max(ownerWindow.innerWidth - dragState.width - 8, 8)
+      );
+      const nextTop = clamp(
+        event.clientY - dragState.offsetY,
+        8,
+        Math.max(ownerWindow.innerHeight - dragState.height - 8, 8)
+      );
+      state.ui[positionKey] = { left: nextLeft, top: nextTop };
+      applyPosition(node, state.ui[positionKey]);
+    };
+    const onPointerUp = () => {
+      if (dragState?.moved) {
+        suppressClickUntil = Date.now() + 120;
+      }
+      dragState = null;
+      ownerWindow.removeEventListener("pointermove", onPointerMove);
+      ownerWindow.removeEventListener("pointerup", onPointerUp);
+    };
+    node.addEventListener("pointerdown", (event) => {
+      if (event.button !== 0) return;
+      if (!event.target.closest(handleSelector)) return;
+      if (event.target.closest(INTERACTIVE_SELECTOR)) return;
+      const rect = node.getBoundingClientRect();
+      dragState = {
+        startX: event.clientX,
+        startY: event.clientY,
+        offsetX: event.clientX - rect.left,
+        offsetY: event.clientY - rect.top,
+        width: rect.width,
+        height: rect.height,
+        moved: false
+      };
+      ownerWindow.addEventListener("pointermove", onPointerMove, { passive: false });
+      ownerWindow.addEventListener("pointerup", onPointerUp);
+    });
+    node.addEventListener(
+      "click",
+      (event) => {
+        if (Date.now() < suppressClickUntil) {
+          event.preventDefault();
+          event.stopPropagation();
+        }
+      },
+      true
+    );
   }
 
   // Assistant/ui/preview.js
