@@ -12172,6 +12172,512 @@ ${value}` : value;
     if (root) root.remove();
   }
 
+  // Assistant/application/findCi/panel.js
+  function formatDate(dateStr) {
+    if (!dateStr) return "";
+    try {
+      const d = new Date(dateStr);
+      if (isNaN(d.getTime())) return String(dateStr).split(" ")[0] || "";
+      return d.toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" });
+    } catch {
+      return String(dateStr).split(" ")[0] || "";
+    }
+  }
+  function parseUpdatedTs(value = "") {
+    const raw = String(value || "").trim();
+    if (!raw) return 0;
+    const eu = raw.match(/^(\d{2})\/(\d{2})\/(\d{4})\s+(\d{2}):(\d{2})(?::(\d{2}))?/);
+    if (eu) {
+      const [, dd, mm, yyyy, hh, mi, ss] = eu;
+      return new Date(Number(yyyy), Number(mm) - 1, Number(dd), Number(hh), Number(mi), Number(ss || "0")).getTime();
+    }
+    const iso = Date.parse(raw);
+    return Number.isFinite(iso) ? iso : 0;
+  }
+  function ciClass(ci) {
+    return String(ci.class || ci.sys_class_name || "").trim() || "Other";
+  }
+  function sortWithinGroup(left, right) {
+    const lts = Number.isFinite(left.updated_ts) ? left.updated_ts : parseUpdatedTs(left.sys_updated_on || "");
+    const rts = Number.isFinite(right.updated_ts) ? right.updated_ts : parseUpdatedTs(right.sys_updated_on || "");
+    if (rts !== lts) return rts - lts;
+    return (right.score || 0) - (left.score || 0);
+  }
+  function renderCiItem(ci, { best = false, copied = false, pdfSource = false } = {}) {
+    const dateText = formatDate(ci.sys_updated_on);
+    const copiedBadge = copied ? '<span class="sn-assistant-ci-item__corp-badge sn-assistant-ci-item__corp-badge--copied">Copied</span>' : "";
+    const pdfBadge = pdfSource ? '<span class="sn-assistant-ci-item__corp-badge">PDF source</span>' : "";
+    return `
+    <div class="sn-assistant-ci-item">
+      <div
+        class="sn-assistant-ci-item__info"
+        data-action="find-ci-select"
+        data-sys-id="${escapeHtml(ci.sys_id)}"
+        data-name="${escapeHtml(ci.name || "")}"
+        role="button"
+        tabindex="0"
+        title="Insert: ${escapeHtml(ci.name || "")}"
+      >
+        <div class="sn-assistant-ci-item__name">
+          ${copiedBadge}${pdfBadge}
+          ${escapeHtml(ci.name || "(no name)")}
+        </div>
+        <div class="sn-assistant-ci-item__meta">
+          ${[
+      ci.model ? `${escapeHtml(ci.model)}` : "",
+      dateText ? escapeHtml(dateText) : ""
+    ].filter(Boolean).join(" \xB7 ")}
+        </div>
+      </div>
+      <div class="sn-assistant-ci-item__actions">
+        <button
+          type="button"
+          class="sn-assistant-button sn-assistant-button--primary sn-assistant-button--compact sn-assistant-ci-item__copy"
+          data-action="find-ci-select"
+          data-sys-id="${escapeHtml(ci.sys_id)}"
+          data-name="${escapeHtml(ci.name || "")}"
+          title="Insert this CI"
+        >Insert</button>
+        <button
+          type="button"
+          class="sn-assistant-button sn-assistant-button--secondary sn-assistant-button--compact sn-assistant-ci-item__copy"
+          data-action="find-ci-copy"
+          data-sys-id="${escapeHtml(ci.sys_id)}"
+          data-name="${escapeHtml(ci.name || "")}"
+          title="Copy name"
+        >Copy</button>
+        <button
+          type="button"
+          class="sn-assistant-button sn-assistant-button--secondary sn-assistant-button--compact sn-assistant-ci-item__copy"
+          data-action="find-ci-open"
+          data-href="${escapeHtml(ci.href || "")}"
+          title="Open record"
+        >Open</button>
+        <button
+          type="button"
+          class="sn-assistant-button sn-assistant-button--secondary sn-assistant-button--compact sn-assistant-ci-item__copy sn-assistant-ci-item__pdf"
+          data-action="find-ci-pdf"
+          data-sys-id="${escapeHtml(ci.sys_id)}"
+          data-name="${escapeHtml(ci.name || "")}"
+          title="Generate PDF"
+        >PDF</button>
+      </div>
+    </div>
+  `;
+  }
+  function groupResults(results, bestSysId = "") {
+    const map = /* @__PURE__ */ new Map();
+    results.forEach((ci) => {
+      if (!ci || ci.sys_id === bestSysId) return;
+      const key = ciClass(ci);
+      if (!map.has(key)) map.set(key, []);
+      map.get(key).push(ci);
+    });
+    return [...map.entries()].map(([key, items]) => {
+      const sorted = items.sort(sortWithinGroup);
+      const newest = sorted.reduce((max, ci) => {
+        const ts = Number.isFinite(ci.updated_ts) ? ci.updated_ts : parseUpdatedTs(ci.sys_updated_on || "");
+        return ts > max ? ts : max;
+      }, 0);
+      return { key, label: `${key} (${sorted.length})`, items: sorted, newest, isOther: key === "Other" };
+    }).sort((a, b) => {
+      if (a.isOther !== b.isOther) return a.isOther ? 1 : -1;
+      return b.newest - a.newest;
+    });
+  }
+  function renderFindCiPanelMarkup({ state, context } = {}) {
+    const isLoading = Boolean(state.ui.findCiLoading);
+    const allResults = Array.isArray(state.ui.findCiResults) ? [...state.ui.findCiResults] : [];
+    const userName = context?.user?.fullName || context?.requestedFor || "";
+    const copiedSysId = String(state.ui.findCiCopiedSysId || "");
+    const pdfSourceSysId = String(state.ui.findCiPdfSourceSysId || "");
+    allResults.sort(sortWithinGroup);
+    const best = allResults[0] || null;
+    const groups = groupResults(allResults, best?.sys_id || "");
+    let bodyContent;
+    if (isLoading) {
+      bodyContent = `<div class="sn-assistant-note sn-assistant-ci-loading">Looking for devices...</div>`;
+    } else if (!allResults.length) {
+      bodyContent = `<div class="sn-assistant-note sn-assistant-note--empty">No configuration items found for this user.</div>`;
+    } else {
+      bodyContent = `
+      <div class="sn-assistant-ci-list">
+        ${best ? `<div class="sn-assistant-ci-best">${renderCiItem(best, { best: true, copied: copiedSysId === best.sys_id, pdfSource: pdfSourceSysId === best.sys_id })}</div>` : ""}
+        ${groups.map((group) => `
+          <details class="sn-assistant-ci-section">
+            <summary class="sn-assistant-ci-section__summary">${escapeHtml(group.label)}</summary>
+            <div class="sn-assistant-ci-section__body">
+              ${group.items.map((ci) => renderCiItem(ci, { copied: copiedSysId === ci.sys_id, pdfSource: pdfSourceSysId === ci.sys_id })).join("")}
+            </div>
+          </details>
+        `).join("")}
+      </div>
+    `;
+    }
+    const headingText = isLoading ? "Searching..." : `${allResults.length} device${allResults.length !== 1 ? "s" : ""} found`;
+    return `
+    <div class="sn-assistant-panel sn-assistant-panel--find-ci">
+      <div class="sn-assistant-panel__header">
+        <div class="sn-assistant-panel__title">
+          <span class="sn-assistant-panel__eyebrow">Configuration Item</span>
+          <div class="sn-assistant-panel__heading">${escapeHtml(headingText)}</div>
+          ${userName ? `<div class="sn-assistant-panel__subheading">${escapeHtml(userName)}</div>` : ""}
+        </div>
+        <div class="sn-assistant-panel__header-actions">
+          <button type="button" class="sn-assistant-mini-button" data-action="find-ci-close" title="Back">Back</button>
+          <button
+            type="button"
+            class="sn-assistant-mini-button sn-assistant-mini-button--danger"
+            data-action="find-ci-close"
+            title="Close"
+            aria-label="Close"
+          >
+            <span class="sn-assistant-icon sn-assistant-icon--close" aria-hidden="true"></span>
+          </button>
+        </div>
+      </div>
+      <div class="sn-assistant-panel__body sn-assistant-panel__body--flush">
+        ${bodyContent}
+      </div>
+    </div>
+  `;
+  }
+  function bindFindCiPanel(root, handlers) {
+    if (!root || root.dataset.snAssistantFindCiBound === "true") return;
+    root.dataset.snAssistantFindCiBound = "true";
+    root.addEventListener("click", (event) => {
+      const target = event.target.closest("[data-action]");
+      if (!target || !root.contains(target)) return;
+      const { action, sysId, name, href } = target.dataset;
+      if (action === "find-ci-close") {
+        handlers.onCloseFindCi();
+        return;
+      }
+      if (action === "find-ci-select") {
+        event.stopPropagation();
+        handlers.onSelectFindCi(sysId, name);
+        return;
+      }
+      if (action === "find-ci-copy") {
+        event.stopPropagation();
+        handlers.onCopyFindCi(sysId, name);
+        return;
+      }
+      if (action === "find-ci-open" && href) {
+        event.stopPropagation();
+        window.open(href, "_blank", "noopener");
+        return;
+      }
+      if (action === "find-ci-pdf") {
+        event.stopPropagation();
+        handlers.onFindCiPdf?.(sysId, name, target);
+      }
+    });
+    root.addEventListener("keydown", (event) => {
+      if (event.key === "Escape" || event.key === "Esc") {
+        handlers.onCloseFindCi();
+        event.preventDefault();
+        event.stopPropagation();
+        return;
+      }
+      if (event.key !== "Enter") return;
+      const infoRow = event.target.closest('[data-action="find-ci-select"]');
+      if (!infoRow || !root.contains(infoRow)) return;
+      infoRow.click();
+    });
+  }
+  function removeFindCiPanel(hostDocument) {
+    hostDocument.getElementById(UI_IDS.findCi)?.remove();
+  }
+
+  // Assistant/application/userInfo/panel.js
+  var ROWS = [
+    ["userId", "User ID"],
+    ["email", "Email"],
+    ["location", "Location"],
+    ["department", "Department"],
+    ["codictId", "Codict ID"],
+    ["codictExpiration", "Codict Expiration"],
+    ["manager", "Manager"],
+    ["phone", "Phone"],
+    ["sysId", "Sys ID"]
+  ];
+  function valueOrFallback(value) {
+    return String(value || "").trim() || "Not found";
+  }
+  function renderExternalButtons(key, value) {
+    if (key !== "userId") return "";
+    const userId = String(value || "").trim();
+    if (!userId || userId === "Not found") return "";
+    const safeId = escapeHtml(userId);
+    return `
+    <button type="button" class="sn-assistant-button sn-assistant-button--secondary sn-assistant-button--compact sn-assistant-button--eprime" data-action="open-eprime-mailbox" data-user-id="${safeId}" title="Open Eprime mailbox (copies username)">E-</button>
+    <button type="button" class="sn-assistant-button sn-assistant-button--secondary sn-assistant-button--compact sn-assistant-button--dapr2l" data-action="open-dapr2l-user" data-user-id="${safeId}" title="Open DAPR (copies username)">D-</button>
+    <button type="button" class="sn-assistant-button sn-assistant-button--secondary sn-assistant-button--compact sn-assistant-button--mdm" data-action="open-mdm" data-user-id="${safeId}" title="Open MDM / AirWatch (copies username)">M</button>
+  `;
+  }
+  function renderUserInfoPanelMarkup({ state } = {}) {
+    const data = state.ui.userInfoData || {};
+    const loading = Boolean(state.ui.userInfoLoading);
+    const error2 = String(state.ui.userInfoError || "").trim();
+    const title = loading ? "User Info" : String(data.name || data.userId || "User Info").trim() || "User Info";
+    const subtitle = loading ? "" : String(data.userId || data.email || "").trim();
+    const showCopyBlocked = Boolean(state.ui.userInfoCopyBlocked);
+    const rowsMarkup = ROWS.map(([key, label]) => {
+      const value = valueOrFallback(data[key]);
+      const warn = showCopyBlocked && key === "userId";
+      return `
+      <div class="sn-assistant-ci-item ${warn ? "sn-assistant-note sn-assistant-note--warning" : ""}">
+        <div class="sn-assistant-ci-item__info" data-action="user-info-copy-value" data-key="${escapeHtml(key)}" tabindex="0" role="button">
+          <div class="sn-assistant-ci-item__name">${escapeHtml(label)}</div>
+          <div class="sn-assistant-ci-item__meta">${escapeHtml(value)}</div>
+        </div>
+        <div class="sn-assistant-ci-item__actions">
+          <button type="button" class="sn-assistant-button sn-assistant-button--secondary sn-assistant-button--compact" data-action="user-info-copy-value" data-key="${escapeHtml(key)}">Copy</button>
+          ${renderExternalButtons(key, value)}
+        </div>
+      </div>
+    `;
+    }).join("");
+    const content = loading ? `<div class="sn-assistant-note">Loading user info...</div>` : error2 ? `<div class="sn-assistant-note sn-assistant-note--error">${escapeHtml(error2)}</div>` : `
+      ${showCopyBlocked ? '<div class="sn-assistant-note sn-assistant-note--warning">Copy blocked. Click the User ID value or Copy button.</div>' : ""}
+      <div class="sn-assistant-ci-list">${rowsMarkup}</div>
+      <div class="sn-assistant-panel__footer">
+        <button type="button" class="sn-assistant-button sn-assistant-button--secondary" data-action="user-info-copy-summary">Copy Summary</button>
+        <button type="button" class="sn-assistant-button sn-assistant-button--secondary" data-action="user-info-open-profile">Open Profile</button>
+        <button type="button" class="sn-assistant-button sn-assistant-button--primary" data-action="user-info-refresh">Refresh</button>
+      </div>
+    `;
+    return `
+    <div class="sn-assistant-panel sn-assistant-panel--user-info sn-assistant-panel--find-ci">
+      <div class="sn-assistant-panel__header">
+        <div class="sn-assistant-panel__title">
+          <span class="sn-assistant-panel__eyebrow">User Info</span>
+          <div class="sn-assistant-panel__heading">${escapeHtml(title)}</div>
+          <div class="sn-assistant-panel__subheading">${escapeHtml(subtitle)}</div>
+        </div>
+        <div class="sn-assistant-panel__header-actions">
+          <button type="button" class="sn-assistant-mini-button" data-action="user-info-close" title="Back">Back</button>
+          <button type="button" class="sn-assistant-mini-button sn-assistant-mini-button--danger" data-action="user-info-close" title="Close" aria-label="Close">
+            <span class="sn-assistant-icon sn-assistant-icon--close" aria-hidden="true"></span>
+          </button>
+        </div>
+      </div>
+      <div class="sn-assistant-panel__body sn-assistant-panel__body--flush">${content}</div>
+    </div>
+  `;
+  }
+  function bindUserInfoPanel(root, handlers) {
+    if (!root || root.dataset.snAssistantUserInfoBound === "true") return;
+    root.dataset.snAssistantUserInfoBound = "true";
+    root.addEventListener("click", (event) => {
+      const target = event.target.closest("[data-action]");
+      if (!target || !root.contains(target)) return;
+      const action = target.dataset.action;
+      if (action === "user-info-close") handlers.onCloseUserInfo?.();
+      if (action === "user-info-refresh") handlers.onOpenUserInfo?.({ refresh: true });
+      if (action === "user-info-open-profile") handlers.onOpenUserInfoProfile?.();
+      if (action === "user-info-copy-summary") handlers.onCopyUserInfoSummary?.();
+      if (action === "user-info-copy-value") handlers.onCopyUserInfoValue?.(target.dataset.key || "");
+      if (action === "open-eprime-mailbox") handlers.onOpenEprimeMailbox?.(target.dataset.userId || "");
+      if (action === "open-dapr2l-user") handlers.onOpenDapr2lUser?.(target.dataset.userId || "");
+      if (action === "open-mdm") handlers.onOpenMdm?.(target.dataset.userId || "");
+    });
+  }
+  function removeUserInfoPanel(hostDocument) {
+    hostDocument.getElementById(UI_IDS.userInfo)?.remove();
+  }
+
+  // Assistant/application/userTickets/panel.js
+  function formatDate2(dateStr) {
+    if (!dateStr) return "";
+    try {
+      const d = new Date(dateStr);
+      if (isNaN(d.getTime())) return String(dateStr).split(" ")[0] || "";
+      return d.toLocaleDateString("en-GB", { day: "2-digit", month: "short" });
+    } catch (error2) {
+      return String(dateStr).split(" ")[0] || "";
+    }
+  }
+  function getTableBadge(table) {
+    const map = {
+      incident: "INC",
+      sc_req_item: "RITM",
+      sc_request: "REQ",
+      sc_task: "TASK"
+    };
+    return map[table] || String(table).toUpperCase().slice(0, 6);
+  }
+  function getStateClass(state) {
+    const s = String(state || "").toLowerCase();
+    if (/\bnew\b/.test(s)) return "new";
+    if (/in progress|assigned|open|work in progress/.test(s)) return "inprogress";
+    if (/pending|awaiting|hold|wait/.test(s)) return "pending";
+    if (/resolved|complete|done/.test(s)) return "resolved";
+    if (/closed|cancelled/.test(s)) return "closed";
+    return "default";
+  }
+  function renderTicketRow(ticket) {
+    const badge = getTableBadge(ticket.table);
+    const dateText = formatDate2(ticket.updated);
+    const assignedTo = ticket.assignedTo || "";
+    const assignmentGroup = ticket.assignmentGroup || "";
+    const assignmentText = assignedTo || assignmentGroup || "-";
+    const fullAssignment = [assignedTo, assignmentGroup ? `(${assignmentGroup})` : ""].filter(Boolean).join(" ");
+    const stateKey = getStateClass(ticket.state || "");
+    const descTooltip = ticket.shortDesc ? `${ticket.number}: ${ticket.shortDesc.slice(0, 120)}` : ticket.number;
+    return `
+    <tr
+      class="sn-assistant-tickets-table__row"
+      data-action="user-tickets-open"
+      data-sys-id="${escapeHtml(ticket.sysId)}"
+      data-table="${escapeHtml(ticket.table)}"
+      title="${escapeHtml(descTooltip)}"
+      tabindex="0"
+    >
+      <td class="sn-assistant-tickets-table__number">
+        <span class="sn-assistant-tickets-table__badge sn-assistant-tickets-table__badge--${escapeHtml(ticket.table)}">${escapeHtml(badge)}</span>
+        <span class="sn-assistant-tickets-table__num-val">${escapeHtml(ticket.number)}</span>
+      </td>
+      <td class="sn-assistant-tickets-table__type">${escapeHtml(ticket.type || "-")}</td>
+      <td class="sn-assistant-tickets-table__state">
+        <span class="sn-assistant-tickets-table__state-pill sn-assistant-tickets-table__state-pill--${stateKey}">${escapeHtml(ticket.state || "-")}</span>
+      </td>
+      <td class="sn-assistant-tickets-table__assigned" title="${escapeHtml(fullAssignment || "-")}">${escapeHtml(assignmentText)}</td>
+      <td class="sn-assistant-tickets-table__date">${escapeHtml(dateText)}</td>
+    </tr>
+  `;
+  }
+  function renderUserTicketsPanelMarkup({ state, context } = {}) {
+    const userName = context?.user?.fullName || context?.requestedFor || context?.caller || "Unknown user";
+    const isLoading = Boolean(state.ui.userTicketsLoading);
+    const allResults = Array.isArray(state.ui.userTicketsResults) ? state.ui.userTicketsResults : [];
+    const activeFilter = String(state.ui.userTicketsFilter || "");
+    const results = activeFilter ? allResults.filter((row) => String(row.table) === activeFilter) : allResults;
+    const filterChips = [
+      { id: "", label: "All", count: allResults.length },
+      { id: "incident", label: "INC", count: allResults.filter((r) => r.table === "incident").length },
+      { id: "sc_task", label: "TASK", count: allResults.filter((r) => r.table === "sc_task").length }
+    ];
+    const filterChipsMarkup = `
+    <div class="sn-assistant-tickets-filters" role="tablist" aria-label="Filter tickets by type">
+      ${filterChips.map((chip) => {
+      const isActive = chip.id === activeFilter;
+      return `
+            <button type="button"
+              class="sn-assistant-tickets-filter ${isActive ? "is-active" : ""}"
+              data-action="user-tickets-filter"
+              data-filter="${escapeHtml(chip.id)}"
+              role="tab"
+              aria-selected="${isActive ? "true" : "false"}">
+              ${escapeHtml(chip.label)}
+              <span class="sn-assistant-tickets-filter__count">${chip.count}</span>
+            </button>
+          `;
+    }).join("")}
+    </div>
+  `;
+    let bodyContent;
+    if (isLoading) {
+      bodyContent = `<div class="sn-assistant-note sn-assistant-tickets-loading">Searching open tickets...</div>`;
+    } else if (!results.length) {
+      const emptyLabel = activeFilter ? `No open ${activeFilter === "incident" ? "incidents" : "SCTASKs"} found for this user.` : "No open tickets found for this user.";
+      bodyContent = `
+      ${filterChipsMarkup}
+      <div class="sn-assistant-note sn-assistant-note--empty">${escapeHtml(emptyLabel)}</div>
+    `;
+    } else {
+      bodyContent = `
+      ${filterChipsMarkup}
+      <div class="sn-assistant-tickets-table-wrapper">
+        <table class="sn-assistant-tickets-table">
+          <thead>
+            <tr>
+              <th>Number</th>
+              <th>Type</th>
+              <th>State</th>
+              <th>Assigned</th>
+              <th>Date</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${results.map(renderTicketRow).join("")}
+          </tbody>
+        </table>
+      </div>
+    `;
+    }
+    const countLabel = isLoading ? "Loading..." : activeFilter ? `${results.length} of ${allResults.length} record${allResults.length !== 1 ? "s" : ""}` : `${allResults.length} record${allResults.length !== 1 ? "s" : ""}`;
+    return `
+    <div class="sn-assistant-panel sn-assistant-panel--user-tickets">
+      <div class="sn-assistant-panel__header">
+        <div class="sn-assistant-panel__title">
+          <span class="sn-assistant-panel__eyebrow">Open Tickets</span>
+          <div class="sn-assistant-panel__heading">${escapeHtml(userName)}</div>
+          <div class="sn-assistant-panel__subheading">${escapeHtml(countLabel)}</div>
+        </div>
+        <div class="sn-assistant-panel__header-actions">
+          <button type="button" class="sn-assistant-mini-button" data-action="user-tickets-close" title="Back">Back</button>
+          <button
+            type="button"
+            class="sn-assistant-mini-button sn-assistant-mini-button--danger"
+            data-action="user-tickets-close"
+            title="Close"
+            aria-label="Close"
+          >
+            <span class="sn-assistant-icon sn-assistant-icon--close" aria-hidden="true"></span>
+          </button>
+        </div>
+      </div>
+      <div class="sn-assistant-panel__body sn-assistant-panel__body--flush">
+        ${bodyContent}
+      </div>
+    </div>
+  `;
+  }
+  function bindUserTicketsPanel(root, handlers) {
+    if (!root || root.dataset.snAssistantUserTicketsBound === "true") return;
+    root.dataset.snAssistantUserTicketsBound = "true";
+    root.addEventListener("click", (event) => {
+      const target = event.target.closest("[data-action]");
+      if (!target || !root.contains(target)) return;
+      const { action, sysId, table } = target.dataset;
+      if (action === "user-tickets-close") {
+        handlers.onCloseUserTickets();
+        return;
+      }
+      if (action === "user-tickets-filter") {
+        handlers.onSetUserTicketsFilter?.(target.dataset.filter || "");
+        return;
+      }
+      if (action === "user-tickets-open" && sysId && table) {
+        try {
+          window.top.location.href = `/nav_to.do?uri=/${table}.do?sys_id=${sysId}`;
+        } catch (error2) {
+          try {
+            window.open(`/${table}.do?sys_id=${sysId}`, "_blank");
+          } catch (e2) {
+          }
+        }
+      }
+    });
+    root.addEventListener("keydown", (event) => {
+      if (event.key === "Escape" || event.key === "Esc") {
+        handlers.onCloseUserTickets();
+        event.preventDefault();
+        event.stopPropagation();
+        return;
+      }
+      if (event.key !== "Enter") return;
+      const row = event.target.closest('[data-action="user-tickets-open"]');
+      if (!row || !root.contains(row)) return;
+      row.click();
+    });
+  }
+  function removeUserTicketsPanel(hostDocument) {
+    hostDocument.getElementById(UI_IDS.userTickets)?.remove();
+  }
+
   // Assistant/ui/launcher.js
   var ICON = {
     // Work Notes: lined page + pencil
@@ -12506,6 +13012,26 @@ ${value}` : value;
       `;
     }).filter(Boolean).join("");
   }
+  function getActiveEmbeddedView(state) {
+    if (state.ui.workNotesOpen) return "work-notes";
+    if (state.ui.userInfoOpen) return "user-info";
+    if (state.ui.userTicketsOpen) return "user-tickets";
+    if (state.ui.findCiOpen) return "find-ci";
+    return "launcher";
+  }
+  function renderEmbeddedView(view, { state, context, settings }) {
+    if (view === "work-notes") return renderWorkNotesPanelMarkup({ state, context, settings });
+    if (view === "user-info") return renderUserInfoPanelMarkup({ state });
+    if (view === "user-tickets") return renderUserTicketsPanelMarkup({ state, context });
+    if (view === "find-ci") return renderFindCiPanelMarkup({ state, context });
+    return "";
+  }
+  function bindEmbeddedView(root, view, state, handlers) {
+    if (view === "work-notes") bindWorkNotesPanel(root.querySelector("[data-work-notes-panel]"), state, handlers);
+    if (view === "user-info") bindUserInfoPanel(root.querySelector(".sn-assistant-panel--user-info"), handlers);
+    if (view === "user-tickets") bindUserTicketsPanel(root.querySelector(".sn-assistant-panel--user-tickets"), handlers);
+    if (view === "find-ci") bindFindCiPanel(root.querySelector(".sn-assistant-panel--find-ci"), handlers);
+  }
   function bindLauncher(root, state, handlers) {
     if (root.dataset.snAssistantBound === "true") return;
     root.dataset.snAssistantBound = "true";
@@ -12758,9 +13284,10 @@ ${value}` : value;
     const taskDisabled = headerCounts.ready && headerCounts.task === 0;
     const iconsOnly = edgeMode === "icons";
     const panelStyle = `--btn-opacity:${buttonOpacity}`;
-    const actionsMarkup = state.ui.workNotesOpen ? renderWorkNotesPanelMarkup({ state, context, settings }) : renderLauncherActions(ownerWin, context, draftLabel, calendarReady, hiddenButtons, buttonColors, editMode, topWorkNoteTemplates);
+    const activeView = getActiveEmbeddedView(state);
+    const actionsMarkup = activeView !== "launcher" ? renderEmbeddedView(activeView, { state, context, settings }) : renderLauncherActions(ownerWin, context, draftLabel, calendarReady, hiddenButtons, buttonColors, editMode, topWorkNoteTemplates);
     root.innerHTML = `
-    <div class="sn-ep sn-ep--${escapeHtml(state.ui.edgePanelEdge || "right")}${snapPos ? ` sn-ep--snap-${escapeHtml(snapPos)}` : ""}" data-ep-mode="${escapeHtml(edgeMode)}" data-ep-view="${state.ui.workNotesOpen ? "work-notes" : "launcher"}" data-button-theme="${escapeHtml(buttonTheme)}" data-ep-theme="${escapeHtml(state.ui.edgePanelTheme || "light")}"${state.ui.edgePanelPinned ? ' data-ep-pinned="true"' : ""} style="${panelStyle}">
+    <div class="sn-ep sn-ep--${escapeHtml(state.ui.edgePanelEdge || "right")}${snapPos ? ` sn-ep--snap-${escapeHtml(snapPos)}` : ""}" data-ep-mode="${escapeHtml(edgeMode)}" data-ep-view="${escapeHtml(activeView)}" data-button-theme="${escapeHtml(buttonTheme)}" data-ep-theme="${escapeHtml(state.ui.edgePanelTheme || "light")}"${state.ui.edgePanelPinned ? ' data-ep-pinned="true"' : ""} style="${panelStyle}">
       ${slaWarn ? '<div class="sn-ep__tab sn-ep__tab--sla-warn sn-ep__tab--indicator" aria-label="SLA warning"><span class="sn-ep__sla-dot"></span></div>' : ""}
 
       <div class="sn-ep__panel">
@@ -12812,9 +13339,7 @@ ${value}` : value;
     </div>
   `;
     bindLauncher(root, state, handlers);
-    if (state.ui.workNotesOpen) {
-      bindWorkNotesPanel(root.querySelector("[data-work-notes-panel]"), state, handlers);
-    }
+    bindEmbeddedView(root, activeView, state, handlers);
     applyEdgePanelPosition(root, state);
     makePanelDraggable(root, state);
     return root;
@@ -14766,580 +15291,6 @@ ${value}` : value;
     if (root) root.remove();
   }
 
-  // Assistant/application/userInfo/panel.js
-  var ROWS = [
-    ["userId", "User ID"],
-    ["email", "Email"],
-    ["location", "Location"],
-    ["department", "Department"],
-    ["codictId", "Codict ID"],
-    ["codictExpiration", "Codict Expiration"],
-    ["manager", "Manager"],
-    ["phone", "Phone"],
-    ["sysId", "Sys ID"]
-  ];
-  function valueOrFallback(value) {
-    return String(value || "").trim() || "Not found";
-  }
-  function renderExternalButtons(key, value) {
-    if (key !== "userId") return "";
-    const userId = String(value || "").trim();
-    if (!userId || userId === "Not found") return "";
-    const safeId = escapeHtml(userId);
-    return `
-    <button type="button" class="sn-assistant-button sn-assistant-button--secondary sn-assistant-button--compact sn-assistant-button--eprime" data-action="open-eprime-mailbox" data-user-id="${safeId}" title="Open Eprime mailbox (copies username)">E-</button>
-    <button type="button" class="sn-assistant-button sn-assistant-button--secondary sn-assistant-button--compact sn-assistant-button--dapr2l" data-action="open-dapr2l-user" data-user-id="${safeId}" title="Open DAPR (copies username)">D-</button>
-    <button type="button" class="sn-assistant-button sn-assistant-button--secondary sn-assistant-button--compact sn-assistant-button--mdm" data-action="open-mdm" data-user-id="${safeId}" title="Open MDM / AirWatch (copies username)">M</button>
-  `;
-  }
-  function ensureUserInfoPanel({ hostDocument, state, handlers }) {
-    let root = hostDocument.getElementById(UI_IDS.userInfo);
-    if (!root) {
-      root = hostDocument.createElement("div");
-      root.id = UI_IDS.userInfo;
-      root.setAttribute(ROOT_ATTRIBUTE, ROOT_VALUE);
-      (hostDocument.body || hostDocument.documentElement).appendChild(root);
-    }
-    root.className = "sn-assistant-floating sn-assistant-user-tickets-root";
-    const data = state.ui.userInfoData || {};
-    const loading = Boolean(state.ui.userInfoLoading);
-    const error2 = String(state.ui.userInfoError || "").trim();
-    const title = loading ? "User Info" : String(data.name || data.userId || "User Info").trim() || "User Info";
-    const subtitle = loading ? "" : String(data.userId || data.email || "").trim();
-    const showCopyBlocked = Boolean(state.ui.userInfoCopyBlocked);
-    const rowsMarkup = ROWS.map(([key, label]) => {
-      const value = valueOrFallback(data[key]);
-      const warn = showCopyBlocked && key === "userId";
-      return `
-      <div class="sn-assistant-ci-item ${warn ? "sn-assistant-note sn-assistant-note--warning" : ""}">
-        <div class="sn-assistant-ci-item__info" data-action="user-info-copy-value" data-key="${escapeHtml(key)}" tabindex="0" role="button">
-          <div class="sn-assistant-ci-item__name">${escapeHtml(label)}</div>
-          <div class="sn-assistant-ci-item__meta">${escapeHtml(value)}</div>
-        </div>
-        <div class="sn-assistant-ci-item__actions">
-          <button type="button" class="sn-assistant-button sn-assistant-button--secondary sn-assistant-button--compact" data-action="user-info-copy-value" data-key="${escapeHtml(key)}">Copy</button>
-          ${renderExternalButtons(key, value)}
-        </div>
-      </div>
-    `;
-    }).join("");
-    const content = loading ? `<div class="sn-assistant-note">Loading user info...</div>` : error2 ? `<div class="sn-assistant-note sn-assistant-note--error">${escapeHtml(error2)}</div>` : `
-      ${showCopyBlocked ? '<div class="sn-assistant-note sn-assistant-note--warning">Copy blocked. Click the User ID value or Copy button.</div>' : ""}
-      <div class="sn-assistant-ci-list">${rowsMarkup}</div>
-      <div class="sn-assistant-panel__footer">
-        <button type="button" class="sn-assistant-button sn-assistant-button--secondary" data-action="user-info-copy-summary">Copy Summary</button>
-        <button type="button" class="sn-assistant-button sn-assistant-button--secondary" data-action="user-info-open-profile">Open Profile</button>
-        <button type="button" class="sn-assistant-button sn-assistant-button--primary" data-action="user-info-refresh">Refresh</button>
-      </div>
-    `;
-    const markup = `
-    <div class="sn-assistant-panel sn-assistant-panel--find-ci">
-      <div class="sn-assistant-panel__header" data-drag-handle="user-info">
-        <div class="sn-assistant-panel__title">
-          <span class="sn-assistant-panel__eyebrow">User Info</span>
-          <div class="sn-assistant-panel__heading">${escapeHtml(title)}</div>
-          <div class="sn-assistant-panel__subheading">${escapeHtml(subtitle)}</div>
-        </div>
-        <div class="sn-assistant-panel__header-actions">
-          <button type="button" class="sn-assistant-mini-button sn-assistant-mini-button--danger" data-action="user-info-close" title="Close" aria-label="Close">
-            <span class="sn-assistant-icon sn-assistant-icon--close" aria-hidden="true"></span>
-          </button>
-        </div>
-      </div>
-      <div class="sn-assistant-panel__body sn-assistant-panel__body--flush">${content}</div>
-    </div>
-  `;
-    if (root.__snAssistantMarkup !== markup) {
-      root.innerHTML = markup;
-      root.__snAssistantMarkup = markup;
-    }
-    if (root.dataset.snAssistantBound !== "true") {
-      root.dataset.snAssistantBound = "true";
-      root.addEventListener("click", (event) => {
-        const target = event.target.closest("[data-action]");
-        if (!target) return;
-        const action = target.dataset.action;
-        if (action === "user-info-close") handlers.onCloseUserInfo?.();
-        if (action === "user-info-refresh") handlers.onOpenUserInfo?.({ refresh: true });
-        if (action === "user-info-open-profile") handlers.onOpenUserInfoProfile?.();
-        if (action === "user-info-copy-summary") handlers.onCopyUserInfoSummary?.();
-        if (action === "user-info-copy-value") handlers.onCopyUserInfoValue?.(target.dataset.key || "");
-        if (action === "open-eprime-mailbox") handlers.onOpenEprimeMailbox?.(target.dataset.userId || "");
-        if (action === "open-dapr2l-user") handlers.onOpenDapr2lUser?.(target.dataset.userId || "");
-        if (action === "open-mdm") handlers.onOpenMdm?.(target.dataset.userId || "");
-      });
-    }
-    makeDraggable({
-      node: root,
-      handleSelector: '[data-drag-handle="user-info"]',
-      state,
-      positionKey: "userInfoPosition",
-      defaultPosition: (node) => {
-        const ownerWindow = node.ownerDocument.defaultView || window;
-        return { left: Math.max(16, (ownerWindow.innerWidth - 460) / 2), top: Math.max(80, (ownerWindow.innerHeight - 560) / 2) };
-      }
-    });
-    return root;
-  }
-  function removeUserInfoPanel(hostDocument) {
-    hostDocument.getElementById(UI_IDS.userInfo)?.remove();
-  }
-
-  // Assistant/application/userTickets/panel.js
-  function formatDate(dateStr) {
-    if (!dateStr) return "";
-    try {
-      const d = new Date(dateStr);
-      if (isNaN(d.getTime())) return String(dateStr).split(" ")[0] || "";
-      return d.toLocaleDateString("en-GB", { day: "2-digit", month: "short" });
-    } catch (error2) {
-      return String(dateStr).split(" ")[0] || "";
-    }
-  }
-  function getTableBadge(table) {
-    const map = {
-      incident: "INC",
-      sc_req_item: "RITM",
-      sc_request: "REQ",
-      sc_task: "TASK"
-    };
-    return map[table] || String(table).toUpperCase().slice(0, 6);
-  }
-  function getStateClass(state) {
-    const s = String(state || "").toLowerCase();
-    if (/\bnew\b/.test(s)) return "new";
-    if (/in progress|assigned|open|work in progress/.test(s)) return "inprogress";
-    if (/pending|awaiting|hold|wait/.test(s)) return "pending";
-    if (/resolved|complete|done/.test(s)) return "resolved";
-    if (/closed|cancelled/.test(s)) return "closed";
-    return "default";
-  }
-  function renderTicketRow(ticket) {
-    const badge = getTableBadge(ticket.table);
-    const dateText = formatDate(ticket.updated);
-    const assignedTo = ticket.assignedTo || "";
-    const assignmentGroup = ticket.assignmentGroup || "";
-    const assignmentText = assignedTo || assignmentGroup || "-";
-    const fullAssignment = [assignedTo, assignmentGroup ? `(${assignmentGroup})` : ""].filter(Boolean).join(" ");
-    const stateKey = getStateClass(ticket.state || "");
-    const descTooltip = ticket.shortDesc ? `${ticket.number}: ${ticket.shortDesc.slice(0, 120)}` : ticket.number;
-    return `
-    <tr
-      class="sn-assistant-tickets-table__row"
-      data-action="user-tickets-open"
-      data-sys-id="${escapeHtml(ticket.sysId)}"
-      data-table="${escapeHtml(ticket.table)}"
-      title="${escapeHtml(descTooltip)}"
-      tabindex="0"
-    >
-      <td class="sn-assistant-tickets-table__number">
-        <span class="sn-assistant-tickets-table__badge sn-assistant-tickets-table__badge--${escapeHtml(ticket.table)}">${escapeHtml(badge)}</span>
-        <span class="sn-assistant-tickets-table__num-val">${escapeHtml(ticket.number)}</span>
-      </td>
-      <td class="sn-assistant-tickets-table__type">${escapeHtml(ticket.type || "-")}</td>
-      <td class="sn-assistant-tickets-table__state">
-        <span class="sn-assistant-tickets-table__state-pill sn-assistant-tickets-table__state-pill--${stateKey}">${escapeHtml(ticket.state || "-")}</span>
-      </td>
-      <td class="sn-assistant-tickets-table__assigned" title="${escapeHtml(fullAssignment || "-")}">${escapeHtml(assignmentText)}</td>
-      <td class="sn-assistant-tickets-table__date">${escapeHtml(dateText)}</td>
-    </tr>
-  `;
-  }
-  function ensureUserTicketsPanel({ hostDocument, state, context, handlers }) {
-    let root = hostDocument.getElementById(UI_IDS.userTickets);
-    if (!root) {
-      root = hostDocument.createElement("div");
-      root.id = UI_IDS.userTickets;
-      root.setAttribute(ROOT_ATTRIBUTE, ROOT_VALUE);
-      (hostDocument.body || hostDocument.documentElement).appendChild(root);
-    }
-    root.className = "sn-assistant-floating sn-assistant-user-tickets-root";
-    const userName = context?.user?.fullName || context?.requestedFor || context?.caller || "Unknown user";
-    const isLoading = Boolean(state.ui.userTicketsLoading);
-    const allResults = Array.isArray(state.ui.userTicketsResults) ? state.ui.userTicketsResults : [];
-    const activeFilter = String(state.ui.userTicketsFilter || "");
-    const results = activeFilter ? allResults.filter((row) => String(row.table) === activeFilter) : allResults;
-    const filterChips = [
-      { id: "", label: "All", count: allResults.length },
-      { id: "incident", label: "INC", count: allResults.filter((r) => r.table === "incident").length },
-      { id: "sc_task", label: "TASK", count: allResults.filter((r) => r.table === "sc_task").length }
-    ];
-    const filterChipsMarkup = `
-    <div class="sn-assistant-tickets-filters" role="tablist" aria-label="Filter tickets by type">
-      ${filterChips.map((chip) => {
-      const isActive = chip.id === activeFilter;
-      return `
-            <button type="button"
-              class="sn-assistant-tickets-filter ${isActive ? "is-active" : ""}"
-              data-action="user-tickets-filter"
-              data-filter="${escapeHtml(chip.id)}"
-              role="tab"
-              aria-selected="${isActive ? "true" : "false"}">
-              ${escapeHtml(chip.label)}
-              <span class="sn-assistant-tickets-filter__count">${chip.count}</span>
-            </button>
-          `;
-    }).join("")}
-    </div>
-  `;
-    let bodyContent;
-    if (isLoading) {
-      bodyContent = `<div class="sn-assistant-note sn-assistant-tickets-loading">Searching open tickets...</div>`;
-    } else if (!results.length) {
-      const emptyLabel = activeFilter ? `No open ${activeFilter === "incident" ? "incidents" : "SCTASKs"} found for this user.` : "No open tickets found for this user.";
-      bodyContent = `
-      ${filterChipsMarkup}
-      <div class="sn-assistant-note sn-assistant-note--empty">${escapeHtml(emptyLabel)}</div>
-    `;
-    } else {
-      bodyContent = `
-      ${filterChipsMarkup}
-      <div class="sn-assistant-tickets-table-wrapper">
-        <table class="sn-assistant-tickets-table">
-          <thead>
-            <tr>
-              <th>Number</th>
-              <th>Type</th>
-              <th>State</th>
-              <th>Assigned</th>
-              <th>Date</th>
-            </tr>
-          </thead>
-          <tbody>
-            ${results.map(renderTicketRow).join("")}
-          </tbody>
-        </table>
-      </div>
-    `;
-    }
-    const countLabel = isLoading ? "Loading..." : activeFilter ? `${results.length} of ${allResults.length} record${allResults.length !== 1 ? "s" : ""}` : `${allResults.length} record${allResults.length !== 1 ? "s" : ""}`;
-    const markup = `
-    <div class="sn-assistant-panel sn-assistant-panel--user-tickets">
-      <div class="sn-assistant-panel__header" data-drag-handle="user-tickets">
-        <div class="sn-assistant-panel__title">
-          <span class="sn-assistant-panel__eyebrow">Open Tickets</span>
-          <div class="sn-assistant-panel__heading">${escapeHtml(userName)}</div>
-          <div class="sn-assistant-panel__subheading">${escapeHtml(countLabel)}</div>
-        </div>
-        <div class="sn-assistant-panel__header-actions">
-          <button
-            type="button"
-            class="sn-assistant-mini-button sn-assistant-mini-button--danger"
-            data-action="user-tickets-close"
-            title="Close"
-            aria-label="Close"
-          >
-            <span class="sn-assistant-icon sn-assistant-icon--close" aria-hidden="true"></span>
-          </button>
-        </div>
-      </div>
-      <div class="sn-assistant-panel__body sn-assistant-panel__body--flush">
-        ${bodyContent}
-      </div>
-    </div>
-  `;
-    if (root.__snAssistantMarkup !== markup) {
-      root.innerHTML = markup;
-      root.__snAssistantMarkup = markup;
-    }
-    if (root.dataset.snAssistantBound !== "true") {
-      root.dataset.snAssistantBound = "true";
-      root.addEventListener("click", (event) => {
-        const target = event.target.closest("[data-action]");
-        if (!target) return;
-        const { action, sysId, table } = target.dataset;
-        if (action === "user-tickets-close") {
-          handlers.onCloseUserTickets();
-          return;
-        }
-        if (action === "user-tickets-filter") {
-          handlers.onSetUserTicketsFilter?.(target.dataset.filter || "");
-          return;
-        }
-        if (action === "user-tickets-open" && sysId && table) {
-          try {
-            window.top.location.href = `/nav_to.do?uri=/${table}.do?sys_id=${sysId}`;
-          } catch (error2) {
-            try {
-              window.open(`/${table}.do?sys_id=${sysId}`, "_blank");
-            } catch (e2) {
-            }
-          }
-        }
-      });
-      root.addEventListener("keydown", (event) => {
-        if (event.key === "Escape" || event.key === "Esc") {
-          handlers.onCloseUserTickets();
-          event.preventDefault();
-          event.stopPropagation();
-          return;
-        }
-        if (event.key !== "Enter") return;
-        const row = event.target.closest('[data-action="user-tickets-open"]');
-        if (!row) return;
-        row.click();
-      });
-    }
-    makeDraggable({
-      node: root,
-      handleSelector: '[data-drag-handle="user-tickets"]',
-      state,
-      positionKey: "userTicketsPosition",
-      defaultPosition: (node) => {
-        const ownerWindow = node.ownerDocument.defaultView || window;
-        const w = Math.min(600, ownerWindow.innerWidth - 32);
-        const left = Math.max(16, (ownerWindow.innerWidth - w) / 2);
-        const top = Math.max(80, (ownerWindow.innerHeight - 420) / 2);
-        return { left, top };
-      }
-    });
-    return root;
-  }
-  function removeUserTicketsPanel(hostDocument) {
-    hostDocument.getElementById(UI_IDS.userTickets)?.remove();
-  }
-
-  // Assistant/application/findCi/panel.js
-  function formatDate2(dateStr) {
-    if (!dateStr) return "";
-    try {
-      const d = new Date(dateStr);
-      if (isNaN(d.getTime())) return String(dateStr).split(" ")[0] || "";
-      return d.toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" });
-    } catch {
-      return String(dateStr).split(" ")[0] || "";
-    }
-  }
-  function parseUpdatedTs(value = "") {
-    const raw = String(value || "").trim();
-    if (!raw) return 0;
-    const eu = raw.match(/^(\d{2})\/(\d{2})\/(\d{4})\s+(\d{2}):(\d{2})(?::(\d{2}))?/);
-    if (eu) {
-      const [, dd, mm, yyyy, hh, mi, ss] = eu;
-      return new Date(Number(yyyy), Number(mm) - 1, Number(dd), Number(hh), Number(mi), Number(ss || "0")).getTime();
-    }
-    const iso = Date.parse(raw);
-    return Number.isFinite(iso) ? iso : 0;
-  }
-  function ciClass(ci) {
-    return String(ci.class || ci.sys_class_name || "").trim() || "Other";
-  }
-  function sortWithinGroup(left, right) {
-    const lts = Number.isFinite(left.updated_ts) ? left.updated_ts : parseUpdatedTs(left.sys_updated_on || "");
-    const rts = Number.isFinite(right.updated_ts) ? right.updated_ts : parseUpdatedTs(right.sys_updated_on || "");
-    if (rts !== lts) return rts - lts;
-    return (right.score || 0) - (left.score || 0);
-  }
-  function renderCiItem(ci, { best = false, copied = false, pdfSource = false } = {}) {
-    const dateText = formatDate2(ci.sys_updated_on);
-    const copiedBadge = copied ? '<span class="sn-assistant-ci-item__corp-badge sn-assistant-ci-item__corp-badge--copied">Copied</span>' : "";
-    const pdfBadge = pdfSource ? '<span class="sn-assistant-ci-item__corp-badge">PDF source</span>' : "";
-    return `
-    <div class="sn-assistant-ci-item">
-      <div
-        class="sn-assistant-ci-item__info"
-        data-action="find-ci-select"
-        data-sys-id="${escapeHtml(ci.sys_id)}"
-        data-name="${escapeHtml(ci.name || "")}"
-        role="button"
-        tabindex="0"
-        title="Insert: ${escapeHtml(ci.name || "")}"
-      >
-        <div class="sn-assistant-ci-item__name">
-          ${copiedBadge}${pdfBadge}
-          ${escapeHtml(ci.name || "(no name)")}
-        </div>
-        <div class="sn-assistant-ci-item__meta">
-          ${[
-      ci.model ? `${escapeHtml(ci.model)}` : "",
-      dateText ? escapeHtml(dateText) : ""
-    ].filter(Boolean).join(" \xB7 ")}
-        </div>
-      </div>
-      <div class="sn-assistant-ci-item__actions">
-        <button
-          type="button"
-          class="sn-assistant-button sn-assistant-button--primary sn-assistant-button--compact sn-assistant-ci-item__copy"
-          data-action="find-ci-select"
-          data-sys-id="${escapeHtml(ci.sys_id)}"
-          data-name="${escapeHtml(ci.name || "")}"
-          title="Insert this CI"
-        >Insert</button>
-        <button
-          type="button"
-          class="sn-assistant-button sn-assistant-button--secondary sn-assistant-button--compact sn-assistant-ci-item__copy"
-          data-action="find-ci-copy"
-          data-sys-id="${escapeHtml(ci.sys_id)}"
-          data-name="${escapeHtml(ci.name || "")}"
-          title="Copy name"
-        >Copy</button>
-        <button
-          type="button"
-          class="sn-assistant-button sn-assistant-button--secondary sn-assistant-button--compact sn-assistant-ci-item__copy"
-          data-action="find-ci-open"
-          data-href="${escapeHtml(ci.href || "")}"
-          title="Open record"
-        >Open</button>
-        <button
-          type="button"
-          class="sn-assistant-button sn-assistant-button--secondary sn-assistant-button--compact sn-assistant-ci-item__copy sn-assistant-ci-item__pdf"
-          data-action="find-ci-pdf"
-          data-sys-id="${escapeHtml(ci.sys_id)}"
-          data-name="${escapeHtml(ci.name || "")}"
-          title="Generate PDF"
-        >PDF</button>
-      </div>
-    </div>
-  `;
-  }
-  function groupResults(results, bestSysId = "") {
-    const map = /* @__PURE__ */ new Map();
-    results.forEach((ci) => {
-      if (!ci || ci.sys_id === bestSysId) return;
-      const key = ciClass(ci);
-      if (!map.has(key)) map.set(key, []);
-      map.get(key).push(ci);
-    });
-    return [...map.entries()].map(([key, items]) => {
-      const sorted = items.sort(sortWithinGroup);
-      const newest = sorted.reduce((max, ci) => {
-        const ts = Number.isFinite(ci.updated_ts) ? ci.updated_ts : parseUpdatedTs(ci.sys_updated_on || "");
-        return ts > max ? ts : max;
-      }, 0);
-      return { key, label: `${key} (${sorted.length})`, items: sorted, newest, isOther: key === "Other" };
-    }).sort((a, b) => {
-      if (a.isOther !== b.isOther) return a.isOther ? 1 : -1;
-      return b.newest - a.newest;
-    });
-  }
-  function ensureFindCiPanel({ hostDocument, state, context, handlers }) {
-    let root = hostDocument.getElementById(UI_IDS.findCi);
-    if (!root) {
-      root = hostDocument.createElement("div");
-      root.id = UI_IDS.findCi;
-      root.setAttribute(ROOT_ATTRIBUTE, ROOT_VALUE);
-      (hostDocument.body || hostDocument.documentElement).appendChild(root);
-    }
-    root.className = "sn-assistant-floating sn-assistant-find-ci-root";
-    const isLoading = Boolean(state.ui.findCiLoading);
-    const allResults = Array.isArray(state.ui.findCiResults) ? [...state.ui.findCiResults] : [];
-    const userName = context?.user?.fullName || context?.requestedFor || "";
-    const copiedSysId = String(state.ui.findCiCopiedSysId || "");
-    const pdfSourceSysId = String(state.ui.findCiPdfSourceSysId || "");
-    allResults.sort(sortWithinGroup);
-    const best = allResults[0] || null;
-    const groups = groupResults(allResults, best?.sys_id || "");
-    let bodyContent;
-    if (isLoading) {
-      bodyContent = `<div class="sn-assistant-note sn-assistant-ci-loading">Looking for devices...</div>`;
-    } else if (!allResults.length) {
-      bodyContent = `<div class="sn-assistant-note sn-assistant-note--empty">No configuration items found for this user.</div>`;
-    } else {
-      bodyContent = `
-      <div class="sn-assistant-ci-list">
-        ${best ? `<div class="sn-assistant-ci-best">${renderCiItem(best, { best: true, copied: copiedSysId === best.sys_id, pdfSource: pdfSourceSysId === best.sys_id })}</div>` : ""}
-        ${groups.map((group) => `
-          <details class="sn-assistant-ci-section">
-            <summary class="sn-assistant-ci-section__summary">${escapeHtml(group.label)}</summary>
-            <div class="sn-assistant-ci-section__body">
-              ${group.items.map((ci) => renderCiItem(ci, { copied: copiedSysId === ci.sys_id, pdfSource: pdfSourceSysId === ci.sys_id })).join("")}
-            </div>
-          </details>
-        `).join("")}
-      </div>
-    `;
-    }
-    const headingText = isLoading ? "Searching..." : `${allResults.length} device${allResults.length !== 1 ? "s" : ""} found`;
-    const markup = `
-    <div class="sn-assistant-panel sn-assistant-panel--find-ci">
-      <div class="sn-assistant-panel__header" data-drag-handle="find-ci">
-        <div class="sn-assistant-panel__title">
-          <span class="sn-assistant-panel__eyebrow">Configuration Item</span>
-          <div class="sn-assistant-panel__heading">${escapeHtml(headingText)}</div>
-          ${userName ? `<div class="sn-assistant-panel__subheading">${escapeHtml(userName)}</div>` : ""}
-        </div>
-        <div class="sn-assistant-panel__header-actions">
-          <button
-            type="button"
-            class="sn-assistant-mini-button sn-assistant-mini-button--danger"
-            data-action="find-ci-close"
-            title="Close"
-            aria-label="Close"
-          >
-            <span class="sn-assistant-icon sn-assistant-icon--close" aria-hidden="true"></span>
-          </button>
-        </div>
-      </div>
-      <div class="sn-assistant-panel__body sn-assistant-panel__body--flush">
-        ${bodyContent}
-      </div>
-    </div>
-  `;
-    if (root.__snAssistantMarkup !== markup) {
-      root.innerHTML = markup;
-      root.__snAssistantMarkup = markup;
-    }
-    if (root.dataset.snAssistantBound !== "true") {
-      root.dataset.snAssistantBound = "true";
-      root.addEventListener("click", (event) => {
-        const target = event.target.closest("[data-action]");
-        if (!target) return;
-        const { action, sysId, name, href } = target.dataset;
-        if (action === "find-ci-close") {
-          handlers.onCloseFindCi();
-          return;
-        }
-        if (action === "find-ci-select") {
-          event.stopPropagation();
-          handlers.onSelectFindCi(sysId, name);
-          return;
-        }
-        if (action === "find-ci-copy") {
-          event.stopPropagation();
-          handlers.onCopyFindCi(sysId, name);
-          return;
-        }
-        if (action === "find-ci-open" && href) {
-          event.stopPropagation();
-          window.open(href, "_blank", "noopener");
-          return;
-        }
-        if (action === "find-ci-pdf") {
-          event.stopPropagation();
-          handlers.onFindCiPdf?.(sysId, name, target);
-        }
-      });
-      root.addEventListener("keydown", (event) => {
-        if (event.key === "Escape" || event.key === "Esc") {
-          handlers.onCloseFindCi();
-          event.preventDefault();
-          event.stopPropagation();
-          return;
-        }
-        if (event.key !== "Enter") return;
-        const infoRow = event.target.closest('[data-action="find-ci-select"]');
-        if (!infoRow) return;
-        infoRow.click();
-      });
-    }
-    makeDraggable({
-      node: root,
-      handleSelector: '[data-drag-handle="find-ci"]',
-      state,
-      positionKey: "findCiPosition",
-      defaultPosition: (node) => {
-        const ownerWindow = node.ownerDocument.defaultView || window;
-        const left = Math.max(16, (ownerWindow.innerWidth - 420) / 2);
-        const top = Math.max(80, (ownerWindow.innerHeight - 520) / 2);
-        return { left, top };
-      }
-    });
-    return root;
-  }
-  function removeFindCiPanel(hostDocument) {
-    hostDocument.getElementById(UI_IDS.findCi)?.remove();
-  }
-
   // Assistant/ui/toasts.js
   function ensureViewport(hostDocument) {
     let viewport = hostDocument.getElementById(UI_IDS.toastViewport);
@@ -17014,12 +16965,18 @@ ${value}` : value;
   max-width: calc(100vw - 24px);
 }
 
-.sn-ep[data-ep-view="work-notes"][data-ep-mode] .sn-ep__panel {
+.sn-ep[data-ep-view="work-notes"][data-ep-mode] .sn-ep__panel,
+.sn-ep[data-ep-view="user-info"][data-ep-mode] .sn-ep__panel,
+.sn-ep[data-ep-view="user-tickets"][data-ep-mode] .sn-ep__panel,
+.sn-ep[data-ep-view="find-ci"][data-ep-mode] .sn-ep__panel {
   width: 520px;
   max-width: calc(100vw - 24px);
 }
 
-.sn-ep[data-ep-view="work-notes"][data-ep-mode] .sn-ep__actions {
+.sn-ep[data-ep-view="work-notes"][data-ep-mode] .sn-ep__actions,
+.sn-ep[data-ep-view="user-info"][data-ep-mode] .sn-ep__actions,
+.sn-ep[data-ep-view="user-tickets"][data-ep-mode] .sn-ep__actions,
+.sn-ep[data-ep-view="find-ci"][data-ep-mode] .sn-ep__actions {
   padding: 0;
   overflow: visible;
 }
@@ -17225,7 +17182,7 @@ ${value}` : value;
   var userTickets_default = "/* \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\n   PANEL BODY \u2014 FLUSH (no padding, used for tables / lists)\n   \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500 */\n.sn-assistant-panel__body--flush {\n  padding: 0;\n  gap: 0;\n}\n\n/* \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\n   USER OPEN TICKETS PANEL\n   \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500 */\n.sn-assistant-panel--user-tickets {\n  width: 520px;\n  max-width: calc(100vw - 24px);\n}\n\n.sn-assistant-tickets-table-wrapper {\n  overflow-x: auto;\n  overflow-y: auto;\n  max-height: min(55vh, 440px);\n}\n\n.sn-assistant-tickets-table {\n  width: 100%;\n  border-collapse: collapse;\n  font-size: 11.5px;\n  font-family: inherit;\n}\n\n.sn-assistant-tickets-table thead tr {\n  background: var(--sn-assistant-surface);\n  position: sticky;\n  top: 0;\n  z-index: 1;\n}\n\n.sn-assistant-tickets-table th {\n  padding: 7px 10px;\n  text-align: left;\n  font-size: 10px;\n  font-weight: 700;\n  letter-spacing: 0.06em;\n  text-transform: uppercase;\n  color: var(--sn-assistant-muted);\n  border-bottom: 1px solid var(--sn-assistant-border);\n  white-space: nowrap;\n}\n\n.sn-assistant-tickets-table td {\n  padding: 8px 10px;\n  border-bottom: 1px solid var(--sn-assistant-border);\n  vertical-align: middle;\n  color: var(--sn-assistant-ink);\n}\n\n.sn-assistant-tickets-table__row {\n  cursor: pointer;\n  transition: background 120ms ease;\n}\n\n.sn-assistant-tickets-table__row:hover td,\n.sn-assistant-tickets-table__row:focus td {\n  background: var(--sn-assistant-accent-soft);\n}\n\n.sn-assistant-tickets-table__row:last-child td {\n  border-bottom: none;\n}\n\n.sn-assistant-tickets-table__number {\n  white-space: nowrap;\n  display: flex;\n  align-items: center;\n  gap: 5px;\n}\n\n.sn-assistant-tickets-table__badge {\n  display: inline-flex;\n  align-items: center;\n  padding: 2px 5px;\n  border-radius: 4px;\n  font-size: 9px;\n  font-weight: 800;\n  letter-spacing: 0.04em;\n  background: var(--sn-assistant-accent-soft);\n  color: var(--sn-assistant-accent);\n  flex-shrink: 0;\n}\n\n.sn-assistant-tickets-table__badge--incident {\n  background: rgba(220, 38, 38, 0.08);\n  color: #dc2626;\n}\n\n.sn-assistant-tickets-table__badge--sc_req_item {\n  background: rgba(5, 150, 105, 0.08);\n  color: #059669;\n}\n\n.sn-assistant-tickets-table__badge--sc_request {\n  background: rgba(217, 119, 6, 0.08);\n  color: #d97706;\n}\n\n.sn-assistant-tickets-table__num-val {\n  font-weight: 700;\n  color: var(--sn-assistant-accent);\n  font-size: 11px;\n}\n\n.sn-assistant-tickets-table__desc {\n  max-width: 220px;\n  overflow: hidden;\n  text-overflow: ellipsis;\n  white-space: nowrap;\n  color: var(--sn-assistant-ink);\n}\n\n.sn-assistant-tickets-table__state {\n  white-space: nowrap;\n}\n\n.sn-assistant-tickets-table__state-pill {\n  display: inline-flex;\n  align-items: center;\n  padding: 2px 7px;\n  border-radius: 999px;\n  font-size: 10px;\n  font-weight: 600;\n  white-space: nowrap;\n  line-height: 1.5;\n}\n\n.sn-assistant-tickets-table__state-pill--new {\n  background: rgba(37, 99, 235, 0.1);\n  color: #2563eb;\n}\n\n.sn-assistant-tickets-table__state-pill--inprogress {\n  background: rgba(5, 150, 105, 0.1);\n  color: #059669;\n}\n\n.sn-assistant-tickets-table__state-pill--pending {\n  background: rgba(217, 119, 6, 0.1);\n  color: #d97706;\n}\n\n.sn-assistant-tickets-table__state-pill--resolved {\n  background: rgba(107, 114, 128, 0.1);\n  color: #6b7280;\n}\n\n.sn-assistant-tickets-table__state-pill--closed {\n  background: rgba(107, 114, 128, 0.06);\n  color: #9ca3af;\n}\n\n.sn-assistant-tickets-table__state-pill--default {\n  color: var(--sn-assistant-muted);\n}\n\n.sn-assistant-tickets-table__date {\n  white-space: nowrap;\n  font-size: 11px;\n  color: var(--sn-assistant-muted);\n  font-variant-numeric: tabular-nums;\n}\n\n.sn-assistant-tickets-loading,\n.sn-assistant-ci-loading {\n  padding: 20px 16px;\n  text-align: center;\n  font-size: 12px;\n  color: var(--sn-assistant-muted);\n  font-style: italic;\n}\n";
 
   // Assistant/ui/styles/findCi.css
-  var findCi_default = '/* \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\n   FIND CI PANEL\n   \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500 */\n.sn-assistant-panel--find-ci {\n  width: 340px;\n}\n\n.sn-assistant-ci-list {\n  display: flex;\n  flex-direction: column;\n  overflow-y: auto;\n  max-height: min(55vh, 400px);\n}\n\n.sn-assistant-ci-item {\n  display: flex;\n  align-items: center;\n  gap: 8px;\n  padding: 9px 12px;\n  border-bottom: 1px solid var(--sn-assistant-border);\n  transition: background 120ms ease;\n}\n\n.sn-assistant-ci-item:last-child {\n  border-bottom: none;\n}\n\n.sn-assistant-ci-item--corp {\n  background: var(--sn-assistant-accent-soft);\n}\n\n.sn-assistant-ci-item--corp:hover {\n  background: rgba(37, 99, 235, 0.14);\n}\n\n.sn-assistant-ci-item:not(.sn-assistant-ci-item--corp):hover {\n  background: var(--sn-assistant-surface);\n}\n\n.sn-assistant-ci-item__info {\n  flex: 1;\n  min-width: 0;\n  cursor: pointer;\n  border-radius: 6px;\n  padding: 2px 4px;\n  margin: -2px -4px;\n  transition: background 100ms ease;\n}\n\n.sn-assistant-ci-item__info:hover {\n  background: var(--sn-assistant-border);\n}\n\n.sn-assistant-ci-item__name {\n  font-size: 12px;\n  font-weight: 700;\n  color: var(--sn-assistant-ink);\n  word-break: break-all;\n  display: flex;\n  align-items: center;\n  gap: 5px;\n  flex-wrap: wrap;\n}\n\n.sn-assistant-ci-item__corp-badge {\n  display: inline-flex;\n  align-items: center;\n  padding: 1px 5px;\n  border-radius: 4px;\n  font-size: 9px;\n  font-weight: 800;\n  letter-spacing: 0.05em;\n  text-transform: uppercase;\n  background: var(--sn-assistant-accent);\n  color: #fff;\n  flex-shrink: 0;\n}\n\n.sn-assistant-ci-item__meta {\n  font-size: 10px;\n  color: var(--sn-assistant-muted);\n  margin-top: 2px;\n}\n\n.sn-assistant-ci-item__copy {\n  flex-shrink: 0;\n  font-size: 10px;\n  padding: 3px 8px;\n  height: auto;\n  min-width: 48px;\n}\n\n.sn-assistant-ci-item__pdf {\n  border-color: color-mix(in srgb, var(--sn-assistant-accent) 40%, var(--sn-assistant-border));\n  color: color-mix(in srgb, var(--sn-assistant-accent) 72%, #111);\n  font-weight: 700;\n}\n\n.sn-assistant-ci-item__pdf:hover {\n  background: color-mix(in srgb, var(--sn-assistant-accent) 10%, #fff);\n}\n\n/* Best match highlight wrapper */\n.sn-assistant-ci-best {\n  background: var(--sn-assistant-accent-soft);\n  border-bottom: 2px solid var(--sn-assistant-accent);\n}\n\n.sn-assistant-ci-best .sn-assistant-ci-item {\n  border-bottom: none;\n}\n\n/* CI action button group */\n.sn-assistant-ci-item__actions {\n  display: flex;\n  flex-direction: row;\n  align-items: center;\n  gap: 4px;\n  flex-shrink: 0;\n}\n\n/* Collapsible CI group sections */\n.sn-assistant-ci-section {\n  border-top: 1px solid var(--sn-assistant-border);\n}\n\n.sn-assistant-ci-section__summary {\n  cursor: pointer;\n  font-size: 10px;\n  font-weight: 700;\n  color: var(--sn-assistant-muted);\n  letter-spacing: 0.06em;\n  text-transform: uppercase;\n  padding: 8px 12px;\n  list-style: none;\n  display: flex;\n  align-items: center;\n  justify-content: space-between;\n  user-select: none;\n  transition: background 100ms ease;\n}\n\n.sn-assistant-ci-section__summary::-webkit-details-marker {\n  display: none;\n}\n\n.sn-assistant-ci-section__summary::after {\n  content: "\u203A";\n  font-size: 16px;\n  font-weight: 400;\n  line-height: 1;\n  transition: transform 180ms ease;\n  opacity: 0.6;\n}\n\n.sn-assistant-ci-section[open] > .sn-assistant-ci-section__summary::after {\n  transform: rotate(90deg);\n}\n\n.sn-assistant-ci-section__summary:hover {\n  background: var(--sn-assistant-surface);\n}\n\n.sn-assistant-ci-section__body {\n  padding-top: 2px;\n}\n\n/* Copied badge variant */\n.sn-assistant-ci-item__corp-badge--copied {\n  background: rgba(5, 150, 105, 0.12);\n  color: #059669;\n}\n';
+  var findCi_default = '/* \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\n   FIND CI PANEL\n   \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500 */\n.sn-assistant-panel--find-ci {\n  width: 340px;\n}\n\n.sn-ep[data-ep-view="user-info"] .sn-assistant-panel--user-info,\n.sn-ep[data-ep-view="find-ci"] .sn-assistant-panel--find-ci {\n  width: 520px;\n  max-width: calc(100vw - 24px);\n}\n\n.sn-assistant-ci-list {\n  display: flex;\n  flex-direction: column;\n  overflow-y: auto;\n  max-height: min(55vh, 400px);\n}\n\n.sn-assistant-ci-item {\n  display: flex;\n  align-items: center;\n  gap: 8px;\n  padding: 9px 12px;\n  border-bottom: 1px solid var(--sn-assistant-border);\n  transition: background 120ms ease;\n}\n\n.sn-assistant-ci-item:last-child {\n  border-bottom: none;\n}\n\n.sn-assistant-ci-item--corp {\n  background: var(--sn-assistant-accent-soft);\n}\n\n.sn-assistant-ci-item--corp:hover {\n  background: rgba(37, 99, 235, 0.14);\n}\n\n.sn-assistant-ci-item:not(.sn-assistant-ci-item--corp):hover {\n  background: var(--sn-assistant-surface);\n}\n\n.sn-assistant-ci-item__info {\n  flex: 1;\n  min-width: 0;\n  cursor: pointer;\n  border-radius: 6px;\n  padding: 2px 4px;\n  margin: -2px -4px;\n  transition: background 100ms ease;\n}\n\n.sn-assistant-ci-item__info:hover {\n  background: var(--sn-assistant-border);\n}\n\n.sn-assistant-ci-item__name {\n  font-size: 12px;\n  font-weight: 700;\n  color: var(--sn-assistant-ink);\n  word-break: break-all;\n  display: flex;\n  align-items: center;\n  gap: 5px;\n  flex-wrap: wrap;\n}\n\n.sn-assistant-ci-item__corp-badge {\n  display: inline-flex;\n  align-items: center;\n  padding: 1px 5px;\n  border-radius: 4px;\n  font-size: 9px;\n  font-weight: 800;\n  letter-spacing: 0.05em;\n  text-transform: uppercase;\n  background: var(--sn-assistant-accent);\n  color: #fff;\n  flex-shrink: 0;\n}\n\n.sn-assistant-ci-item__meta {\n  font-size: 10px;\n  color: var(--sn-assistant-muted);\n  margin-top: 2px;\n}\n\n.sn-assistant-ci-item__copy {\n  flex-shrink: 0;\n  font-size: 10px;\n  padding: 3px 8px;\n  height: auto;\n  min-width: 48px;\n}\n\n.sn-assistant-ci-item__pdf {\n  border-color: color-mix(in srgb, var(--sn-assistant-accent) 40%, var(--sn-assistant-border));\n  color: color-mix(in srgb, var(--sn-assistant-accent) 72%, #111);\n  font-weight: 700;\n}\n\n.sn-assistant-ci-item__pdf:hover {\n  background: color-mix(in srgb, var(--sn-assistant-accent) 10%, #fff);\n}\n\n/* Best match highlight wrapper */\n.sn-assistant-ci-best {\n  background: var(--sn-assistant-accent-soft);\n  border-bottom: 2px solid var(--sn-assistant-accent);\n}\n\n.sn-assistant-ci-best .sn-assistant-ci-item {\n  border-bottom: none;\n}\n\n/* CI action button group */\n.sn-assistant-ci-item__actions {\n  display: flex;\n  flex-direction: row;\n  align-items: center;\n  gap: 4px;\n  flex-shrink: 0;\n}\n\n/* Collapsible CI group sections */\n.sn-assistant-ci-section {\n  border-top: 1px solid var(--sn-assistant-border);\n}\n\n.sn-assistant-ci-section__summary {\n  cursor: pointer;\n  font-size: 10px;\n  font-weight: 700;\n  color: var(--sn-assistant-muted);\n  letter-spacing: 0.06em;\n  text-transform: uppercase;\n  padding: 8px 12px;\n  list-style: none;\n  display: flex;\n  align-items: center;\n  justify-content: space-between;\n  user-select: none;\n  transition: background 100ms ease;\n}\n\n.sn-assistant-ci-section__summary::-webkit-details-marker {\n  display: none;\n}\n\n.sn-assistant-ci-section__summary::after {\n  content: "\u203A";\n  font-size: 16px;\n  font-weight: 400;\n  line-height: 1;\n  transition: transform 180ms ease;\n  opacity: 0.6;\n}\n\n.sn-assistant-ci-section[open] > .sn-assistant-ci-section__summary::after {\n  transform: rotate(90deg);\n}\n\n.sn-assistant-ci-section__summary:hover {\n  background: var(--sn-assistant-surface);\n}\n\n.sn-assistant-ci-section__body {\n  padding-top: 2px;\n}\n\n/* Copied badge variant */\n.sn-assistant-ci-item__corp-badge--copied {\n  background: rgba(5, 150, 105, 0.12);\n  color: #059669;\n}\n';
 
   // Assistant/ui/styles/workNotes-apply.css
   var workNotes_apply_default = "/* \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\n   WORK NOTES \u2014 APPLY HINT\n   \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500 */\n.sn-assistant-worknotes__apply-hint {\n  font-size: 9px;\n  font-weight: 500;\n  text-transform: none;\n  letter-spacing: 0;\n  color: var(--sn-assistant-muted);\n  opacity: 0.65;\n}\n\n/* \u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\n   SNAP POSITIONS \u2014 9-point grid for the edge panel\n   \u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550 */\n";
@@ -34648,9 +34605,14 @@ Verification completed with ${requestedFor}. Ticket moved to Resolved.`;
     state.ui.workNotesSource = "manual";
   }
   function openUserInfo(state, { refresh = false } = {}) {
+    state.ui.panelOpen = false;
+    state.ui.panelCollapsed = false;
+    state.ui.settingsOpen = false;
     state.ui.userInfoOpen = true;
     state.ui.userInfoLoading = true;
     state.ui.userInfoError = "";
+    state.ui.assistantHidden = false;
+    state.ui.edgePanelMode = "expanded";
     if (!refresh) state.ui.userInfoData = null;
     state.ui.userInfoCopyBlocked = false;
   }
@@ -34659,9 +34621,14 @@ Verification completed with ${requestedFor}. Ticket moved to Resolved.`;
     state.ui.userInfoLoading = false;
   }
   function openUserTickets(state, payload = {}) {
+    state.ui.panelOpen = false;
+    state.ui.panelCollapsed = false;
+    state.ui.settingsOpen = false;
     state.ui.userTicketsOpen = true;
     state.ui.userTicketsLoading = true;
     state.ui.userTicketsResults = [];
+    state.ui.assistantHidden = false;
+    state.ui.edgePanelMode = "expanded";
     state.ui.userTicketsFilter = typeof payload.filter === "string" ? payload.filter : "";
   }
   function closeUserTickets(state) {
@@ -34672,10 +34639,15 @@ Verification completed with ${requestedFor}. Ticket moved to Resolved.`;
     state.ui.userTicketsFilter = typeof filter === "string" ? filter : "";
   }
   function openFindCi(state) {
+    state.ui.panelOpen = false;
+    state.ui.panelCollapsed = false;
+    state.ui.settingsOpen = false;
     state.ui.findCiOpen = true;
     state.ui.findCiLoading = true;
     state.ui.findCiResults = [];
     state.ui.findCiExpanded = false;
+    state.ui.assistantHidden = false;
+    state.ui.edgePanelMode = "expanded";
   }
   function closeFindCi(state) {
     state.ui.findCiOpen = false;
@@ -37308,22 +37280,13 @@ ${text2}` : text2;
       return v === "3" || v === "7" || d.includes("closed");
     }
     function isLauncherRefreshReason(reason) {
-      return ["initial-start", "duplicate-loader", "start-reentry"].includes(reason) || reason.startsWith("work-notes-") || reason.startsWith("workNotes-");
+      return ["initial-start", "duplicate-loader", "start-reentry"].includes(reason) || reason.startsWith("work-notes-") || reason.startsWith("workNotes-") || reason.startsWith("user-info-") || reason.startsWith("user-tickets-") || reason.startsWith("find-ci-");
     }
     function isPanelRefreshReason(reason) {
       return isLauncherRefreshReason(reason) || reason.startsWith("template-") || reason.startsWith("action:") || reason.startsWith("panel-") || reason === "settings-saved" || reason === "settings-imported" || reason === "settings-reset-draft" || reason === "settings-template-selected" || reason === "settings-template-restore" || reason === "header-counts-loaded";
     }
     function isSettingsRefreshReason(reason) {
       return isLauncherRefreshReason(reason) || reason.startsWith("settings-");
-    }
-    function isUserTicketsRefreshReason(reason) {
-      return isLauncherRefreshReason(reason) || reason.startsWith("user-tickets-");
-    }
-    function isFindCiRefreshReason(reason) {
-      return isLauncherRefreshReason(reason) || reason.startsWith("find-ci-");
-    }
-    function isUserInfoRefreshReason(reason) {
-      return isLauncherRefreshReason(reason) || reason.startsWith("user-info-");
     }
     function getEffectiveSettings() {
       return state.settings;
@@ -37901,38 +37864,9 @@ ${text2}` : text2;
           removePanel(hostDocument);
         }
         removeWorkNotesPanel(hostDocument);
-        const userTicketsMissing = !hostDocument.getElementById(UI_IDS.userTickets);
-        if (state.ui.userTicketsOpen && (userTicketsMissing || contextDidChange || isUserTicketsRefreshReason(reason))) {
-          ensureUserTicketsPanel({
-            hostDocument,
-            state,
-            context: state.context || nextContext,
-            handlers
-          });
-        } else if (!state.ui.userTicketsOpen) {
-          removeUserTicketsPanel(hostDocument);
-        }
-        const userInfoMissing = !hostDocument.getElementById(UI_IDS.userInfo);
-        if (state.ui.userInfoOpen && (userInfoMissing || contextDidChange || isUserInfoRefreshReason(reason))) {
-          ensureUserInfoPanel({
-            hostDocument,
-            state,
-            handlers
-          });
-        } else if (!state.ui.userInfoOpen) {
-          removeUserInfoPanel(hostDocument);
-        }
-        const findCiMissing = !hostDocument.getElementById(UI_IDS.findCi);
-        if (state.ui.findCiOpen && (findCiMissing || contextDidChange || isFindCiRefreshReason(reason))) {
-          ensureFindCiPanel({
-            hostDocument,
-            state,
-            context: state.context || nextContext,
-            handlers
-          });
-        } else if (!state.ui.findCiOpen) {
-          removeFindCiPanel(hostDocument);
-        }
+        removeUserTicketsPanel(hostDocument);
+        removeUserInfoPanel(hostDocument);
+        removeFindCiPanel(hostDocument);
         const shouldRefreshSettings = settingsMissing || contextDidChange || isSettingsRefreshReason(reason);
         if (state.ui.settingsOpen && shouldRefreshSettings) {
           const draftSettings = getDraftSettings();
