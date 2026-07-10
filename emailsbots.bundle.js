@@ -7669,7 +7669,7 @@
     { type: "workspace_quality_check", keywords: ["workspace", "new workspace", "move", "desk move", "office move", "quality check"] },
     { type: "loss_or_theft", keywords: ["lost", "stolen", "missing", "misplaced", "theft", "perdu", "vole"] },
     { type: "validation_approval", keywords: ["validation", "approval", "eligibility", "eligible", "review"] },
-    { type: "asset_recovery", keywords: ["recover", "recovery", "retrieve", "return", "collect", "pickup", "retour"] },
+    { type: "asset_recovery", keywords: ["recover", "recovery", "retrieve", "return", "collect", "pickup", "pick up", "bring back", "handover", "hand over", "collect equipment", "retrieve device", "return laptop", "return equipment", "device collection", "retour"] },
     { type: "appointment", keywords: ["appointment", "visit", "schedule", "rendez-vous", "rdv", "intervention planned"] },
     { type: "request_delivery", keywords: ["delivery", "deliver", "handover", "prepare", "ready for delivery", "livraison"] },
     { type: "software_request", keywords: ["software", "application", "install", "installation", "license", "adobe", "sap", "teams", "outlook", "sharepoint", "web2print"] },
@@ -7686,7 +7686,7 @@
     { intent: "workspace_quality_check", matches: [{ keywords: ["workspace", "new workspace", "move", "quality check"], templateId: "quality_check_new_workspace" }] },
     { intent: "loss_or_theft", matches: [{ keywords: ["lost", "stolen", "missing"], templateId: "loss_or_theft_follow_up" }] },
     { intent: "validation_approval", matches: [{ keywords: ["smartphone"], templateId: "smartphone_eligibility_validation" }, { keywords: ["validation", "approval"], templateId: "request_validation_and_approval" }] },
-    { intent: "asset_recovery", matches: [{ keywords: ["mobile", "smartphone", "phone", "tablet"], templateId: "recover_mobile_devices_before_due_date" }, { keywords: ["laptop", "equipment", "material", "asset", "device", "computer", "pc", "win-10", "win-11"], templateId: "recover_it_material_before_due_date" }] },
+    { intent: "asset_recovery", matches: [{ keywords: ["mobile", "smartphone", "phone", "iphone", "tablet"], templateId: "recover_mobile_devices_before_due_date" }, { keywords: ["laptop", "equipment", "material", "asset", "device", "computer", "pc", "win-10", "win-11"], templateId: "recover_it_material_before_due_date" }] },
     { intent: "appointment", matches: [{ keywords: ["intervention planned", "appointment"], templateId: "appointment_confirmation" }, { keywords: ["swap"], templateId: "laptop_swap_appointment" }, { keywords: ["smartphone", "phone", "mobile", "return", "collect"], templateId: "smartphone_return_schedule" }, { keywords: ["visit", "schedule", "rendez-vous", "rdv"], templateId: "appointment_coordination" }] },
     { intent: "request_delivery", matches: [{ keywords: ["laptop", "desktop"], templateId: "laptop_delivery" }, { keywords: ["smartphone", "phone", "mobile", "iphone"], templateId: "smartphone_delivery" }, { keywords: ["tablet", "ipad"], templateId: "tablet_delivery_schedule" }, { keywords: ["prepare", "preparation", "ready"], templateId: "delivery_coordination" }, { keywords: ["delivery", "handover", "collection"], templateId: "delivery_coordination" }] },
     { intent: "software_request", matches: [{ keywords: ["sharepoint", "shared mailbox", "mailbox"], templateId: "request_access_sharepoint" }, { keywords: ["outlook", "calendar", "teams", "email"], templateId: "outlook_email_calendar_support" }, { keywords: ["install", "installation", "adobe", "sap", "web2print"], templateId: "request_software_install" }, { keywords: ["adobe", "acrobat"], templateId: "adobe_acrobat_reader_access_update" }] },
@@ -8004,7 +8004,7 @@
     if (hasAny(text2, ["workspace", "new workspace", "desk move", "office move", "quality check after move", "quality check"])) return "workspace_quality_check";
     if (hasAny(text2, ["lost", "stolen", "missing", "theft", "perdu", "vole"])) return "loss_or_theft";
     if (hasAny(text2, ["validation", "eligibility", "eligible", "approval", "under review"])) return "validation_approval";
-    if (hasAny(text2, ["recover", "retrieve", "return", "collect"]) && hasAny(text2, ["device", "laptop", "tablet", "phone", "mobile", "asset", "material"])) return "asset_recovery";
+    if (hasAny(text2, ["recover", "retrieve", "return", "collect", "pickup", "pick up", "bring back", "handover", "hand over", "collect equipment", "retrieve device", "return laptop", "return equipment", "device collection"]) && hasAny(text2, ["device", "equipment", "laptop", "tablet", "phone", "mobile", "iphone", "computer", "asset", "material"])) return "asset_recovery";
     if (hasAny(text2, ["appointment", "visit", "schedule", "rendez-vous", "rdv", "intervention planned"])) {
       if (hasAny(text2, ["deliver", "delivery", "livraison", "remise", "handover", "ready for delivery", "preparation", "prepare", "loan", "replacement"]) && hasAny(text2, ["laptop", "desktop", "smartphone", "phone", "mobile", "tablet", "ipad", "iphone", "device", "item", "hybrid"])) {
         return "request_delivery";
@@ -8175,10 +8175,29 @@
     }
     return unique;
   }
+  function resolveDetectedEmailTemplateId(templateId = "", context = {}, mapToExisting = {}) {
+    const text2 = normalizeText(context.text || [
+      context.shortDescription,
+      context.description,
+      context.category,
+      context.subcategory,
+      context.configurationItem,
+      context.deviceType
+    ].filter(Boolean).join(" "));
+    if (templateId === "asset_recovery_before_due_date" || context.intent === "asset_recovery") {
+      const hasRecoveryAction = /\b(recover|retrieve|return|collect|pickup|pick up|bring back|handover|hand over)\b/.test(text2);
+      const hasMobileDevice = /\b(phone|mobile|iphone|tablet|smartphone)\b/.test(text2);
+      const hasItMaterial = /\b(device|equipment|material|computer|laptop|asset|pc)\b/.test(text2);
+      if (hasRecoveryAction && hasMobileDevice) return "recover_mobile_devices_before_due_date";
+      if (hasRecoveryAction && hasItMaterial) return "recover_it_material_before_due_date";
+    }
+    return mapToExisting[templateId] || templateId;
+  }
   function selectEmailTemplate(templates = [], ticket = {}, metadata = {}) {
     const context = detectContext(ticket, metadata);
     const detected = detectTemplate(context);
     const mapToExisting = {
+      asset_recovery_before_due_date: "recover_it_material_before_due_date",
       damaged_device: "incident_hardware_issue",
       device_replacement: "delivery_coordination",
       printer: "incident_hardware_issue",
@@ -8191,13 +8210,13 @@
       accessory: "generic_ticket_follow_up",
       generic: "generic_ticket_follow_up"
     };
-    const forcedTemplateId = mapToExisting[detected.templateId] || mapToExisting.generic;
     const rules = EMAIL_RULES.find((rule) => rule.intent === context.intent)?.matches || EMAIL_RULES[EMAIL_RULES.length - 1].matches;
     const { score } = matchRuleTemplate(context.text, rules, templates);
     const candidates = getEmailTemplateCandidates(context.text, rules, templates, 3);
     const secondScore = candidates[1]?.score || 0;
     const ambiguous = isAmbiguousShortDescription(context, score, secondScore);
-    let template = findTemplateById(templates, forcedTemplateId) || candidates.map((entry) => entry.template).find((entry) => entry && !isGenericEmailTemplate(entry)) || templates.find((entry) => !isGenericEmailTemplate(entry)) || templates[0] || null;
+    const detectedTemplateId = resolveDetectedEmailTemplateId(detected.templateId, context, mapToExisting);
+    let template = findTemplateById(templates, detectedTemplateId) || candidates.map((entry) => entry.template).find((entry) => entry && !isGenericEmailTemplate(entry)) || findTemplateById(templates, mapToExisting.generic) || templates[0] || null;
     if (template?.id === "smartphone_delivery" && !context.validTicketNumber) {
       template = findTemplateById(templates, "smartphone_delivery_schedule") || findTemplateById(templates, "delivery_coordination") || findTemplateById(templates, "laptop_delivery") || findTemplateById(templates, "tablet_delivery_schedule") || templates[0] || null;
     }
@@ -8298,7 +8317,7 @@
       context.location
     ]);
     const rules = [
-      ["asset_recovery_before_due_date", /(recover|return|collect|retrieve).*(mobile|device|equipment|material)|before\s+\d{4}-\d{2}-\d{2}/],
+      ["asset_recovery_before_due_date", /(recover|return|collect|retrieve|pickup|pick up|bring back|handover|hand over).*(mobile|phone|iphone|tablet|device|equipment|material|computer|laptop)|collect equipment|retrieve device|return laptop|return equipment|device collection|before\s+\d{4}-\d{2}-\d{2}/],
       ["accessory_request_headset", /(headset|earphone|head phone)/],
       ["outlook_policy_font", /(outlook).*(font|calibri|europea|policy|gpo)|font.*(revert|reset)/],
       ["device_delivery_win11", /(deliver|delivery|handover).*(win-11|windows 11|laptop)/],
@@ -8394,7 +8413,13 @@
     const configurationItem = cleanText(
       resolveReadableConfigurationItem(context) || renderedTemplate?.body?.match(/PI \/ Configuration item:\s*([^\n]+)/i)?.[1] || ""
     );
-    if (baseId === "recover_it_material_before_due_date" || baseId === "recover_mobile_devices_before_due_date") {
+    if (baseId === "recover_it_material_before_due_date") {
+      return [
+        `Email sent to the user regarding ticket ${ticketNumber || "the ticket"} concerning the retrieval of the corporate IT equipment.`,
+        "User requested to confirm availability for the collection."
+      ].join(" ");
+    }
+    if (baseId === "recover_mobile_devices_before_due_date") {
       const validTicket = cleanText(context.validTicketNumber || context.customerTicketNumber || context.requestItem || context.ticketNumber || context.recordNumber);
       const subject = `${validTicket} - IT equipment return before ${cleanText(context.returnDate || context.return_date)}`;
       const model = cleanText(context.equipmentModel || context.equipment_model || context.model || "");
@@ -9933,14 +9958,18 @@ ${configurationItemLine}`,
     {
       id: "recover_it_material_before_due_date",
       category: "email",
-      label: "Recover IT Material (ASAP)",
+      label: "Recover IT Material",
       target: "comments",
-      subject: "{{ticket_number}} - IT equipment return before {{return_date}}",
-      body: buildEmail({
-        context: aboutTicket("the return of IT equipment currently assigned to you"),
-        action: "According to our records, the following equipment should be returned before {{return_date}}:\n\n{{equipment_model}}\nAsset tag: {{equipment_asset_tag}}\n\nCould you please confirm when you would be available to return the device, or let us know if you would like to arrange an appointment for the handover? You may also indicate your preferred location for the return.",
-        closing: CLOSINGS.confirm
-      })
+      subject: "{{ticket_number}} - IT equipment retrieval",
+      body: [
+        "Dear {{user_name}},",
+        "We are contacting you regarding ticket {{ticket_number}} concerning the retrieval of your corporate IT equipment.",
+        "To proceed, please confirm your preferred date, time and location for the collection.",
+        "If the equipment has already been returned, kindly disregard this email.",
+        "Should you have any questions, please do not hesitate to contact us.",
+        "Kind regards,",
+        "{{agent_name}}\nIT Support"
+      ].join("\n\n")
     },
     {
       id: "recover_mobile_devices_before_due_date",
