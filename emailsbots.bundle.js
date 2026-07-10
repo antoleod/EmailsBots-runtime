@@ -6857,813 +6857,6 @@
   // Assistant/version.js
   var VERSION = "V2.7";
 
-  // Assistant/ui/launcher.js
-  var ICON = {
-    // Work Notes: lined page + pencil
-    notes: `<svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5.5 3h6.5l3 3v10.5a.5.5 0 0 1-.5.5h-9a.5.5 0 0 1-.5-.5V3.5a.5.5 0 0 1 .5-.5z"/><path d="M12 3v3h3"/><line x1="7.5" y1="9" x2="12.5" y2="9"/><line x1="7.5" y1="12" x2="11" y2="12"/><path d="M11.5 14.5l2.5-2.5 1.5 1.5-2.5 2.5h-1.5z"/><line x1="12.5" y1="13" x2="14" y2="14.5"/></svg>`,
-    // Prepare Draft: page + lightning bolt
-    draft: `<svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5.5 3h5l3 3v10.5a.5.5 0 0 1-.5.5h-9a.5.5 0 0 1-.5-.5V3.5a.5.5 0 0 1 .5-.5z"/><path d="M10.5 3v3h3"/><path d="M12 8.5l-3.5 4.5h3.5l-3 5"/></svg>`,
-    // Reminder: bell with notification dot
-    bell: `<svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 2.5a1 1 0 0 1 1 1v.6a5 5 0 0 1 4 4.9v3l1.5 2.5h-13L5 12v-3a5 5 0 0 1 4-4.9V3.5a1 1 0 0 1 1-1z"/><path d="M8.5 15.5a1.6 1.6 0 0 0 3 0"/><circle cx="15" cy="4" r="2.5" fill="currentColor" stroke="none"/></svg>`,
-    // Agenda / Calendar: calendar grid
-    calendar: `<svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="2.5" y="4" width="15" height="13" rx="1.5"/><path d="M2.5 8.5h15M7 2v4M13 2v4"/><rect x="6" y="11" width="2.5" height="2.5" rx=".4"/></svg>`,
-    // Export PDF: page with upward arrow
-    export: `<svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5.5 3h6.5l3 3v4.5"/><path d="M12 3v3h3"/><path d="M3 14.5h8M3 17.5h5.5"/><path d="M14 12v6M11.5 14.5l2.5-2.5 2.5 2.5"/></svg>`,
-    // Settings: 3 horizontal sliders at different positions
-    settings: `<svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="3" y1="6" x2="17" y2="6"/><line x1="3" y1="10" x2="17" y2="10"/><line x1="3" y1="14" x2="17" y2="14"/><circle cx="7" cy="6" r="2" fill="var(--sn-assistant-panel,#fff)" stroke="currentColor"/><circle cx="13" cy="10" r="2" fill="var(--sn-assistant-panel,#fff)" stroke="currentColor"/><circle cx="9" cy="14" r="2" fill="var(--sn-assistant-panel,#fff)" stroke="currentColor"/></svg>`,
-    // Close: ×
-    close: `<svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><line x1="5" y1="5" x2="15" y2="15"/><line x1="15" y1="5" x2="5" y2="15"/></svg>`,
-    // Customize / Brush (replace old edit/hide icon)
-    brush: `<svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 3l3 3-8 8-3.5.5.5-3.5z"/><line x1="11.5" y1="5.5" x2="14.5" y2="8.5"/><path d="M3.5 16.5c1-2 2-2.5 3-1.5"/></svg>`,
-    // Hide button (eye-slash)
-    hide: `<svg width="14" height="14" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2 10s3-5.5 8-5.5 8 5.5 8 5.5-3 5.5-8 5.5-8-5.5-8-5.5z"/><circle cx="10" cy="10" r="2.5"/><line x1="3" y1="17" x2="17" y2="3"/></svg>`,
-    // Chevron (collapsed tab)
-    chevron: `<svg class="sn-ep__chevron" width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="4 2 8 6 4 10"/></svg>`,
-    // User Tickets: person + tag
-    tickets: `<svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="8" cy="6.5" r="3"/><path d="M2.5 17c0-3 2.5-5 5.5-5"/><path d="M13 11.5h4a1 1 0 0 1 1 1v4a1 1 0 0 1-1 1h-4l-2-3z"/><line x1="14" y1="14" x2="16" y2="14"/></svg>`,
-    // User Info: ID / contact card with a portrait and detail lines
-    userInfo: `<svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="2.5" y="4" width="15" height="12" rx="2"/><circle cx="7" cy="8.5" r="2"/><path d="M3.8 14c0-1.8 1.4-3 3.2-3s3.2 1.2 3.2 3"/><line x1="12" y1="8" x2="15" y2="8"/><line x1="12" y1="11" x2="15" y2="11"/></svg>`,
-    // Assign: person + checkmark
-    assign: `<svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="8" cy="6.5" r="3"/><path d="M2.5 16.5c0-3 2.5-5 5.5-5"/><path d="M11 14l2 2 4-4.5"/></svg>`,
-    // Find CI: cube wireframe + node connector
-    findCi: `<svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 3l6 3v5l-6 3-6-3V6z"/><path d="M10 3v8M4 6l6 3 6-3"/><circle cx="15.5" cy="15.5" r="2" /><line x1="14" y1="14" x2="11" y2="11.5"/></svg>`,
-    // EP Links: chain links
-    links: `<svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8.5 11.5a4.5 4.5 0 0 0 6.4 0l1.8-1.8a4.5 4.5 0 0 0-6.4-6.4l-1 1"/><path d="M11.5 8.5a4.5 4.5 0 0 0-6.4 0l-1.8 1.8a4.5 4.5 0 0 0 6.4 6.4l1-1"/></svg>`,
-    // Position picker (3×3 dot grid)
-    position: `<svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" aria-hidden="true"><circle cx="3" cy="3" r="1.2" fill="currentColor" stroke="none"/><circle cx="8" cy="3" r="1.2" fill="currentColor" stroke="none"/><circle cx="13" cy="3" r="1.2" fill="currentColor" stroke="none"/><circle cx="3" cy="8" r="1.2" fill="currentColor" stroke="none"/><circle cx="8" cy="8" r="1.5" stroke="currentColor" fill="none" stroke-width="1.6"/><circle cx="13" cy="8" r="1.2" fill="currentColor" stroke="none"/><circle cx="3" cy="13" r="1.2" fill="currentColor" stroke="none"/><circle cx="8" cy="13" r="1.2" fill="currentColor" stroke="none"/><circle cx="13" cy="13" r="1.2" fill="currentColor" stroke="none"/></svg>`,
-    // Pin / Keep button (push pin) — outlined when inactive
-    iconsOnly: `<svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="4" y="4" width="4.5" height="4.5" rx="1"/><rect x="11.5" y="4" width="4.5" height="4.5" rx="1"/><rect x="4" y="11.5" width="4.5" height="4.5" rx="1"/><rect x="11.5" y="11.5" width="4.5" height="4.5" rx="1"/></svg>`,
-    pin: `<svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10.5 2.5c0 0 .5 3 .5 6v.5c0 .5.5 1 1 1h.5c3 0 6 .5 6 .5s-1-2-2-3-1-1-2-2-3-1-3-2c-1.5 0-2.5 0-2.5 0z"/><path d="M7.5 12c-1 1-2.5 2.5-4 4.5-1.5 2-1 3-1 3s1 .5 3-1c2-1.5 3.5-3 4.5-4"/></svg>`,
-    // Filled variant — used when the pin is active (panel locked open)
-    pinFilled: `<svg width="20" height="20" viewBox="0 0 20 20" fill="currentColor" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10.5 2.5c0 0 .5 3 .5 6v.5c0 .5.5 1 1 1h.5c3 0 6 .5 6 .5s-1-2-2-3-1-1-2-2-3-1-3-2c-1.5 0-2.5 0-2.5 0z"/><path fill="none" d="M7.5 12c-1 1-2.5 2.5-4 4.5-1.5 2-1 3-1 3s1 .5 3-1c2-1.5 3.5-3 4.5-4"/></svg>`
-  };
-  function resolveLauncherButtonDef(buttonId) {
-    const spec = LAUNCHER_BUTTON_SPECS[buttonId];
-    if (!spec) return null;
-    const semanticClassMap = {
-      [LAUNCHER_BUTTON_IDS.quickDraft]: "sn-ep__action--draft",
-      [LAUNCHER_BUTTON_IDS.openReminder]: "sn-ep__action--reminder",
-      [LAUNCHER_BUTTON_IDS.openWorkNotes]: "sn-ep__action--work-notes",
-      [LAUNCHER_BUTTON_IDS.incidentResolutionNotes]: "sn-ep__action--resolution",
-      [LAUNCHER_BUTTON_IDS.createCalendarEvent]: "sn-ep__action--agenda",
-      [LAUNCHER_BUTTON_IDS.openPdf]: "sn-ep__action--pdf",
-      [LAUNCHER_BUTTON_IDS.openSettings]: "sn-ep__action--settings",
-      [LAUNCHER_BUTTON_IDS.openEpLinks]: "sn-ep__action--links",
-      [LAUNCHER_BUTTON_IDS.userOpenTickets]: "sn-ep__action--user-tickets",
-      [LAUNCHER_BUTTON_IDS.userInfo]: "sn-ep__action--user-info",
-      [LAUNCHER_BUTTON_IDS.findCi]: "sn-ep__action--find-ci",
-      [LAUNCHER_BUTTON_IDS.generateEmailDraft]: "sn-ep__action--draft",
-      [LAUNCHER_BUTTON_IDS.generateCloseNotes]: "sn-ep__action--resolution",
-      [LAUNCHER_BUTTON_IDS.generateWorkNotes]: "sn-ep__action--work-notes",
-      [LAUNCHER_BUTTON_IDS.generateAllNotes]: "sn-ep__action--draft"
-    };
-    return {
-      ...spec,
-      icon: ICON[spec.iconKey] || ICON.settings,
-      semanticClass: semanticClassMap[buttonId] || ""
-    };
-  }
-  function isCalendarReady(context) {
-    const stateValue = String(context?.state || "").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/\s+/g, " ").trim();
-    return stateValue.includes("intervention") || stateValue === "appointment" || stateValue.includes("planifie");
-  }
-  function isSlaWarning(context) {
-    const raw = String(context?.dueDate || context?.followUp || "").trim();
-    if (!raw) return false;
-    try {
-      const due = new Date(raw);
-      if (isNaN(due.getTime())) return false;
-      const today = /* @__PURE__ */ new Date();
-      today.setHours(0, 0, 0, 0);
-      due.setHours(0, 0, 0, 0);
-      return due.getTime() <= today.getTime();
-    } catch (error2) {
-      return false;
-    }
-  }
-  var SNAP_STORAGE_KEY = "sn_assistant_snap_position";
-  var SNAP_POSITIONS = ["tl", "tc", "tr", "cl", "cc", "cr", "bl", "bc", "br"];
-  function loadSnapPosition(rootWindow) {
-    try {
-      return rootWindow.localStorage?.getItem(SNAP_STORAGE_KEY) || "";
-    } catch {
-      return "";
-    }
-  }
-  function saveSnapPosition(rootWindow, pos) {
-    try {
-      if (pos) rootWindow.localStorage?.setItem(SNAP_STORAGE_KEY, pos);
-      else rootWindow.localStorage?.removeItem(SNAP_STORAGE_KEY);
-    } catch {
-    }
-  }
-  function applyEdgePanelPosition(root, state) {
-    const shell = root.querySelector(".sn-ep");
-    if (!shell) return;
-    const ownerWindow = root.ownerDocument?.defaultView || window;
-    const snapPos = loadSnapPosition(ownerWindow);
-    SNAP_POSITIONS.forEach((p) => shell.classList.remove(`sn-ep--snap-${p}`));
-    if (snapPos && SNAP_POSITIONS.includes(snapPos)) {
-      shell.classList.add(`sn-ep--snap-${snapPos}`);
-      shell.style.left = "";
-      shell.style.right = "";
-      shell.style.top = "";
-      shell.style.bottom = "";
-      shell.style.transform = "";
-      return;
-    }
-    const top = state.ui.edgePanelTop;
-    const edge = state.ui.edgePanelEdge || "right";
-    if (top !== null && top !== void 0) {
-      shell.style.top = `${top}px`;
-      shell.style.transform = "none";
-    } else {
-      shell.style.top = "50%";
-      shell.style.transform = "translateY(-50%)";
-    }
-    shell.classList.toggle("sn-ep--left", edge === "left");
-  }
-  function makePanelDraggable(root, state) {
-    if (root.dataset.snEpDragBound === "true") return;
-    root.dataset.snEpDragBound = "true";
-    const ownerWindow = root.ownerDocument.defaultView || window;
-    let drag = null;
-    let suppressClickUntil = 0;
-    root.addEventListener("pointerdown", (event) => {
-      if (event.button !== 0) return;
-      if (!event.target.closest(".sn-ep__tab, .sn-ep__header")) return;
-      const shell = root.querySelector(".sn-ep");
-      if (!shell) return;
-      const rect = shell.getBoundingClientRect();
-      drag = {
-        startX: event.clientX,
-        startY: event.clientY,
-        offsetX: event.clientX - rect.left,
-        offsetY: event.clientY - rect.top,
-        width: rect.width,
-        height: rect.height,
-        moved: false
-      };
-      ownerWindow.addEventListener("pointermove", onMove, { passive: false });
-      ownerWindow.addEventListener("pointerup", onUp);
-    });
-    function onMove(event) {
-      if (!drag) return;
-      const dist = Math.abs(event.clientX - drag.startX) + Math.abs(event.clientY - drag.startY);
-      if (dist < 4 && !drag.moved) return;
-      drag.moved = true;
-      event.preventDefault();
-      const shell = root.querySelector(".sn-ep");
-      if (!shell) return;
-      if (!drag.snapCleared) {
-        drag.snapCleared = true;
-        saveSnapPosition(ownerWindow, "");
-        SNAP_POSITIONS.forEach((p) => shell.classList.remove(`sn-ep--snap-${p}`));
-      }
-      shell.classList.remove("sn-ep--left");
-      const maxLeft = ownerWindow.innerWidth - drag.width;
-      const maxTop = ownerWindow.innerHeight - drag.height - 8;
-      shell.style.left = `${clamp(event.clientX - drag.offsetX, 0, maxLeft)}px`;
-      shell.style.right = "auto";
-      shell.style.top = `${clamp(event.clientY - drag.offsetY, 8, maxTop)}px`;
-      shell.style.transform = "none";
-    }
-    function onUp() {
-      ownerWindow.removeEventListener("pointermove", onMove);
-      ownerWindow.removeEventListener("pointerup", onUp);
-      if (drag?.moved) {
-        suppressClickUntil = Date.now() + 150;
-        const shell = root.querySelector(".sn-ep");
-        if (shell) {
-          const rect = shell.getBoundingClientRect();
-          const leftDist = rect.left;
-          const rightDist = ownerWindow.innerWidth - rect.right;
-          const newEdge = leftDist <= rightDist ? "left" : "right";
-          state.ui.edgePanelEdge = newEdge;
-          state.ui.edgePanelTop = clamp(rect.top, 8, ownerWindow.innerHeight - rect.height - 8);
-          shell.style.left = "";
-          shell.style.right = "";
-          shell.classList.toggle("sn-ep--left", newEdge === "left");
-        }
-      }
-      drag = null;
-    }
-    root.addEventListener(
-      "click",
-      (event) => {
-        if (Date.now() < suppressClickUntil) {
-          event.preventDefault();
-          event.stopPropagation();
-        }
-      },
-      true
-    );
-  }
-  function renderLauncherButton(buttonId, { draftLabel, calendarReady, context, buttonColor = "", editMode = false }) {
-    const def = resolveLauncherButtonDef(buttonId);
-    if (!def) return "";
-    const label = typeof def.label === "function" ? def.label(draftLabel) : def.label;
-    const sub = typeof def.sub === "function" ? def.sub(calendarReady, context) : def.sub;
-    const baseTitle = typeof def.title === "function" ? def.title(calendarReady, context) : def.title;
-    const title = sub && sub !== label ? `${baseTitle} \u2014 ${sub}` : baseTitle;
-    const className = typeof def.className === "function" ? def.className(calendarReady, context) : def.className || "";
-    const semanticClass = def.semanticClass || "";
-    const iconOnly = false;
-    const badge = def.badge ? `<span class="sn-ep__badge">${escapeHtml(def.badge)}</span>` : "";
-    const canHide = ![
-      LAUNCHER_BUTTON_IDS.openSettings,
-      LAUNCHER_BUTTON_IDS.openReminder,
-      LAUNCHER_BUTTON_IDS.findCi
-    ].includes(buttonId);
-    const colorStyle = buttonColor ? ` style="--btn-color:${escapeHtml(buttonColor)};"` : "";
-    let editOverlay = "";
-    if (editMode) {
-      const hideBtn = canHide ? `<button type="button" class="sn-ep__edit-hide" data-action="ep-hide-button" data-button-id="${escapeHtml(buttonId)}" title="Hide">${ICON.hide}</button>` : "";
-      const currentColor = buttonColor || "#2563eb";
-      const colorPicker = `<label class="sn-ep__edit-color" title="Pick colour">
-        <input type="color" class="sn-ep__color-input" data-action="ep-btn-color" data-button-id="${escapeHtml(buttonId)}" value="${escapeHtml(currentColor)}" title="Button colour"/>
-      </label>`;
-      editOverlay = `<div class="sn-ep__edit-overlay">${colorPicker}${hideBtn}</div>`;
-    }
-    return `
-    <button
-      type="button"
-      draggable="true"
-      class="sn-ep__action${semanticClass ? ` ${semanticClass}` : ""}${className ? ` ${className}` : ""}${editMode ? " sn-ep__action--edit" : ""}"
-      data-action="${escapeHtml(buttonId)}"
-      data-button-id="${escapeHtml(buttonId)}"
-      title="${escapeHtml(title)}"${colorStyle}
-    >
-      <span class="sn-ep__icon">${def.icon}</span>
-      <span class="sn-ep__text"><span class="sn-ep__label">${escapeHtml(label)}</span></span>
-      ${badge}
-      ${editOverlay}
-    </button>
-  `;
-  }
-  function renderLauncherActions(rootWindow, context, draftLabel, calendarReady, hiddenButtons = [], buttonColors = {}, editMode = false, topWorkNoteTemplates = []) {
-    const order = loadAssistantButtonOrder(rootWindow);
-    const hidden = Array.isArray(hiddenButtons) ? hiddenButtons : [];
-    const colors = buttonColors && typeof buttonColors === "object" ? buttonColors : {};
-    const visibleIds = order.concat(PINNED_LAUNCHER_BUTTON_IDS).filter((buttonId) => {
-      if (hidden.includes(buttonId)) return false;
-      if (buttonId === LAUNCHER_BUTTON_IDS.incidentResolutionNotes && cleanText(context?.table) !== "incident") return false;
-      return true;
-    });
-    const buckets = /* @__PURE__ */ new Map();
-    for (const groupDef of LAUNCHER_GROUPS) {
-      buckets.set(groupDef.id, []);
-    }
-    for (const buttonId of visibleIds) {
-      const groupId = getLauncherButtonGroup(buttonId);
-      if (!buckets.has(groupId)) buckets.set(groupId, []);
-      buckets.get(groupId).push(buttonId);
-    }
-    return LAUNCHER_GROUPS.map((groupDef) => {
-      const ids = buckets.get(groupDef.id) || [];
-      if (!ids.length) return "";
-      const buttonsHtml = ids.map((buttonId) => {
-        if (buttonId === LAUNCHER_BUTTON_IDS.quickDraftTop3) return "";
-        if (buttonId === LAUNCHER_BUTTON_IDS.generateEmailDraft || buttonId === LAUNCHER_BUTTON_IDS.generateCloseNotes || buttonId === LAUNCHER_BUTTON_IDS.generateWorkNotes || buttonId === LAUNCHER_BUTTON_IDS.generateAllNotes) return "";
-        if (buttonId === LAUNCHER_BUTTON_IDS.openWorkNotes) {
-          const workNotesBtn = renderLauncherButton(buttonId, { draftLabel, calendarReady, context, buttonColor: colors[buttonId] || "", editMode });
-          const boltBtn = `<button type="button" class="sn-ep__action sn-ep__action--mini-bolt sn-ep__action--work-notes" data-action="generate-menu-toggle" title="Quick write / generate" aria-haspopup="menu" aria-expanded="false"><span class="sn-ep__icon">${ICON.draft}</span></button>`;
-          const quickWriteItems = Array.isArray(topWorkNoteTemplates) && topWorkNoteTemplates.length ? [
-            `<div class="sn-ep__generate-section-label">Quick write</div>`,
-            ...topWorkNoteTemplates.map(
-              (t) => `<button type="button" class="sn-ep__generate-item sn-ep__generate-item--template" data-action="quick-write-work-note" data-template-id="${escapeHtml(t.id)}" title="${escapeHtml(t.label)}"><span class="sn-ep__icon">${ICON.notes}</span><span>${escapeHtml(t.label)}</span></button>`
-            ),
-            `<div class="sn-ep__generate-divider"></div>`,
-            `<div class="sn-ep__generate-section-label">AI generate</div>`
-          ].join("") : "";
-          const generateItems = [
-            { action: LAUNCHER_BUTTON_IDS.generateEmailDraft, icon: ICON.draft, label: "Generate Email Draft" },
-            { action: LAUNCHER_BUTTON_IDS.generateCloseNotes, icon: ICON.notes, label: "Generate Close Notes" },
-            { action: LAUNCHER_BUTTON_IDS.generateWorkNotes, icon: ICON.notes, label: "Generate Work Notes" },
-            { action: LAUNCHER_BUTTON_IDS.generateAllNotes, icon: ICON.draft, label: "Generate All" }
-          ].map(
-            (item) => `<button type="button" class="sn-ep__generate-item" data-action="${escapeHtml(item.action)}" title="${escapeHtml(item.label)}"><span class="sn-ep__icon">${item.icon}</span><span>${escapeHtml(item.label)}</span></button>`
-          ).join("");
-          return `<div class="sn-ep__action-row">${workNotesBtn}${boltBtn}</div><div class="sn-ep__generate-menu" data-generate-menu>${quickWriteItems}${generateItems}</div>`;
-        }
-        if (buttonId === LAUNCHER_BUTTON_IDS.quickDraft) {
-          const draftBtn = renderLauncherButton(buttonId, {
-            draftLabel,
-            calendarReady,
-            context,
-            buttonColor: colors[buttonId] || "",
-            editMode
-          });
-          const boltBtn = renderLauncherButton(LAUNCHER_BUTTON_IDS.quickDraftTop3, {
-            draftLabel,
-            calendarReady,
-            context,
-            buttonColor: colors[LAUNCHER_BUTTON_IDS.quickDraftTop3] || colors[buttonId] || "",
-            editMode
-          }).replace("sn-ep__action", "sn-ep__action sn-ep__action--mini-bolt");
-          return `<div class="sn-ep__action-row">${draftBtn}${boltBtn}</div>`;
-        }
-        if (buttonId === LAUNCHER_BUTTON_IDS.assignToMyGroup) {
-          const assignBtn = renderLauncherButton(buttonId, {
-            draftLabel,
-            calendarReady,
-            context,
-            buttonColor: colors[buttonId] || "",
-            editMode
-          });
-          const configBtn = `<button type="button" class="sn-ep__action sn-ep__action--mini-bolt" data-action="configure-assign-group" title="Choose your assignment group" aria-label="Choose your assignment group"><span class="sn-ep__icon">${ICON.settings}</span></button>`;
-          return `<div class="sn-ep__action-row">${assignBtn}${configBtn}</div>`;
-        }
-        return renderLauncherButton(buttonId, {
-          draftLabel,
-          calendarReady,
-          context,
-          buttonColor: colors[buttonId] || "",
-          editMode
-        });
-      }).filter(Boolean).join("");
-      if (!buttonsHtml) return "";
-      return `
-        <div class="sn-ep__group" data-group="${escapeHtml(groupDef.id)}">
-          <div class="sn-ep__group-header">${escapeHtml(groupDef.label)}</div>
-          <div class="sn-ep__group-buttons">${buttonsHtml}</div>
-        </div>
-      `;
-    }).filter(Boolean).join("");
-  }
-  function bindLauncher(root, state, handlers) {
-    if (root.dataset.snAssistantBound === "true") return;
-    root.dataset.snAssistantBound = "true";
-    const ownerWindow = root.ownerDocument.defaultView || window;
-    let draggedButtonId = "";
-    let assignPressTimer = 0;
-    let assignPressTriggered = false;
-    function clearAssignPressTimer() {
-      if (assignPressTimer) {
-        ownerWindow.clearTimeout(assignPressTimer);
-        assignPressTimer = 0;
-      }
-    }
-    root.addEventListener("click", (event) => {
-      const button = event.target.closest("[data-action]");
-      if (!button) return;
-      const { action } = button.dataset;
-      const shell = root.querySelector(".sn-ep");
-      if (action !== "generate-menu-toggle") {
-        root.querySelector("[data-generate-menu]")?.classList.remove("is-open");
-        root.querySelector('[data-action="generate-menu-toggle"]')?.setAttribute("aria-expanded", "false");
-      }
-      if (action === "generate-menu-toggle") {
-        const open = root.querySelector("[data-generate-menu]")?.classList.toggle("is-open");
-        button.setAttribute("aria-expanded", open ? "true" : "false");
-        return;
-      }
-      if (action === "ep-toggle") {
-        const isOpen = state.ui.edgePanelMode === "expanded" || state.ui.edgePanelMode === "icons";
-        const next = isOpen ? "tab" : "expanded";
-        if (next === "tab" && state.ui.edgePanelPinned) return;
-        state.ui.edgePanelMode = next;
-        if (shell) shell.dataset.epMode = next;
-        if (state.ui.edgePanelPinned) {
-          savePinState(ownerWindow, {
-            pinned: true,
-            lastOpenState: next !== "tab",
-            mode: next
-          });
-        }
-        return;
-      }
-      if (action === "ep-icons") {
-        root.querySelector("[data-generate-menu]")?.classList.remove("is-open");
-        const next = state.ui.edgePanelMode === "icons" ? "expanded" : "icons";
-        state.ui.edgePanelMode = next;
-        if (shell) shell.dataset.epMode = next;
-        if (state.ui.edgePanelPinned) {
-          savePinState(ownerWindow, {
-            pinned: true,
-            lastOpenState: next !== "tab",
-            mode: next
-          });
-        }
-        const iconButton = button;
-        iconButton.classList.toggle("is-active", next === "icons");
-        iconButton.title = next === "icons" ? "Show full labels" : "Show icons only";
-        iconButton.setAttribute("aria-pressed", next === "icons" ? "true" : "false");
-        return;
-      }
-      if (action === "ep-close") {
-        if (state.ui.edgePanelPinned) {
-          state.ui.edgePanelPinned = false;
-          if (shell) {
-            shell.removeAttribute("data-ep-pinned");
-            savePinState(ownerWindow, { pinned: false, lastOpenState: false, mode: "tab" });
-          }
-        }
-        state.ui.edgePanelMode = "tab";
-        if (shell) shell.dataset.epMode = "tab";
-        return;
-      }
-      if (action === "ep-pin") {
-        state.ui.edgePanelPinned = !state.ui.edgePanelPinned;
-        if (state.ui.edgePanelPinned) {
-          if (state.ui.edgePanelMode === "tab") {
-            state.ui.edgePanelMode = "expanded";
-            if (shell) shell.dataset.epMode = "expanded";
-          }
-          state.ui.assistantHidden = false;
-        }
-        if (shell) {
-          if (state.ui.edgePanelPinned) {
-            shell.setAttribute("data-ep-pinned", "true");
-            button.classList.add("is-active");
-          } else {
-            shell.removeAttribute("data-ep-pinned");
-            button.classList.remove("is-active");
-          }
-          button.title = state.ui.edgePanelPinned ? "Unpin panel \u2014 close normally" : "Pin to keep open";
-          button.setAttribute("aria-pressed", state.ui.edgePanelPinned ? "true" : "false");
-          button.innerHTML = state.ui.edgePanelPinned ? ICON.pinFilled : ICON.pin;
-        }
-        savePinState(ownerWindow, {
-          pinned: state.ui.edgePanelPinned,
-          lastOpenState: state.ui.edgePanelMode !== "tab",
-          mode: state.ui.edgePanelMode === "tab" ? "icons" : state.ui.edgePanelMode || "icons"
-        });
-        handlers.onToggleEdgePanelPinned?.(state.ui.edgePanelPinned);
-        return;
-      }
-      if (action === "ep-edit") {
-        handlers.onToggleLauncherEditMode?.();
-        return;
-      }
-      if (action === "configure-assign-group") {
-        handlers.onConfigureAssignGroup?.();
-        return;
-      }
-      if (action === "ep-hide-button") {
-        const buttonId = button.dataset.buttonId || "";
-        handlers.onHideLauncherButton?.(buttonId);
-        return;
-      }
-      if (action === LAUNCHER_BUTTON_IDS.quickDraft) handlers.onQuickDraft();
-      if (action === LAUNCHER_BUTTON_IDS.quickDraftTop3) handlers.onQuickDraftTop3?.();
-      if (action === LAUNCHER_BUTTON_IDS.openWorkNotes) handlers.onOpenWorkNotes();
-      if (action === LAUNCHER_BUTTON_IDS.openReminder) handlers.onOpenReminder();
-      if (action === LAUNCHER_BUTTON_IDS.incidentResolutionNotes) handlers.onIncidentResolutionNotes?.();
-      if (action === LAUNCHER_BUTTON_IDS.createCalendarEvent) handlers.onCreateCalendarEvent();
-      if (action === LAUNCHER_BUTTON_IDS.openPdf) handlers.onOpenPdf(button);
-      if (action === LAUNCHER_BUTTON_IDS.openSettings) handlers.onOpenSettings();
-      if (action === LAUNCHER_BUTTON_IDS.openEpLinks) handlers.onOpenEpLinks();
-      if (action === LAUNCHER_BUTTON_IDS.userInfo) handlers.onOpenUserInfo?.();
-      if (action === LAUNCHER_BUTTON_IDS.userOpenTickets) handlers.onOpenUserTickets?.();
-      if (action === LAUNCHER_BUTTON_IDS.findCi) handlers.onOpenFindCi?.();
-      if (action === LAUNCHER_BUTTON_IDS.assignToMyGroup) {
-        if (assignPressTriggered) {
-          assignPressTriggered = false;
-          return;
-        }
-        handlers.onAssignToMyGroup?.();
-      }
-      if (action === LAUNCHER_BUTTON_IDS.generateEmailDraft) handlers.onGenerateEmailDraft?.();
-      if (action === LAUNCHER_BUTTON_IDS.generateCloseNotes) handlers.onGenerateCloseNotes?.();
-      if (action === LAUNCHER_BUTTON_IDS.generateWorkNotes) handlers.onGenerateWorkNotes?.();
-      if (action === LAUNCHER_BUTTON_IDS.generateAllNotes) handlers.onGenerateAllNotes?.();
-      if (action === "quick-write-work-note") handlers.onQuickWriteWorkNote?.(button.dataset.templateId || "");
-      if (action === "open-my-assigned-list") openMyAssignedList(button.dataset.filter || "incident");
-    });
-    root.addEventListener("keydown", (event) => {
-      if (event.key !== "Escape" && event.key !== "Esc") return;
-      const menu = root.querySelector("[data-generate-menu].is-open");
-      if (!menu) return;
-      menu.classList.remove("is-open");
-      root.querySelector('[data-action="generate-menu-toggle"]')?.setAttribute("aria-expanded", "false");
-      event.preventDefault();
-      event.stopPropagation();
-    });
-    root.addEventListener("contextmenu", (event) => {
-      const button = event.target.closest("[data-action]");
-      if (!button) return;
-      if (button.dataset.action !== LAUNCHER_BUTTON_IDS.assignToMyGroup) return;
-      event.preventDefault();
-      clearAssignPressTimer();
-      assignPressTriggered = true;
-      handlers.onConfigureAssignGroup?.();
-    });
-    root.addEventListener("pointerdown", (event) => {
-      const button = event.target.closest("[data-action]");
-      if (!button) return;
-      if (button.dataset.action !== LAUNCHER_BUTTON_IDS.assignToMyGroup) return;
-      clearAssignPressTimer();
-      assignPressTriggered = false;
-      assignPressTimer = ownerWindow.setTimeout(() => {
-        assignPressTriggered = true;
-        handlers.onConfigureAssignGroup?.();
-      }, 600);
-    });
-    root.addEventListener("pointerup", clearAssignPressTimer);
-    root.addEventListener("pointerleave", clearAssignPressTimer);
-    root.addEventListener("pointercancel", clearAssignPressTimer);
-    const persistLauncherOrder = () => {
-      const actions = root.querySelector(".sn-ep__actions");
-      if (!actions) return;
-      const nextOrder = Array.from(actions.querySelectorAll("[data-button-id]")).map((item) => item.dataset.buttonId || "").filter((buttonId) => buttonId && buttonId !== LAUNCHER_BUTTON_IDS.openReminder);
-      saveAssistantButtonOrder(ownerWindow, nextOrder);
-    };
-    root.addEventListener("dragstart", (event) => {
-      const item = event.target.closest("[data-button-id]");
-      if (!item || item.dataset.buttonId === LAUNCHER_BUTTON_IDS.openReminder) return;
-      draggedButtonId = item.dataset.buttonId || "";
-      item.classList.add("is-dragging");
-      try {
-        event.dataTransfer.effectAllowed = "move";
-        event.dataTransfer.setData("text/plain", draggedButtonId);
-      } catch (error2) {
-      }
-    });
-    root.addEventListener("dragover", (event) => {
-      const target = event.target.closest("[data-button-id]");
-      if (!target || !draggedButtonId || target.dataset.buttonId === draggedButtonId || target.dataset.buttonId === LAUNCHER_BUTTON_IDS.openReminder) {
-        return;
-      }
-      event.preventDefault();
-      const groupContainer = target.closest(".sn-ep__group-buttons") || root.querySelector(".sn-ep__actions");
-      const dragged = root.querySelector(".sn-ep__action.is-dragging");
-      if (!groupContainer || !dragged || dragged === target) return;
-      const rect = target.getBoundingClientRect();
-      const before = event.clientY < rect.top + rect.height / 2;
-      groupContainer.insertBefore(dragged, before ? target : target.nextElementSibling);
-    });
-    root.addEventListener("drop", (event) => {
-      const target = event.target.closest("[data-button-id]");
-      if (!target || !draggedButtonId) return;
-      event.preventDefault();
-      persistLauncherOrder();
-    });
-    root.addEventListener("dragend", () => {
-      root.querySelectorAll(".sn-ep__action.is-dragging").forEach((item) => item.classList.remove("is-dragging"));
-      draggedButtonId = "";
-    });
-    root.addEventListener("input", (event) => {
-      const colorInput = event.target.closest('[data-action="ep-btn-color"]');
-      if (!colorInput) return;
-      event.stopPropagation();
-      const buttonId = colorInput.dataset.buttonId || "";
-      const color = colorInput.value || "";
-      handlers.onSetButtonColor?.(buttonId, color);
-    });
-  }
-  function ensureLauncher({ hostDocument, state, context, handlers, topWorkNoteTemplates = [] }) {
-    let root = hostDocument.getElementById(UI_IDS.launcher);
-    if (!root) {
-      root = hostDocument.createElement("div");
-      root.id = UI_IDS.launcher;
-      root.setAttribute(ROOT_ATTRIBUTE, ROOT_VALUE);
-      (hostDocument.body || hostDocument.documentElement).appendChild(root);
-    }
-    const ownerWin = hostDocument.defaultView || window;
-    if (!state.ui.edgePanelPinned) {
-      const restored = loadPinState(ownerWin);
-      if (restored.pinned) {
-        state.ui.edgePanelPinned = true;
-        state.ui.edgePanelMode = restored.mode === "tab" ? "icons" : restored.mode || (restored.lastOpenState ? "expanded" : "icons");
-      }
-    }
-    const edgeMode = state.ui.edgePanelMode || "icons";
-    const calendarReady = isCalendarReady(context);
-    const slaWarn = isSlaWarning(context);
-    const draftLabel = state.settings?.draftButtonLabel || "Prepare Draft";
-    const buttonTheme = state.settings?.buttonColorTheme || "subtle";
-    const hiddenButtons = state.settings?.hiddenButtons || [];
-    const buttonColors = state.settings?.buttonColors || {};
-    const buttonOpacity = state.settings?.buttonOpacity ?? 1;
-    const editMode = Boolean(state.ui.launcherEditMode);
-    const snapPos = loadSnapPosition(ownerWin);
-    const headerCounts = getHeaderCounts(state);
-    const incDisabled = headerCounts.ready && headerCounts.inc === 0;
-    const taskDisabled = headerCounts.ready && headerCounts.task === 0;
-    const iconsOnly = edgeMode === "icons";
-    const panelStyle = `--btn-opacity:${buttonOpacity}`;
-    root.innerHTML = `
-    <div class="sn-ep sn-ep--${escapeHtml(state.ui.edgePanelEdge || "right")}${snapPos ? ` sn-ep--snap-${escapeHtml(snapPos)}` : ""}" data-ep-mode="${escapeHtml(edgeMode)}" data-button-theme="${escapeHtml(buttonTheme)}" data-ep-theme="${escapeHtml(state.ui.edgePanelTheme || "light")}"${state.ui.edgePanelPinned ? ' data-ep-pinned="true"' : ""} style="${panelStyle}">
-      ${slaWarn ? '<div class="sn-ep__tab sn-ep__tab--sla-warn sn-ep__tab--indicator" aria-label="SLA warning"><span class="sn-ep__sla-dot"></span></div>' : ""}
-
-      <div class="sn-ep__panel">
-        <div class="sn-ep__header">
-          <div class="sn-ep__header-main">
-            <div class="sn-ep__title">SN Assistant${slaWarn ? ' <span class="sn-ep__sla-badge" title="Due date reached or overdue">SLA</span>' : ""}</div>
-            <div class="sn-assistant-header-counts" aria-label="My assigned work">
-              <button type="button"
-                class="sn-assistant-header-counts__badge sn-assistant-header-counts__badge--inc"
-                data-action="open-my-assigned-list"
-                data-filter="incident"
-                data-loading="${headerCounts.loading ? "true" : "false"}"
-                data-ready="${headerCounts.ready ? "true" : "false"}"
-                ${incDisabled ? 'disabled aria-disabled="true"' : ""}
-                title="${incDisabled ? "No open incidents assigned to me" : "Show my open incidents"}">
-                INC ${headerCounts.loading && !headerCounts.ready ? "..." : headerCounts.error ? "!" : escapeHtml(String(headerCounts.inc))}
-              </button>
-              <button type="button"
-                class="sn-assistant-header-counts__badge sn-assistant-header-counts__badge--task"
-                data-action="open-my-assigned-list"
-                data-filter="sc_task"
-                data-loading="${headerCounts.loading ? "true" : "false"}"
-                data-ready="${headerCounts.ready ? "true" : "false"}"
-                ${taskDisabled ? 'disabled aria-disabled="true"' : ""}
-                title="${taskDisabled ? "No open tasks assigned to me" : "Show my open tasks"}">
-                TASK ${headerCounts.loading && !headerCounts.ready ? "..." : headerCounts.error ? "!" : escapeHtml(String(headerCounts.task))}
-              </button>
-            </div>
-          </div>
-          <div class="sn-ep__header-actions">
-            <button type="button" class="sn-ep__icon-btn sn-ep__icon-btn--header" data-action="ep-close" title="${state.ui.edgePanelPinned ? "Unpin and close" : "Close"}">${ICON.close}</button>
-          </div>
-        </div>
-
-        <div class="sn-ep__actions">
-          ${renderLauncherActions(ownerWin, context, draftLabel, calendarReady, hiddenButtons, buttonColors, editMode, topWorkNoteTemplates)}
-        </div>
-
-        <div class="sn-ep__footer">
-          <span class="sn-ep__version">${escapeHtml(`v${VERSION}`)}</span>
-          <div class="sn-ep__footer-actions">
-            <button type="button" class="sn-ep__icon-btn" data-action="open-settings" title="Settings">${ICON.settings}</button>
-            <button type="button" class="sn-ep__icon-btn${iconsOnly ? " is-active" : ""}" data-action="ep-icons" aria-pressed="${iconsOnly ? "true" : "false"}" title="${iconsOnly ? "Show full labels" : "Show icons only"}">${ICON.iconsOnly}</button>
-            <button type="button" class="sn-ep__icon-btn sn-ep__icon-btn--pin${state.ui.edgePanelPinned ? " is-active" : ""}" data-action="ep-pin" aria-pressed="${state.ui.edgePanelPinned ? "true" : "false"}" title="${state.ui.edgePanelPinned ? "Unpin panel \u2014 close normally" : "Pin to keep open"}">${state.ui.edgePanelPinned ? ICON.pinFilled : ICON.pin}</button>
-            <button type="button" class="sn-ep__icon-btn${editMode ? " is-active" : ""}" data-action="ep-edit" title="${editMode ? "Exit customise mode" : "Customise buttons"}">${ICON.brush}</button>
-          </div>
-        </div>
-      </div>
-    </div>
-  `;
-    bindLauncher(root, state, handlers);
-    applyEdgePanelPosition(root, state);
-    makePanelDraggable(root, state);
-    return root;
-  }
-  function removeLauncher(hostDocument) {
-    hostDocument.getElementById(UI_IDS.launcher)?.remove();
-  }
-
-  // Assistant/ui/drag.js
-  var INTERACTIVE_SELECTOR = 'button, input, select, textarea, label, a, [role="button"], [data-no-drag="true"]';
-  function applyPosition(node, position) {
-    if (!position) return;
-    node.style.left = `${position.left}px`;
-    node.style.top = `${position.top}px`;
-  }
-  function resolveDefaultPosition(node, defaultPosition) {
-    return typeof defaultPosition === "function" ? defaultPosition(node) : defaultPosition;
-  }
-  function makeDraggable({ node, handleSelector, state, positionKey, defaultPosition }) {
-    if (!node) return;
-    const ownerWindow = node.ownerDocument.defaultView || window;
-    const storedPosition = state.ui[positionKey];
-    const fallbackPosition = resolveDefaultPosition(node, defaultPosition);
-    applyPosition(node, storedPosition || fallbackPosition);
-    if (node.dataset.snAssistantDragBound === "true") return;
-    node.dataset.snAssistantDragBound = "true";
-    let dragState = null;
-    let suppressClickUntil = 0;
-    const onPointerMove = (event) => {
-      if (!dragState) return;
-      const deltaX = event.clientX - dragState.startX;
-      const deltaY = event.clientY - dragState.startY;
-      const distance = Math.abs(deltaX) + Math.abs(deltaY);
-      if (distance < 4 && !dragState.moved) return;
-      dragState.moved = true;
-      event.preventDefault();
-      const nextLeft = clamp(
-        event.clientX - dragState.offsetX,
-        8,
-        Math.max(ownerWindow.innerWidth - dragState.width - 8, 8)
-      );
-      const nextTop = clamp(
-        event.clientY - dragState.offsetY,
-        8,
-        Math.max(ownerWindow.innerHeight - dragState.height - 8, 8)
-      );
-      state.ui[positionKey] = { left: nextLeft, top: nextTop };
-      applyPosition(node, state.ui[positionKey]);
-    };
-    const onPointerUp = () => {
-      if (dragState?.moved) {
-        suppressClickUntil = Date.now() + 120;
-      }
-      dragState = null;
-      ownerWindow.removeEventListener("pointermove", onPointerMove);
-      ownerWindow.removeEventListener("pointerup", onPointerUp);
-    };
-    node.addEventListener("pointerdown", (event) => {
-      if (event.button !== 0) return;
-      if (!event.target.closest(handleSelector)) return;
-      if (event.target.closest(INTERACTIVE_SELECTOR)) return;
-      const rect = node.getBoundingClientRect();
-      dragState = {
-        startX: event.clientX,
-        startY: event.clientY,
-        offsetX: event.clientX - rect.left,
-        offsetY: event.clientY - rect.top,
-        width: rect.width,
-        height: rect.height,
-        moved: false
-      };
-      ownerWindow.addEventListener("pointermove", onPointerMove, { passive: false });
-      ownerWindow.addEventListener("pointerup", onPointerUp);
-    });
-    node.addEventListener(
-      "click",
-      (event) => {
-        if (Date.now() < suppressClickUntil) {
-          event.preventDefault();
-          event.stopPropagation();
-        }
-      },
-      true
-    );
-  }
-
-  // Assistant/ui/preview.js
-  function renderMeta(label, value) {
-    return `
-    <div class="sn-assistant-preview__meta-block">
-      <span class="sn-assistant-preview__meta-label">${escapeHtml(label)}</span>
-      <div class="sn-assistant-preview__meta-value">${escapeHtml(value || "Not available")}</div>
-    </div>
-  `;
-  }
-  function hasUnfilledPlaceholders(text2) {
-    return /\{\{[^}]+\}\}/.test(String(text2 || ""));
-  }
-  function renderBodyWithHighlights(text2) {
-    const escaped = escapeHtml(String(text2 || ""));
-    return escaped.replace(
-      /\{\{([^}]+)\}\}/g,
-      (_, name) => `<mark class="sn-assistant-preview__unfilled">{{${escapeHtml(name)}}}</mark>`
-    );
-  }
-  function renderPreview(renderedTemplate) {
-    if (!renderedTemplate) {
-      return `<div class="sn-assistant-preview__empty">Select a template to generate a preview.</div>`;
-    }
-    const bodyText = renderedTemplate.body || "";
-    const subjectText = renderedTemplate.subject || "";
-    const hasWarnings = hasUnfilledPlaceholders(bodyText) || hasUnfilledPlaceholders(subjectText);
-    const metaBlocks = renderedTemplate.category === "email" ? `
-          <div class="sn-assistant-preview__meta">
-            ${renderMeta("Recipient", renderedTemplate.recipient || "Not detected")}
-            ${renderMeta("Subject", renderedTemplate.subject)}
-          </div>
-        ` : `
-          <div class="sn-assistant-preview__meta">
-            ${renderMeta("Target", renderedTemplate.target || "work_notes")}
-            ${renderMeta("Template", renderedTemplate.label)}
-          </div>
-        `;
-    const warningBanner = hasWarnings ? `<div class="sn-assistant-preview__warn-banner">Some placeholders were not resolved \u2014 review highlighted text before sending.</div>` : "";
-    return `
-    ${metaBlocks}
-    ${warningBanner}
-    <div class="sn-assistant-preview__body">${renderBodyWithHighlights(bodyText)}</div>
-  `;
-  }
-
-  // Assistant/ui/templates.js
-  function renderTemplateSelector({
-    categories,
-    activeCategory,
-    templates,
-    selectedTemplateId
-  }) {
-    const tabs = categories.map(
-      (category) => `
-        <button
-          type="button"
-          class="sn-assistant-tab ${category.id === activeCategory ? "is-active" : ""}"
-          data-action="select-category"
-          data-category="${escapeHtml(category.id)}"
-        >
-          ${escapeHtml(category.label)}
-        </button>
-      `
-    ).join("");
-    const options = templates.map(
-      (template) => `
-        <option value="${escapeHtml(template.id)}" ${template.id === selectedTemplateId ? "selected" : ""}>
-          ${escapeHtml(template.label)}
-        </option>
-      `
-    ).join("");
-    return `
-    <div class="sn-assistant-tabs">${tabs}</div>
-    <div class="sn-assistant-field">
-      <span class="sn-assistant-field__label">Template</span>
-      <select class="sn-assistant-select" data-action="select-template">
-        ${options}
-      </select>
-    </div>
-  `;
-  }
-
   // Assistant/templates/intelligence.js
   var TYPE_KEYWORDS = [
     { type: "workspace_quality_check", keywords: ["workspace", "new workspace", "move", "desk move", "office move", "quality check"] },
@@ -8517,780 +7710,6 @@
       configuration_item: cleanText(resolveReadableConfigurationItem(context))
     };
     return String(value || "").replace(/\{\{\s*([a-z0-9_]+)\s*\}\}/gi, (_, key) => replacements[String(key || "").toLowerCase()] || "");
-  }
-
-  // Assistant/templates/renderer.js
-  function getValidTicket2(context = {}) {
-    const candidates = [
-      cleanText(context?.sourceNumber),
-      cleanText(context?.ticketNumber),
-      cleanText(context?.recordNumber),
-      cleanText(context?.ticket)
-    ];
-    for (const candidate of candidates) {
-      const match = candidate.toUpperCase().match(/\b(?:RITM|INC|REQ)\d{4,}\b/);
-      if (match?.[0]) {
-        return match[0];
-      }
-    }
-    if (cleanText(context?.pageType).toLowerCase() === "sc_task") {
-      const fallback = cleanText(context?.ticketNumber || context?.recordNumber);
-      if (fallback) return fallback;
-    }
-    return "";
-  }
-  function normalizeShortDescription(value) {
-    const raw = cleanText(value).replace(/^short\s*description\s*[:\-]\s*/i, "").replace(/^description\s*[:\-]\s*/i, "").replace(/\s+/g, " ").trim();
-    if (!raw) return "";
-    const firstSentence = raw.split(/[\n.;]/).map((part) => cleanText(part)).find(Boolean) || raw;
-    return firstSentence.length > 140 ? `${firstSentence.slice(0, 137).trim()}...` : firstSentence;
-  }
-  function extractLastName(fullName) {
-    const text2 = cleanText(fullName);
-    if (!text2) return "";
-    if (text2.includes(",")) {
-      const [lastName] = text2.split(",").map((segment) => cleanText(segment));
-      return lastName;
-    }
-    const parts = text2.split(/\s+/).filter(Boolean);
-    return parts.slice(1).join(" ") || parts[0] || "";
-  }
-  function extractDeviceFromDescription(description) {
-    const text2 = cleanText(description);
-    if (!text2) return "";
-    const lines = text2.split(/\r?\n/).map((line) => cleanText(line)).filter(Boolean);
-    for (const line of lines) {
-      const afterLabel = line.match(/(?:^|\b)(?:device|device type|model|equipment|item)\s*[:\-]\s*(.+)$/i);
-      if (afterLabel?.[1]) {
-        return cleanText(afterLabel[1]);
-      }
-    }
-    const firstLine = lines[0] || "";
-    if (firstLine && /\b(device|model|iphone|ipad|laptop|desktop|phone|tablet|pc)\b/i.test(firstLine) && !looksLikePiIdentifier(firstLine) && !looksLikeRecordIdentifier2(firstLine)) {
-      return firstLine.replace(/^(?:device|device type|model|equipment|item)\s*[:\-]\s*/i, "").trim();
-    }
-    return text2;
-  }
-  function compactDeviceLabel(value) {
-    return cleanText(value).replace(/\s*\(\s*\)\s*$/, "").trim();
-  }
-  function finalizeTemplateText(value, options = {}) {
-    const paragraphSpacing = ["compact", "standard", "relaxed"].includes(cleanText(options?.paragraphSpacing)) ? cleanText(options.paragraphSpacing) : "standard";
-    const lines = String(value || "").replace(/\r\n/g, "\n").replace(/\{\{\s*[^}]+\s*\}\}/g, "").split("\n").map((line) => line.replace(/[ \t]+/g, " ").trim());
-    const compacted = [];
-    let previousBlank = false;
-    for (const line of lines) {
-      if (/^(?:device|pi\s*\/\s*configuration item|configuration item)\s*:\s*$/i.test(line)) {
-        continue;
-      }
-      const blank = !line;
-      if (blank && previousBlank) continue;
-      compacted.push(line);
-      previousBlank = blank;
-    }
-    const separator = paragraphSpacing === "compact" ? "\n" : paragraphSpacing === "relaxed" ? "\n\n\n" : "\n\n";
-    const chunks = [];
-    let current = [];
-    for (const line of compacted) {
-      if (!line) {
-        if (current.length) {
-          chunks.push(current.join("\n"));
-          current = [];
-        }
-        continue;
-      }
-      current.push(line);
-    }
-    if (current.length) {
-      chunks.push(current.join("\n"));
-    }
-    return chunks.join(separator).trim();
-  }
-  function looksLikeRecordIdentifier2(value) {
-    const text2 = cleanText(value).toUpperCase();
-    if (!text2) return false;
-    return /^[0-9A-F]{32}$/.test(text2) || /^(INC|RITM|REQ|SCTASK|TASK|CHG|PRB|SR|KB)\d{4,}$/.test(text2) || /^[A-Z]{2,}\d{4,}$/.test(text2);
-  }
-  function looksLikeTicketIdentifier2(value) {
-    const text2 = cleanText(value).toUpperCase();
-    return /^(?:INC|RITM|REQ|SCTASK|TASK|CHG|PRB|SR|KB)\d{4,}$/.test(text2);
-  }
-  function looksLikeSysId(value) {
-    return /^[0-9a-f]{32}$/i.test(cleanText(value));
-  }
-  function resolveReadableConfigurationItem2(context = {}) {
-    return cleanText(
-      (!looksLikeTicketIdentifier2(context?.configurationItem) && !looksLikeSysId(context?.configurationItem) ? context?.configurationItem : "") || (!looksLikeTicketIdentifier2(context?.configurationItemDisplay) && !looksLikeSysId(context?.configurationItemDisplay) ? context?.configurationItemDisplay : "") || (!looksLikeTicketIdentifier2(context?.configurationItemValue) && !looksLikeSysId(context?.configurationItemValue) ? context?.configurationItemValue : "") || (!looksLikeTicketIdentifier2(context?.configurationItemRaw?.display) && !looksLikeSysId(context?.configurationItemRaw?.display) ? context?.configurationItemRaw?.display : "") || (!looksLikeTicketIdentifier2(context?.configurationItemRaw?.field) && !looksLikeSysId(context?.configurationItemRaw?.field) ? context?.configurationItemRaw?.field : "") || (!looksLikeTicketIdentifier2(context?.rawConfigurationItem?.display) && !looksLikeSysId(context?.rawConfigurationItem?.display) ? context?.rawConfigurationItem?.display : "") || (!looksLikeTicketIdentifier2(context?.rawConfigurationItem?.field) && !looksLikeSysId(context?.rawConfigurationItem?.field) ? context?.rawConfigurationItem?.field : "")
-    );
-  }
-  function buildOfficeLocation(settings = {}) {
-    const officeName = cleanText(settings?.officeName);
-    const officeLabel = cleanText(settings?.officeLabel);
-    const officeRoom = cleanText(settings?.officeRoom);
-    const parts = [];
-    if (officeLabel) {
-      parts.push(officeLabel);
-    } else if (officeName) {
-      parts.push(officeName);
-    }
-    if (officeName && (!officeLabel || !officeLabel.toLowerCase().includes(officeName.toLowerCase()))) {
-      parts.unshift(officeName);
-    }
-    if (officeRoom) {
-      parts.push(officeRoom);
-    }
-    return parts.filter(Boolean).join(", ");
-  }
-  function parseAppointmentDate(value) {
-    const text2 = cleanText(value);
-    if (!text2) return null;
-    const parsed = new Date(text2);
-    if (!Number.isNaN(parsed.getTime())) return parsed;
-    const match = text2.match(/(\d{4})-(\d{2})-(\d{2})[ T](\d{2}):(\d{2})/);
-    if (!match) return null;
-    const date = new Date(
-      Number.parseInt(match[1], 10),
-      Number.parseInt(match[2], 10) - 1,
-      Number.parseInt(match[3], 10),
-      Number.parseInt(match[4], 10),
-      Number.parseInt(match[5], 10)
-    );
-    return Number.isNaN(date.getTime()) ? null : date;
-  }
-  function formatAppointmentDate(date) {
-    if (!(date instanceof Date) || Number.isNaN(date.getTime())) return "";
-    return `${String(date.getDate()).padStart(2, "0")}/${String(date.getMonth() + 1).padStart(2, "0")}/${date.getFullYear()}`;
-  }
-  function formatAppointmentTime(date) {
-    if (!(date instanceof Date) || Number.isNaN(date.getTime())) return "";
-    return `${String(date.getHours()).padStart(2, "0")}:${String(date.getMinutes()).padStart(2, "0")}`;
-  }
-  function resolveAppointmentDeviceTerms(sourceText = "") {
-    const text2 = cleanText(sourceText).toLowerCase();
-    if (/iphone/.test(text2)) {
-      return {
-        appointment_device_label: "iPhone",
-        appointment_device_subject: "corporate iPhone",
-        appointment_device_configuration: "iPhone"
-      };
-    }
-    if (/(tablet|ipad)/.test(text2)) {
-      return {
-        appointment_device_label: "tablet",
-        appointment_device_subject: "corporate tablet",
-        appointment_device_configuration: "tablet"
-      };
-    }
-    return {
-      appointment_device_label: "smartphone",
-      appointment_device_subject: "corporate smartphone",
-      appointment_device_configuration: "smartphone"
-    };
-  }
-  function getDynamicResolutionText(shortDescription = "") {
-    const text2 = cleanText(shortDescription).toLowerCase();
-    if (text2.includes("screen") || text2.includes("damage") || text2.includes("broken")) {
-      return "Your device has been replaced with a new one following the reported damage.";
-    }
-    if (text2.includes("battery")) {
-      return "The battery issue has been resolved and the device is now functioning properly.";
-    }
-    if (text2.includes("wifi") || text2.includes("network") || text2.includes("connection")) {
-      return "The connectivity issue has been resolved and the service is now working normally.";
-    }
-    if (text2.includes("outlook") || text2.includes("email")) {
-      return "The email issue has been resolved and your mailbox is now functioning correctly.";
-    }
-    if (text2.includes("phone") || text2.includes("mobile")) {
-      return "The issue with your mobile device has been resolved and the device is now operational.";
-    }
-    if (text2.includes("laptop") || text2.includes("pc")) {
-      return "The issue with your computer has been resolved and the device is now functioning normally.";
-    }
-    return "The reported issue has been resolved and the service has been restored.";
-  }
-  function isLikelyPersonName2(value) {
-    const text2 = cleanText(value);
-    if (!text2 || text2.length < 2) return false;
-    if (looksLikeRecordIdentifier2(text2)) return false;
-    if (/^(?:sctask|task|ritm|req|inc|chg|prb|sr|kb)\b/i.test(text2)) return false;
-    if (!/[a-z]/i.test(text2)) return false;
-    return !/^(?:unknown|n\/a|null|undefined)$/i.test(text2);
-  }
-  function toDisplayNameFromEmail(email) {
-    const local = cleanText(email).split("@")[0];
-    if (!local) return "";
-    return local.replace(/[._-]+/g, " ").replace(/\d+/g, "").replace(/\s+/g, " ").trim().split(" ").filter(Boolean).map((word) => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase()).join(" ");
-  }
-  function resolveBestRequestedForName(context = {}) {
-    const candidates = [
-      cleanText(context?.request_item?.request?.requested_for?.display_value),
-      cleanText(context?.request_item?.request?.requested_for?.display),
-      cleanText(context?.request_item?.request?.requested_for?.name),
-      cleanText(context?.request_item?.request?.requested_for_name),
-      cleanText(context?.request_item?.request?.u_requested_for?.display_value),
-      cleanText(context?.request_item?.request?.u_requested_for?.display),
-      cleanText(context?.request_item?.request?.u_requested_for?.name),
-      cleanText(context?.request_item?.requested_for?.display_value),
-      cleanText(context?.request_item?.requested_for?.display),
-      cleanText(context?.request_item?.u_requested_for?.display_value),
-      cleanText(context?.request_item?.u_requested_for?.display),
-      cleanText(context?.request?.requested_for?.display_value),
-      cleanText(context?.request?.requested_for?.display),
-      cleanText(context?.request?.requested_for?.name),
-      cleanText(context?.requestedFor),
-      cleanText(context?.requested_for),
-      cleanText(context?.requestedForName),
-      cleanText(context?.requested_for_name),
-      cleanText(context?.user?.fullName),
-      cleanText(context?.user?.firstName)
-    ];
-    const direct = candidates.find(isLikelyPersonName2);
-    if (direct) return direct;
-    const fromEmail = toDisplayNameFromEmail(
-      context?.requestedForEmail || context?.requested_for_email || context?.user?.email
-    );
-    return isLikelyPersonName2(fromEmail) ? fromEmail : "";
-  }
-  function looksLikePiIdentifier(value) {
-    const text2 = cleanText(value);
-    if (!text2) return false;
-    return /^(?:\d{2}PI\d{8,}|PI\d{6,}|[A-Z]{1,4}\d{8,})$/i.test(text2);
-  }
-  function resolveDeviceModelValue(context = {}) {
-    const configurationCandidates = [
-      cleanText(context?.configurationItem),
-      cleanText(context?.configurationItemDisplay),
-      cleanText(context?.configurationItemValue),
-      cleanText(context?.configurationItemRaw?.display),
-      cleanText(context?.rawConfigurationItem?.display)
-    ].filter(Boolean);
-    const candidates = [
-      cleanText(context?.model),
-      cleanText(context?.deviceModel),
-      cleanText(context?.deviceName),
-      cleanText(context?.deviceLabel),
-      cleanText(context?.device)
-    ];
-    return candidates.find((candidate) => {
-      if (!candidate) return false;
-      if (looksLikeRecordIdentifier2(candidate) || looksLikePiIdentifier(candidate)) return false;
-      if (configurationCandidates.some(
-        (ci) => ci && cleanText(ci).toLowerCase() === candidate.toLowerCase() && looksLikePiIdentifier(ci)
-      )) {
-        return false;
-      }
-      return true;
-    }) || "";
-  }
-  function resolveDeviceLabel(context = {}, model = "") {
-    const fromDescription = compactDeviceLabel(
-      extractDeviceFromDescription(
-        [context?.shortDescription, context?.description, context?.catalogItem, context?.remarks, context?.remarque].filter(Boolean).join("\n")
-      )
-    );
-    if (fromDescription && !looksLikePiIdentifier(fromDescription) && !looksLikeRecordIdentifier2(fromDescription)) {
-      return fromDescription;
-    }
-    if (model && !looksLikePiIdentifier(model) && !looksLikeRecordIdentifier2(model)) {
-      return compactDeviceLabel(model);
-    }
-    const configurationItem = resolveReadableConfigurationItem2(context);
-    if (configurationItem && !looksLikePiIdentifier(configurationItem) && !looksLikeRecordIdentifier2(configurationItem)) {
-      return compactDeviceLabel(configurationItem);
-    }
-    return "";
-  }
-  function resolveUserName(context = {}) {
-    return resolveBestRequestedForName(context) || "";
-  }
-  function resolveRequestedForEmail(context = {}) {
-    const candidates = [
-      cleanText(context?.requestedForEmail),
-      cleanText(context?.requested_for_email),
-      cleanText(context?.user?.email),
-      cleanText(context?.requestedFor?.email),
-      cleanText(context?.requested_for?.email),
-      cleanText(context?.requestedFor?.u_email),
-      cleanText(context?.requested_for?.u_email),
-      cleanText(context?.request_item?.request?.requested_for?.email),
-      cleanText(context?.request_item?.request?.requested_for?.u_email),
-      cleanText(context?.request_item?.requested_for?.email),
-      cleanText(context?.request_item?.requested_for?.u_email)
-    ];
-    const emailMatch = candidates.find((candidate) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(candidate));
-    return emailMatch || "";
-  }
-  function resolvePreferredTicketReference(context = {}, settings = {}) {
-    const preference = cleanText(settings?.ticketReferencePreference).toLowerCase() || "auto";
-    const ritm = cleanText(context?.requestItem || context?.requestItemNumber || context?.customerTicketNumber).toUpperCase();
-    const sctask = cleanText(context?.sourceTaskNumber || context?.ticketNumber || context?.recordNumber).toUpperCase();
-    const validTicket = cleanText(getValidTicket2(context)).toUpperCase();
-    const hasRitm = /^RITM\d{4,}$/.test(ritm);
-    const hasScTask = /^SCTASK\d{4,}$/.test(sctask);
-    if (preference === "ritm") return hasRitm ? ritm : validTicket || sctask;
-    if (preference === "sctask") return hasScTask ? sctask : validTicket || ritm;
-    if (hasRitm) return ritm;
-    return validTicket || sctask || ritm;
-  }
-  function buildPlaceholderMap({ context, settings }) {
-    const userName = resolveUserName(context);
-    const deviceType = cleanText(context?.deviceType);
-    const softwareName = cleanText(context?.softwareName);
-    const locationSpecific = cleanText(context?.locationSpecific || context?.location);
-    const urgencyLevel = cleanText(context?.urgencyLevel || context?.severity);
-    const estimatedResolution = cleanText(context?.estimatedResolution);
-    const nextSteps = cleanText(context?.nextSteps);
-    const configurationItem = resolveReadableConfigurationItem2(context);
-    const configurationItemSentence = configurationItem ? ` ${configurationItem}` : "";
-    const configurationItemNote = configurationItem ? ` PI / Configuration item: ${configurationItem}.` : "";
-    const phone = cleanText(context?.phone || context?.userPhone || context?.user?.phone);
-    const validTicketNumber = getValidTicket2(context);
-    const preferredTicketNumber = resolvePreferredTicketReference(context, settings);
-    const requestedForName = resolveBestRequestedForName(context) || cleanText(context?.requestedFor || context?.user?.fullName || context?.user?.email);
-    const requestedForLastName = extractLastName(requestedForName);
-    const model = resolveDeviceModelValue(context);
-    const deviceFullName = configurationItem;
-    const deviceLabel = resolveDeviceLabel(context, model);
-    const shortDescription = normalizeShortDescription(context?.shortDescription || context?.description);
-    const officeLocation = buildOfficeLocation(settings);
-    const dynamicResolution = getDynamicResolutionText(shortDescription || context?.description || "");
-    const appointmentDate = parseAppointmentDate(context?.followUp);
-    const appointmentDeviceTerms = resolveAppointmentDeviceTerms(
-      [
-        context?.deviceType,
-        context?.deviceLabel,
-        context?.deviceName,
-        context?.model,
-        context?.configurationItem
-      ].filter(Boolean).join(" ")
-    );
-    return {
-      user_name: userName,
-      user_email: resolveRequestedForEmail(context),
-      requested_for: requestedForName && !looksLikeRecordIdentifier2(requestedForName) ? requestedForName : "",
-      last_name: requestedForLastName,
-      valid_ticket_number: preferredTicketNumber || validTicketNumber,
-      customer_ticket_number: preferredTicketNumber || cleanText(context?.customerTicketNumber || context?.requestItem || validTicketNumber),
-      ticket_number: preferredTicketNumber || validTicketNumber || cleanText(context?.ticketNumber) || cleanText(context?.recordNumber),
-      record_number: cleanText(context?.recordNumber) || cleanText(context?.ticketNumber),
-      table_name: cleanText(context?.tableLabel) || cleanText(context?.table),
-      office_name: cleanText(settings?.officeName),
-      office_room: cleanText(settings?.officeRoom),
-      office_label: cleanText(settings?.officeLabel),
-      office_location: officeLocation,
-      appointment_date: formatAppointmentDate(appointmentDate),
-      appointment_time: formatAppointmentTime(appointmentDate),
-      appointment_datetime: cleanText(context?.followUp),
-      ...appointmentDeviceTerms,
-      agent_name: cleanText(context?.agentName) || "IT Support",
-      today: formatToday(settings?.defaultLanguage),
-      short_description: shortDescription,
-      description: cleanText(context?.description),
-      device_full_name: deviceFullName,
-      device_label: deviceLabel,
-      device_name: deviceLabel,
-      configuration_item: configurationItem,
-      configuration_item_sentence: configurationItemSentence,
-      configuration_item_note: configurationItemNote,
-      configuration_item_display: cleanText(
-        resolveReadableConfigurationItem2({
-          configurationItem: context?.configurationItemDisplay,
-          configurationItemDisplay: context?.configurationItem,
-          configurationItemValue: context?.configurationItemValue,
-          configurationItemRaw: context?.configurationItemRaw,
-          rawConfigurationItem: context?.rawConfigurationItem
-        }) || configurationItem
-      ),
-      configuration_item_value: cleanText(
-        (!looksLikeTicketIdentifier2(context?.configurationItemValue) ? context?.configurationItemValue : "") || (!looksLikeTicketIdentifier2(context?.configurationItemDisplay) ? context?.configurationItemDisplay : "") || configurationItem
-      ),
-      due_date: cleanText(context?.dueDate),
-      device_type: deviceType,
-      device: deviceLabel,
-      software_name: softwareName,
-      software: softwareName,
-      phone,
-      telephone: phone,
-      contact_number: phone,
-      model,
-      location_specific: locationSpecific,
-      location: locationSpecific,
-      urgency_level: urgencyLevel,
-      severity: urgencyLevel,
-      estimated_resolution: estimatedResolution,
-      next_steps: nextSteps,
-      state_label: cleanText(context?.state),
-      priority_label: cleanText(context?.priority),
-      assignment_group: cleanText(context?.assignmentGroup),
-      request_item: cleanText(context?.requestItem),
-      follow_up: cleanText(context?.followUp),
-      return_date: cleanText(context?.returnDate || context?.return_date),
-      equipment_model: cleanText(context?.equipmentModel || context?.equipment_model || model),
-      equipment_asset_tag: cleanText(context?.equipmentAssetTag || context?.equipment_asset_tag),
-      equipment_summary: cleanText(context?.equipmentSummary || context?.equipment_summary),
-      dynamic_resolution: dynamicResolution,
-      resolution_summary: dynamicResolution
-    };
-  }
-  function replacePlaceholders(value, placeholders) {
-    return String(value || "").replace(/\{\{\s*([a-z0-9_]+)\s*\}\}/gi, (_, key) => {
-      const lookupKey = String(key || "").toLowerCase();
-      return placeholders[lookupKey] ?? "";
-    });
-  }
-  function cleanupRenderedText(value = "") {
-    return String(value || "").replace(/\bDear\s+,/g, "Dear,").replace(/\s+\n/g, "\n").replace(/\(\s*\)/g, "").replace(/[ \t]{2,}/g, " ").replace(/\n{3,}/g, "\n\n");
-  }
-  function normalizeScTaskSubject(subject, context = {}) {
-    const pageType = cleanText(context?.pageType || context?.table).toLowerCase();
-    if (pageType !== "sc_task") return cleanText(subject);
-    const ticket = cleanText(context?.ticketNumber || context?.recordNumber || "");
-    if (!/^RITM\d{4,}$/i.test(ticket)) return cleanText(subject);
-    const cleanSubject = cleanText(subject).replace(new RegExp(`\\b${ticket}\\b`, "ig"), "").replace(/\bSCTASK\d{4,}\b/ig, "").replace(/\s*-\s*/g, " - ").replace(/\s{2,}/g, " ").replace(/^-\s*|\s*-\s*$/g, "").trim();
-    return cleanSubject ? `${ticket} - ${cleanSubject}` : ticket;
-  }
-  function getMissingFields(template, { context, settings }) {
-    if (!template) return [];
-    const placeholders = buildPlaceholderMap({ context, settings });
-    const missingFields = [];
-    const criticalFields = {
-      user_name: "User name",
-      user_email: "User email",
-      requested_for: "Recipient name",
-      ticket_number: "Ticket number",
-      configuration_item: "Configuration item"
-    };
-    Object.entries(criticalFields).forEach(([fieldKey, fieldLabel]) => {
-      const value = placeholders[fieldKey];
-      if (!value || String(value).trim() === "") {
-        missingFields.push(fieldLabel);
-      }
-    });
-    return missingFields;
-  }
-  function renderTemplate(template, { context, settings }) {
-    if (!template) return null;
-    const placeholders = buildPlaceholderMap({ context, settings });
-    const preferredTicketNumber = resolvePreferredTicketReference(context, settings);
-    const subjectContext = {
-      ...context,
-      validTicketNumber: preferredTicketNumber || context?.validTicketNumber,
-      customerTicketNumber: preferredTicketNumber || context?.customerTicketNumber,
-      ticketNumber: preferredTicketNumber || context?.ticketNumber,
-      recordNumber: preferredTicketNumber || context?.recordNumber
-    };
-    let subject = normalizeScTaskSubject(
-      finalizeTemplateText(cleanupRenderedText(replacePlaceholders(template.subject, placeholders))),
-      context
-    );
-    subject = subject.replace(/^[\s-]+/, "").trim();
-    if (template.category === "email" || template.category === "reminder" || template.category === "appointment") {
-      subject = subject || buildSubject(subjectContext, template) || `${cleanText(subjectContext?.ticketNumber || subjectContext?.recordNumber || "your ticket")} - reported issue follow-up`;
-    }
-    const rawBody = finalizeTemplateText(cleanupRenderedText(replacePlaceholders(template.body, placeholders)), {
-      paragraphSpacing: template.paragraphSpacing
-    });
-    const signature = cleanText(settings?.emailSignature);
-    const isOutbound = ["email", "reminder", "appointment"].includes(String(template.category || "").trim());
-    let body = isOutbound && signature ? `${rawBody}
-
---
-${signature}` : rawBody;
-    body = body.replace(/\bundefined\b/gi, "").replace(/\bnull\b/gi, "").replace(/on your \./gi, "on your request.").replace(/about the \./gi, "about the reported issue.").replace(/\s{2,}/g, " ").trim();
-    const clipboardText = template.category === "email" ? finalizeTemplateText(`Subject: ${subject}
-
-${body}`) : body;
-    return {
-      ...template,
-      subject,
-      body,
-      clipboardText,
-      recipient: settings?.toggles?.autoFillUserEmail !== false ? resolveRequestedForEmail(context) : "",
-      target: cleanText(template.target)
-    };
-  }
-
-  // Assistant/ui/panel.js
-  function getDefaultPanelPosition(node) {
-    const ownerWindow = node.ownerDocument.defaultView || window;
-    return {
-      left: Math.max(ownerWindow.innerWidth - 404, 12),
-      top: 136
-    };
-  }
-  function renderCmdbCiLookup(context, state) {
-    const currentValue = state.ui.ciLookupQuery || context.configurationItem || context.configurationItemDisplay || context.configurationItemValue || "";
-    const results = Array.isArray(state.ui.ciLookupResults) ? state.ui.ciLookupResults : [];
-    const showResults = state.ui.ciLookupOpen || state.ui.ciLookupLoading || results.length > 0;
-    const resultMarkup = state.ui.ciLookupLoading ? '<div class="sn-assistant-note sn-assistant-note--empty">Searching Configuration Item...</div>' : results.length ? results.map(
-      (item) => `
-              <button
-                type="button"
-                class="sn-assistant-ci-lookup__result"
-                data-action="select-ci-suggestion"
-                data-ci-sys-id="${escapeHtml(item.sys_id || "")}"
-                data-ci-name="${escapeHtml(item.name || "")}"
-              >
-                <strong>${escapeHtml(item.name || "")}</strong>
-                <span>${escapeHtml(item.sys_id || "")}</span>
-              </button>
-            `
-    ).join("") : '<div class="sn-assistant-note sn-assistant-note--empty">No Configuration Item found.</div>';
-    return `
-    <div class="sn-assistant-ci-lookup">
-      <div class="sn-assistant-field">
-        <span class="sn-assistant-field__label">Configuration Item</span>
-        <input
-          class="sn-assistant-input sn-assistant-ci-lookup__input"
-          name="ciLookupQuery"
-          value="${escapeHtml(currentValue)}"
-          placeholder="Search Configuration Item"
-          autocomplete="off"
-        />
-      </div>
-      ${showResults ? `<div class="sn-assistant-ci-lookup__results">${resultMarkup}</div>` : ""}
-    </div>
-  `;
-  }
-  function isDraftCapableTemplate(renderedTemplate) {
-    return ["email", "appointment"].includes(String(renderedTemplate?.category || "").trim());
-  }
-  function isResolutionTemplate(renderedTemplate) {
-    return String(renderedTemplate?.category || "").trim() === "close_note";
-  }
-  function isResolved(stateText) {
-    const s = String(stateText || "").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
-    return s === "resolved" || s === "resolu" || s.includes("closed") || s.includes("ferme");
-  }
-  function renderManualDraftFallback(state) {
-    const composeUrl = String(state.ui.lastDraftComposeUrl || "");
-    if (!composeUrl) return "";
-    return `
-    <div class="sn-assistant-note sn-assistant-note--warning">
-      <div>Draft created, but automatic opening was blocked or unavailable.</div>
-      <div class="sn-assistant-row" style="margin-top:8px;">
-        <a class="sn-assistant-button sn-assistant-button--secondary" href="${escapeHtml(composeUrl)}" target="_blank" rel="noopener noreferrer">Open draft manually</a>
-      </div>
-    </div>
-  `;
-  }
-  function bindPanel(root, handlers) {
-    if (root.dataset.snAssistantBound === "true") return;
-    root.dataset.snAssistantBound = "true";
-    root.addEventListener("click", (event) => {
-      const button = event.target.closest("[data-action]");
-      if (!button) return;
-      const { action, category } = button.dataset;
-      if (action === "close-panel") handlers.onClosePanel();
-      if (action === "force-close") handlers.onForceClose();
-      if (action === "toggle-collapse") handlers.onToggleCollapse();
-      if (action === "open-settings") handlers.onOpenSettings();
-      if (action === "select-category") handlers.onSelectCategory(category);
-      if (action === "select-suggested-template") handlers.onSelectTemplate(button.dataset.templateId || "");
-      if (action === "copy-template") handlers.onCopy();
-      if (action === "insert-template") handlers.onInsert();
-      if (action === "open-draft") handlers.onDraft();
-      if (action === "run-pi-search") handlers.onPiSearch();
-      if (action === "suggest-resolved") handlers.onSuggestResolved?.();
-      if (action === "select-ci-suggestion") {
-        handlers.onSelectCiSuggestion(button.dataset.ciSysId || "", button.dataset.ciName || "");
-      }
-      if (action === "open-my-assigned-list") openMyAssignedList(button.dataset.filter || "incident");
-    });
-    root.addEventListener("change", (event) => {
-      const select = event.target.closest('select[data-action="select-template"]');
-      if (!select) return;
-      handlers.onSelectTemplate(select.value);
-    });
-    root.addEventListener("focusin", (event) => {
-      const field = event.target.closest('[name="ciLookupQuery"]');
-      if (!field) return;
-      handlers.onCiLookupOpen();
-    });
-    root.addEventListener("blur", (event) => {
-      const field = event.target.closest('[name="ciLookupQuery"]');
-      if (!field) return;
-      handlers.onCiLookupBlur();
-    }, true);
-    root.addEventListener("input", (event) => {
-      const field = event.target.closest('[name="ciLookupQuery"]');
-      if (!field) return;
-      handlers.onCiLookupChange(field.value);
-    });
-    root.addEventListener("toggle", (event) => {
-      const details = event.target.closest(".sn-assistant-preview-collapsible");
-      if (!details) return;
-      handlers.onPreviewToggle?.(details.open);
-    });
-  }
-  function ensurePanel({
-    hostDocument,
-    state,
-    context,
-    categories,
-    templates,
-    selectedTemplateId,
-    emailSuggestions = [],
-    showEmailSuggestions = false,
-    renderedTemplate,
-    handlers
-  }) {
-    let root = hostDocument.getElementById(UI_IDS.panel);
-    if (!root) {
-      root = hostDocument.createElement("div");
-      root.id = UI_IDS.panel;
-      root.className = "sn-assistant-floating";
-      root.setAttribute(ROOT_ATTRIBUTE, ROOT_VALUE);
-      (hostDocument.body || hostDocument.documentElement).appendChild(root);
-    }
-    const collapsed = state.ui.panelCollapsed;
-    const pending = Object.values(state.pendingActions).some(Boolean);
-    const showPiSearch = context.table === "sc_task";
-    const headerCounts = getHeaderCounts(state);
-    const incDisabled = headerCounts.ready && headerCounts.inc === 0;
-    const taskDisabled = headerCounts.ready && headerCounts.task === 0;
-    const headerCountsMarkup = `
-    <div id="assistant-header-counts" class="sn-assistant-header-counts" aria-label="Open tickets for current user">
-      <button type="button" id="inc-badge"
-        class="sn-assistant-header-counts__badge sn-assistant-header-counts__badge--inc"
-        data-action="open-my-assigned-list"
-        data-filter="incident"
-        data-loading="${headerCounts.loading ? "true" : "false"}"
-        data-ready="${headerCounts.ready ? "true" : "false"}"
-        ${incDisabled ? 'disabled aria-disabled="true"' : ""}
-        title="${incDisabled ? "No open incidents assigned to me" : "Show my open incidents"}">
-        INC ${headerCounts.loading && !headerCounts.ready ? "\u2026" : headerCounts.error ? "!" : escapeHtml(String(headerCounts.inc))}
-      </button>
-      <button type="button" id="task-badge"
-        class="sn-assistant-header-counts__badge sn-assistant-header-counts__badge--task"
-        data-action="open-my-assigned-list"
-        data-filter="sc_task"
-        data-loading="${headerCounts.loading ? "true" : "false"}"
-        data-ready="${headerCounts.ready ? "true" : "false"}"
-        ${taskDisabled ? 'disabled aria-disabled="true"' : ""}
-        title="${taskDisabled ? "No open SCTASKs assigned to me" : "Show my open SCTASKs"}">
-        TASK ${headerCounts.loading && !headerCounts.ready ? "\u2026" : headerCounts.error ? "!" : escapeHtml(String(headerCounts.task))}
-      </button>
-    </div>
-  `;
-    const draftButtonLabel = state.settings?.draftButtonLabel || "Prepare Draft";
-    const selectorMarkup = renderTemplateSelector({
-      categories,
-      activeCategory: state.ui.activeCategory,
-      templates,
-      selectedTemplateId
-    });
-    const ciLookupMarkup = renderCmdbCiLookup(context, state);
-    const suggestionsMarkup = showEmailSuggestions && emailSuggestions.length ? `
-          <div class="sn-assistant-suggestions">
-            <div class="sn-assistant-suggestions__title">Short description is unclear. Choose a template:</div>
-            <div class="sn-assistant-suggestions__list">
-              ${emailSuggestions.map(
-      (suggestion) => `
-                    <button
-                      type="button"
-                      class="sn-assistant-suggestions__item ${suggestion.templateId === selectedTemplateId ? "is-selected" : ""}"
-                      data-action="select-suggested-template"
-                      data-template-id="${escapeHtml(suggestion.templateId)}"
-                    >
-                      <div class="sn-assistant-suggestions__label">${escapeHtml(suggestion.label || suggestion.templateId)}</div>
-                      <div class="sn-assistant-suggestions__subject">${escapeHtml(suggestion.subject || "No subject")}</div>
-                      <div class="sn-assistant-suggestions__body">${escapeHtml((suggestion.body || "").slice(0, 180))}</div>
-                    </button>
-                  `
-    ).join("")}
-            </div>
-          </div>
-        ` : "";
-    const markup = `
-    <div class="sn-assistant-panel">
-      <div class="sn-assistant-panel__header" data-drag-handle="panel">
-        <div class="sn-assistant-panel__title">
-          <span class="sn-assistant-panel__eyebrow">SN Assistant</span>
-          <span class="sn-assistant-panel__version">${escapeHtml(`v${VERSION}`)}</span>
-          <div class="sn-assistant-panel__generator">
-            <span class="sn-assistant-panel__generator-icon" aria-hidden="true">\u{1F916}</span>
-            <span class="sn-assistant-panel__generator-label">Bot EU</span>
-          </div>
-          ${headerCountsMarkup}
-          <div class="sn-assistant-panel__subheading">${escapeHtml(context.ticketNumber || context.tableLabel || "Record")} \xB7 ${escapeHtml(context.tableLabel)} | ${escapeHtml(
-      context.recordKey
-    )}</div>
-        </div>
-        <div class="sn-assistant-panel__header-actions">
-          <button type="button" class="sn-assistant-mini-button" data-action="toggle-collapse" title="Collapse">
-            ${collapsed ? "+" : "-"}
-          </button>
-          <button type="button" class="sn-assistant-mini-button" data-action="open-settings" title="Settings">
-            <span class="sn-assistant-icon sn-assistant-icon--gear" aria-hidden="true"></span>
-          </button>
-          <button type="button" class="sn-assistant-mini-button sn-assistant-mini-button--danger" data-action="force-close" title="Shut down the assistant" aria-label="Shut down the assistant">
-            <span class="sn-assistant-icon sn-assistant-icon--power" aria-hidden="true"></span>
-          </button>
-          <button type="button" class="sn-assistant-mini-button" data-action="close-panel" title="Close panel" aria-label="Close panel">
-            <span class="sn-assistant-icon sn-assistant-icon--close" aria-hidden="true"></span>
-          </button>
-        </div>
-      </div>
-      ${collapsed ? "" : `
-            <div class="sn-assistant-panel__body">
-              <div class="sn-assistant-chip-row">
-                <span class="sn-assistant-chip"><strong>Office</strong> ${escapeHtml(state.settings.officeName)}</span>
-                <span class="sn-assistant-chip sn-assistant-chip--person">
-                  <span class="sn-assistant-chip__icon" aria-hidden="true">\u{1F464}</span>
-                  <strong>User</strong> ${escapeHtml(context.user.fullName || context.user.email || "Not detected")}
-                </span>
-              </div>
-              ${ciLookupMarkup}
-              ${selectorMarkup}
-              ${suggestionsMarkup}
-              ${renderManualDraftFallback(state)}
-              ${showPiSearch ? '<div class="sn-assistant-row"><button type="button" class="sn-assistant-button sn-assistant-button--secondary" data-action="run-pi-search">Find PI</button></div>' : ""}
-              <details class="sn-assistant-preview-collapsible" ${!state.ui.previewExpanded ? "" : "open"}>
-                <summary class="sn-assistant-preview__summary">\u{1F441}\uFE0F Preview</summary>
-                <div class="sn-assistant-preview">${renderPreview(renderedTemplate)}</div>
-              </details>
-              ${renderedTemplate && isDraftCapableTemplate(renderedTemplate) ? (() => {
-      const missingFields = getMissingFields(renderedTemplate, { context, settings: state.settings });
-      return missingFields.length > 0 ? `<div class="sn-assistant-missing-fields">
-                             ${missingFields.map(
-        (field) => `<span class="sn-assistant-missing-field-chip">\u26A0\uFE0F ${escapeHtml(field)} not found</span>`
-      ).join("")}
-                           </div>` : "";
-    })() : ""}
-              ${isResolutionTemplate(renderedTemplate) && context.state && !isResolved(context.state) ? `
-              <div class="sn-assistant-note sn-assistant-note--info">
-                Close note template selected.
-                <button type="button" class="sn-assistant-button sn-assistant-button--secondary sn-assistant-button--compact" data-action="suggest-resolved" style="margin-left:8px;" ${pending ? "disabled" : ""}>Mark Resolved</button>
-              </div>
-              ` : ""}
-              <div class="sn-assistant-panel__footer">
-                <button type="button" class="sn-assistant-button sn-assistant-button--secondary" data-action="copy-template" ${pending ? "disabled" : ""}>Copy</button>
-                <button type="button" class="sn-assistant-button sn-assistant-button--secondary" data-action="insert-template" ${pending || !renderedTemplate ? "disabled" : ""}>Insert</button>
-                <button type="button" class="sn-assistant-button sn-assistant-button--primary" data-action="open-draft" ${pending || !isDraftCapableTemplate(renderedTemplate) ? "disabled" : ""}>${escapeHtml(draftButtonLabel)}</button>
-              </div>
-            </div>
-          `}
-    </div>
-  `;
-    if (root.__snAssistantMarkup !== markup) {
-      root.innerHTML = markup;
-      root.__snAssistantMarkup = markup;
-    }
-    bindPanel(root, handlers);
-    makeDraggable({
-      node: root,
-      handleSelector: '[data-drag-handle="panel"]',
-      state,
-      positionKey: "panelPosition",
-      defaultPosition: getDefaultPanelPosition
-    });
-    return root;
-  }
-  function removePanel(hostDocument) {
-    const root = hostDocument?.getElementById(UI_IDS.panel);
-    if (root) root.remove();
   }
 
   // Assistant/templates/emailTemplates.js
@@ -11488,6 +9907,576 @@ ${configurationItemLine}`,
     return getTemplatesForCategory(category, settings)[0]?.id || "";
   }
 
+  // Assistant/templates/renderer.js
+  function getValidTicket2(context = {}) {
+    const candidates = [
+      cleanText(context?.sourceNumber),
+      cleanText(context?.ticketNumber),
+      cleanText(context?.recordNumber),
+      cleanText(context?.ticket)
+    ];
+    for (const candidate of candidates) {
+      const match = candidate.toUpperCase().match(/\b(?:RITM|INC|REQ)\d{4,}\b/);
+      if (match?.[0]) {
+        return match[0];
+      }
+    }
+    if (cleanText(context?.pageType).toLowerCase() === "sc_task") {
+      const fallback = cleanText(context?.ticketNumber || context?.recordNumber);
+      if (fallback) return fallback;
+    }
+    return "";
+  }
+  function normalizeShortDescription(value) {
+    const raw = cleanText(value).replace(/^short\s*description\s*[:\-]\s*/i, "").replace(/^description\s*[:\-]\s*/i, "").replace(/\s+/g, " ").trim();
+    if (!raw) return "";
+    const firstSentence = raw.split(/[\n.;]/).map((part) => cleanText(part)).find(Boolean) || raw;
+    return firstSentence.length > 140 ? `${firstSentence.slice(0, 137).trim()}...` : firstSentence;
+  }
+  function extractLastName(fullName) {
+    const text2 = cleanText(fullName);
+    if (!text2) return "";
+    if (text2.includes(",")) {
+      const [lastName] = text2.split(",").map((segment) => cleanText(segment));
+      return lastName;
+    }
+    const parts = text2.split(/\s+/).filter(Boolean);
+    return parts.slice(1).join(" ") || parts[0] || "";
+  }
+  function extractDeviceFromDescription(description) {
+    const text2 = cleanText(description);
+    if (!text2) return "";
+    const lines = text2.split(/\r?\n/).map((line) => cleanText(line)).filter(Boolean);
+    for (const line of lines) {
+      const afterLabel = line.match(/(?:^|\b)(?:device|device type|model|equipment|item)\s*[:\-]\s*(.+)$/i);
+      if (afterLabel?.[1]) {
+        return cleanText(afterLabel[1]);
+      }
+    }
+    const firstLine = lines[0] || "";
+    if (firstLine && /\b(device|model|iphone|ipad|laptop|desktop|phone|tablet|pc)\b/i.test(firstLine) && !looksLikePiIdentifier(firstLine) && !looksLikeRecordIdentifier2(firstLine)) {
+      return firstLine.replace(/^(?:device|device type|model|equipment|item)\s*[:\-]\s*/i, "").trim();
+    }
+    return text2;
+  }
+  function compactDeviceLabel(value) {
+    return cleanText(value).replace(/\s*\(\s*\)\s*$/, "").trim();
+  }
+  function finalizeTemplateText(value, options = {}) {
+    const paragraphSpacing = ["compact", "standard", "relaxed"].includes(cleanText(options?.paragraphSpacing)) ? cleanText(options.paragraphSpacing) : "standard";
+    const lines = String(value || "").replace(/\r\n/g, "\n").replace(/\{\{\s*[^}]+\s*\}\}/g, "").split("\n").map((line) => line.replace(/[ \t]+/g, " ").trim());
+    const compacted = [];
+    let previousBlank = false;
+    for (const line of lines) {
+      if (/^(?:device|pi\s*\/\s*configuration item|configuration item)\s*:\s*$/i.test(line)) {
+        continue;
+      }
+      const blank = !line;
+      if (blank && previousBlank) continue;
+      compacted.push(line);
+      previousBlank = blank;
+    }
+    const separator = paragraphSpacing === "compact" ? "\n" : paragraphSpacing === "relaxed" ? "\n\n\n" : "\n\n";
+    const chunks = [];
+    let current = [];
+    for (const line of compacted) {
+      if (!line) {
+        if (current.length) {
+          chunks.push(current.join("\n"));
+          current = [];
+        }
+        continue;
+      }
+      current.push(line);
+    }
+    if (current.length) {
+      chunks.push(current.join("\n"));
+    }
+    return chunks.join(separator).trim();
+  }
+  function looksLikeRecordIdentifier2(value) {
+    const text2 = cleanText(value).toUpperCase();
+    if (!text2) return false;
+    return /^[0-9A-F]{32}$/.test(text2) || /^(INC|RITM|REQ|SCTASK|TASK|CHG|PRB|SR|KB)\d{4,}$/.test(text2) || /^[A-Z]{2,}\d{4,}$/.test(text2);
+  }
+  function looksLikeTicketIdentifier2(value) {
+    const text2 = cleanText(value).toUpperCase();
+    return /^(?:INC|RITM|REQ|SCTASK|TASK|CHG|PRB|SR|KB)\d{4,}$/.test(text2);
+  }
+  function looksLikeSysId(value) {
+    return /^[0-9a-f]{32}$/i.test(cleanText(value));
+  }
+  function resolveReadableConfigurationItem2(context = {}) {
+    return cleanText(
+      (!looksLikeTicketIdentifier2(context?.configurationItem) && !looksLikeSysId(context?.configurationItem) ? context?.configurationItem : "") || (!looksLikeTicketIdentifier2(context?.configurationItemDisplay) && !looksLikeSysId(context?.configurationItemDisplay) ? context?.configurationItemDisplay : "") || (!looksLikeTicketIdentifier2(context?.configurationItemValue) && !looksLikeSysId(context?.configurationItemValue) ? context?.configurationItemValue : "") || (!looksLikeTicketIdentifier2(context?.configurationItemRaw?.display) && !looksLikeSysId(context?.configurationItemRaw?.display) ? context?.configurationItemRaw?.display : "") || (!looksLikeTicketIdentifier2(context?.configurationItemRaw?.field) && !looksLikeSysId(context?.configurationItemRaw?.field) ? context?.configurationItemRaw?.field : "") || (!looksLikeTicketIdentifier2(context?.rawConfigurationItem?.display) && !looksLikeSysId(context?.rawConfigurationItem?.display) ? context?.rawConfigurationItem?.display : "") || (!looksLikeTicketIdentifier2(context?.rawConfigurationItem?.field) && !looksLikeSysId(context?.rawConfigurationItem?.field) ? context?.rawConfigurationItem?.field : "")
+    );
+  }
+  function buildOfficeLocation(settings = {}) {
+    const officeName = cleanText(settings?.officeName);
+    const officeLabel = cleanText(settings?.officeLabel);
+    const officeRoom = cleanText(settings?.officeRoom);
+    const parts = [];
+    if (officeLabel) {
+      parts.push(officeLabel);
+    } else if (officeName) {
+      parts.push(officeName);
+    }
+    if (officeName && (!officeLabel || !officeLabel.toLowerCase().includes(officeName.toLowerCase()))) {
+      parts.unshift(officeName);
+    }
+    if (officeRoom) {
+      parts.push(officeRoom);
+    }
+    return parts.filter(Boolean).join(", ");
+  }
+  function parseAppointmentDate(value) {
+    const text2 = cleanText(value);
+    if (!text2) return null;
+    const parsed = new Date(text2);
+    if (!Number.isNaN(parsed.getTime())) return parsed;
+    const match = text2.match(/(\d{4})-(\d{2})-(\d{2})[ T](\d{2}):(\d{2})/);
+    if (!match) return null;
+    const date = new Date(
+      Number.parseInt(match[1], 10),
+      Number.parseInt(match[2], 10) - 1,
+      Number.parseInt(match[3], 10),
+      Number.parseInt(match[4], 10),
+      Number.parseInt(match[5], 10)
+    );
+    return Number.isNaN(date.getTime()) ? null : date;
+  }
+  function formatAppointmentDate(date) {
+    if (!(date instanceof Date) || Number.isNaN(date.getTime())) return "";
+    return `${String(date.getDate()).padStart(2, "0")}/${String(date.getMonth() + 1).padStart(2, "0")}/${date.getFullYear()}`;
+  }
+  function formatAppointmentTime(date) {
+    if (!(date instanceof Date) || Number.isNaN(date.getTime())) return "";
+    return `${String(date.getHours()).padStart(2, "0")}:${String(date.getMinutes()).padStart(2, "0")}`;
+  }
+  function resolveAppointmentDeviceTerms(sourceText = "") {
+    const text2 = cleanText(sourceText).toLowerCase();
+    if (/iphone/.test(text2)) {
+      return {
+        appointment_device_label: "iPhone",
+        appointment_device_subject: "corporate iPhone",
+        appointment_device_configuration: "iPhone"
+      };
+    }
+    if (/(tablet|ipad)/.test(text2)) {
+      return {
+        appointment_device_label: "tablet",
+        appointment_device_subject: "corporate tablet",
+        appointment_device_configuration: "tablet"
+      };
+    }
+    return {
+      appointment_device_label: "smartphone",
+      appointment_device_subject: "corporate smartphone",
+      appointment_device_configuration: "smartphone"
+    };
+  }
+  function getDynamicResolutionText(shortDescription = "") {
+    const text2 = cleanText(shortDescription).toLowerCase();
+    if (text2.includes("screen") || text2.includes("damage") || text2.includes("broken")) {
+      return "Your device has been replaced with a new one following the reported damage.";
+    }
+    if (text2.includes("battery")) {
+      return "The battery issue has been resolved and the device is now functioning properly.";
+    }
+    if (text2.includes("wifi") || text2.includes("network") || text2.includes("connection")) {
+      return "The connectivity issue has been resolved and the service is now working normally.";
+    }
+    if (text2.includes("outlook") || text2.includes("email")) {
+      return "The email issue has been resolved and your mailbox is now functioning correctly.";
+    }
+    if (text2.includes("phone") || text2.includes("mobile")) {
+      return "The issue with your mobile device has been resolved and the device is now operational.";
+    }
+    if (text2.includes("laptop") || text2.includes("pc")) {
+      return "The issue with your computer has been resolved and the device is now functioning normally.";
+    }
+    return "The reported issue has been resolved and the service has been restored.";
+  }
+  function isLikelyPersonName2(value) {
+    const text2 = cleanText(value);
+    if (!text2 || text2.length < 2) return false;
+    if (looksLikeRecordIdentifier2(text2)) return false;
+    if (/^(?:sctask|task|ritm|req|inc|chg|prb|sr|kb)\b/i.test(text2)) return false;
+    if (!/[a-z]/i.test(text2)) return false;
+    return !/^(?:unknown|n\/a|null|undefined)$/i.test(text2);
+  }
+  function toDisplayNameFromEmail(email) {
+    const local = cleanText(email).split("@")[0];
+    if (!local) return "";
+    return local.replace(/[._-]+/g, " ").replace(/\d+/g, "").replace(/\s+/g, " ").trim().split(" ").filter(Boolean).map((word) => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase()).join(" ");
+  }
+  function resolveBestRequestedForName(context = {}) {
+    const candidates = [
+      cleanText(context?.request_item?.request?.requested_for?.display_value),
+      cleanText(context?.request_item?.request?.requested_for?.display),
+      cleanText(context?.request_item?.request?.requested_for?.name),
+      cleanText(context?.request_item?.request?.requested_for_name),
+      cleanText(context?.request_item?.request?.u_requested_for?.display_value),
+      cleanText(context?.request_item?.request?.u_requested_for?.display),
+      cleanText(context?.request_item?.request?.u_requested_for?.name),
+      cleanText(context?.request_item?.requested_for?.display_value),
+      cleanText(context?.request_item?.requested_for?.display),
+      cleanText(context?.request_item?.u_requested_for?.display_value),
+      cleanText(context?.request_item?.u_requested_for?.display),
+      cleanText(context?.request?.requested_for?.display_value),
+      cleanText(context?.request?.requested_for?.display),
+      cleanText(context?.request?.requested_for?.name),
+      cleanText(context?.requestedFor),
+      cleanText(context?.requested_for),
+      cleanText(context?.requestedForName),
+      cleanText(context?.requested_for_name),
+      cleanText(context?.user?.fullName),
+      cleanText(context?.user?.firstName)
+    ];
+    const direct = candidates.find(isLikelyPersonName2);
+    if (direct) return direct;
+    const fromEmail = toDisplayNameFromEmail(
+      context?.requestedForEmail || context?.requested_for_email || context?.user?.email
+    );
+    return isLikelyPersonName2(fromEmail) ? fromEmail : "";
+  }
+  function looksLikePiIdentifier(value) {
+    const text2 = cleanText(value);
+    if (!text2) return false;
+    return /^(?:\d{2}PI\d{8,}|PI\d{6,}|[A-Z]{1,4}\d{8,})$/i.test(text2);
+  }
+  function resolveDeviceModelValue(context = {}) {
+    const configurationCandidates = [
+      cleanText(context?.configurationItem),
+      cleanText(context?.configurationItemDisplay),
+      cleanText(context?.configurationItemValue),
+      cleanText(context?.configurationItemRaw?.display),
+      cleanText(context?.rawConfigurationItem?.display)
+    ].filter(Boolean);
+    const candidates = [
+      cleanText(context?.model),
+      cleanText(context?.deviceModel),
+      cleanText(context?.deviceName),
+      cleanText(context?.deviceLabel),
+      cleanText(context?.device)
+    ];
+    return candidates.find((candidate) => {
+      if (!candidate) return false;
+      if (looksLikeRecordIdentifier2(candidate) || looksLikePiIdentifier(candidate)) return false;
+      if (configurationCandidates.some(
+        (ci) => ci && cleanText(ci).toLowerCase() === candidate.toLowerCase() && looksLikePiIdentifier(ci)
+      )) {
+        return false;
+      }
+      return true;
+    }) || "";
+  }
+  function resolveDeviceLabel(context = {}, model = "") {
+    const fromDescription = compactDeviceLabel(
+      extractDeviceFromDescription(
+        [context?.shortDescription, context?.description, context?.catalogItem, context?.remarks, context?.remarque].filter(Boolean).join("\n")
+      )
+    );
+    if (fromDescription && !looksLikePiIdentifier(fromDescription) && !looksLikeRecordIdentifier2(fromDescription)) {
+      return fromDescription;
+    }
+    if (model && !looksLikePiIdentifier(model) && !looksLikeRecordIdentifier2(model)) {
+      return compactDeviceLabel(model);
+    }
+    const configurationItem = resolveReadableConfigurationItem2(context);
+    if (configurationItem && !looksLikePiIdentifier(configurationItem) && !looksLikeRecordIdentifier2(configurationItem)) {
+      return compactDeviceLabel(configurationItem);
+    }
+    return "";
+  }
+  function resolveUserName(context = {}) {
+    return resolveBestRequestedForName(context) || "";
+  }
+  function resolveRequestedForEmail(context = {}) {
+    const candidates = [
+      cleanText(context?.requestedForEmail),
+      cleanText(context?.requested_for_email),
+      cleanText(context?.user?.email),
+      cleanText(context?.requestedFor?.email),
+      cleanText(context?.requested_for?.email),
+      cleanText(context?.requestedFor?.u_email),
+      cleanText(context?.requested_for?.u_email),
+      cleanText(context?.request_item?.request?.requested_for?.email),
+      cleanText(context?.request_item?.request?.requested_for?.u_email),
+      cleanText(context?.request_item?.requested_for?.email),
+      cleanText(context?.request_item?.requested_for?.u_email)
+    ];
+    const emailMatch = candidates.find((candidate) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(candidate));
+    return emailMatch || "";
+  }
+  function resolvePreferredTicketReference(context = {}, settings = {}) {
+    const preference = cleanText(settings?.ticketReferencePreference).toLowerCase() || "auto";
+    const ritm = cleanText(context?.requestItem || context?.requestItemNumber || context?.customerTicketNumber).toUpperCase();
+    const sctask = cleanText(context?.sourceTaskNumber || context?.ticketNumber || context?.recordNumber).toUpperCase();
+    const validTicket = cleanText(getValidTicket2(context)).toUpperCase();
+    const hasRitm = /^RITM\d{4,}$/.test(ritm);
+    const hasScTask = /^SCTASK\d{4,}$/.test(sctask);
+    if (preference === "ritm") return hasRitm ? ritm : validTicket || sctask;
+    if (preference === "sctask") return hasScTask ? sctask : validTicket || ritm;
+    if (hasRitm) return ritm;
+    return validTicket || sctask || ritm;
+  }
+  function buildPlaceholderMap({ context, settings }) {
+    const userName = resolveUserName(context);
+    const deviceType = cleanText(context?.deviceType);
+    const softwareName = cleanText(context?.softwareName);
+    const locationSpecific = cleanText(context?.locationSpecific || context?.location);
+    const urgencyLevel = cleanText(context?.urgencyLevel || context?.severity);
+    const estimatedResolution = cleanText(context?.estimatedResolution);
+    const nextSteps = cleanText(context?.nextSteps);
+    const configurationItem = resolveReadableConfigurationItem2(context);
+    const configurationItemSentence = configurationItem ? ` ${configurationItem}` : "";
+    const configurationItemNote = configurationItem ? ` PI / Configuration item: ${configurationItem}.` : "";
+    const phone = cleanText(context?.phone || context?.userPhone || context?.user?.phone);
+    const validTicketNumber = getValidTicket2(context);
+    const preferredTicketNumber = resolvePreferredTicketReference(context, settings);
+    const requestedForName = resolveBestRequestedForName(context) || cleanText(context?.requestedFor || context?.user?.fullName || context?.user?.email);
+    const requestedForLastName = extractLastName(requestedForName);
+    const model = resolveDeviceModelValue(context);
+    const deviceFullName = configurationItem;
+    const deviceLabel = resolveDeviceLabel(context, model);
+    const shortDescription = normalizeShortDescription(context?.shortDescription || context?.description);
+    const officeLocation = buildOfficeLocation(settings);
+    const dynamicResolution = getDynamicResolutionText(shortDescription || context?.description || "");
+    const appointmentDate = parseAppointmentDate(context?.followUp);
+    const appointmentDeviceTerms = resolveAppointmentDeviceTerms(
+      [
+        context?.deviceType,
+        context?.deviceLabel,
+        context?.deviceName,
+        context?.model,
+        context?.configurationItem
+      ].filter(Boolean).join(" ")
+    );
+    return {
+      user_name: userName,
+      user_email: resolveRequestedForEmail(context),
+      requested_for: requestedForName && !looksLikeRecordIdentifier2(requestedForName) ? requestedForName : "",
+      last_name: requestedForLastName,
+      valid_ticket_number: preferredTicketNumber || validTicketNumber,
+      customer_ticket_number: preferredTicketNumber || cleanText(context?.customerTicketNumber || context?.requestItem || validTicketNumber),
+      ticket_number: preferredTicketNumber || validTicketNumber || cleanText(context?.ticketNumber) || cleanText(context?.recordNumber),
+      record_number: cleanText(context?.recordNumber) || cleanText(context?.ticketNumber),
+      table_name: cleanText(context?.tableLabel) || cleanText(context?.table),
+      office_name: cleanText(settings?.officeName),
+      office_room: cleanText(settings?.officeRoom),
+      office_label: cleanText(settings?.officeLabel),
+      office_location: officeLocation,
+      appointment_date: formatAppointmentDate(appointmentDate),
+      appointment_time: formatAppointmentTime(appointmentDate),
+      appointment_datetime: cleanText(context?.followUp),
+      ...appointmentDeviceTerms,
+      agent_name: cleanText(context?.agentName) || "IT Support",
+      today: formatToday(settings?.defaultLanguage),
+      short_description: shortDescription,
+      description: cleanText(context?.description),
+      device_full_name: deviceFullName,
+      device_label: deviceLabel,
+      device_name: deviceLabel,
+      configuration_item: configurationItem,
+      configuration_item_sentence: configurationItemSentence,
+      configuration_item_note: configurationItemNote,
+      configuration_item_display: cleanText(
+        resolveReadableConfigurationItem2({
+          configurationItem: context?.configurationItemDisplay,
+          configurationItemDisplay: context?.configurationItem,
+          configurationItemValue: context?.configurationItemValue,
+          configurationItemRaw: context?.configurationItemRaw,
+          rawConfigurationItem: context?.rawConfigurationItem
+        }) || configurationItem
+      ),
+      configuration_item_value: cleanText(
+        (!looksLikeTicketIdentifier2(context?.configurationItemValue) ? context?.configurationItemValue : "") || (!looksLikeTicketIdentifier2(context?.configurationItemDisplay) ? context?.configurationItemDisplay : "") || configurationItem
+      ),
+      due_date: cleanText(context?.dueDate),
+      device_type: deviceType,
+      device: deviceLabel,
+      software_name: softwareName,
+      software: softwareName,
+      phone,
+      telephone: phone,
+      contact_number: phone,
+      model,
+      location_specific: locationSpecific,
+      location: locationSpecific,
+      urgency_level: urgencyLevel,
+      severity: urgencyLevel,
+      estimated_resolution: estimatedResolution,
+      next_steps: nextSteps,
+      state_label: cleanText(context?.state),
+      priority_label: cleanText(context?.priority),
+      assignment_group: cleanText(context?.assignmentGroup),
+      request_item: cleanText(context?.requestItem),
+      follow_up: cleanText(context?.followUp),
+      return_date: cleanText(context?.returnDate || context?.return_date),
+      equipment_model: cleanText(context?.equipmentModel || context?.equipment_model || model),
+      equipment_asset_tag: cleanText(context?.equipmentAssetTag || context?.equipment_asset_tag),
+      equipment_summary: cleanText(context?.equipmentSummary || context?.equipment_summary),
+      dynamic_resolution: dynamicResolution,
+      resolution_summary: dynamicResolution
+    };
+  }
+  function replacePlaceholders(value, placeholders) {
+    return String(value || "").replace(/\{\{\s*([a-z0-9_]+)\s*\}\}/gi, (_, key) => {
+      const lookupKey = String(key || "").toLowerCase();
+      return placeholders[lookupKey] ?? "";
+    });
+  }
+  function cleanupRenderedText(value = "") {
+    return String(value || "").replace(/\bDear\s+,/g, "Dear,").replace(/\s+\n/g, "\n").replace(/\(\s*\)/g, "").replace(/[ \t]{2,}/g, " ").replace(/\n{3,}/g, "\n\n");
+  }
+  function normalizeScTaskSubject(subject, context = {}) {
+    const pageType = cleanText(context?.pageType || context?.table).toLowerCase();
+    if (pageType !== "sc_task") return cleanText(subject);
+    const ticket = cleanText(context?.ticketNumber || context?.recordNumber || "");
+    if (!/^RITM\d{4,}$/i.test(ticket)) return cleanText(subject);
+    const cleanSubject = cleanText(subject).replace(new RegExp(`\\b${ticket}\\b`, "ig"), "").replace(/\bSCTASK\d{4,}\b/ig, "").replace(/\s*-\s*/g, " - ").replace(/\s{2,}/g, " ").replace(/^-\s*|\s*-\s*$/g, "").trim();
+    return cleanSubject ? `${ticket} - ${cleanSubject}` : ticket;
+  }
+  function getMissingFields(template, { context, settings }) {
+    if (!template) return [];
+    const placeholders = buildPlaceholderMap({ context, settings });
+    const missingFields = [];
+    const criticalFields = {
+      user_name: "User name",
+      user_email: "User email",
+      requested_for: "Recipient name",
+      ticket_number: "Ticket number",
+      configuration_item: "Configuration item"
+    };
+    Object.entries(criticalFields).forEach(([fieldKey, fieldLabel]) => {
+      const value = placeholders[fieldKey];
+      if (!value || String(value).trim() === "") {
+        missingFields.push(fieldLabel);
+      }
+    });
+    return missingFields;
+  }
+  function renderTemplate(template, { context, settings }) {
+    if (!template) return null;
+    const placeholders = buildPlaceholderMap({ context, settings });
+    const preferredTicketNumber = resolvePreferredTicketReference(context, settings);
+    const subjectContext = {
+      ...context,
+      validTicketNumber: preferredTicketNumber || context?.validTicketNumber,
+      customerTicketNumber: preferredTicketNumber || context?.customerTicketNumber,
+      ticketNumber: preferredTicketNumber || context?.ticketNumber,
+      recordNumber: preferredTicketNumber || context?.recordNumber
+    };
+    let subject = normalizeScTaskSubject(
+      finalizeTemplateText(cleanupRenderedText(replacePlaceholders(template.subject, placeholders))),
+      context
+    );
+    subject = subject.replace(/^[\s-]+/, "").trim();
+    if (template.category === "email" || template.category === "reminder" || template.category === "appointment") {
+      subject = subject || buildSubject(subjectContext, template) || `${cleanText(subjectContext?.ticketNumber || subjectContext?.recordNumber || "your ticket")} - reported issue follow-up`;
+    }
+    const rawBody = finalizeTemplateText(cleanupRenderedText(replacePlaceholders(template.body, placeholders)), {
+      paragraphSpacing: template.paragraphSpacing
+    });
+    const signature = cleanText(settings?.emailSignature);
+    const isOutbound = ["email", "reminder", "appointment"].includes(String(template.category || "").trim());
+    let body = isOutbound && signature ? `${rawBody}
+
+--
+${signature}` : rawBody;
+    body = body.replace(/\bundefined\b/gi, "").replace(/\bnull\b/gi, "").replace(/on your \./gi, "on your request.").replace(/about the \./gi, "about the reported issue.").replace(/\s{2,}/g, " ").trim();
+    const clipboardText = template.category === "email" ? finalizeTemplateText(`Subject: ${subject}
+
+${body}`) : body;
+    return {
+      ...template,
+      subject,
+      body,
+      clipboardText,
+      recipient: settings?.toggles?.autoFillUserEmail !== false ? resolveRequestedForEmail(context) : "",
+      target: cleanText(template.target)
+    };
+  }
+
+  // Assistant/ui/drag.js
+  var INTERACTIVE_SELECTOR = 'button, input, select, textarea, label, a, [role="button"], [data-no-drag="true"]';
+  function applyPosition(node, position) {
+    if (!position) return;
+    node.style.left = `${position.left}px`;
+    node.style.top = `${position.top}px`;
+  }
+  function resolveDefaultPosition(node, defaultPosition) {
+    return typeof defaultPosition === "function" ? defaultPosition(node) : defaultPosition;
+  }
+  function makeDraggable({ node, handleSelector, state, positionKey, defaultPosition }) {
+    if (!node) return;
+    const ownerWindow = node.ownerDocument.defaultView || window;
+    const storedPosition = state.ui[positionKey];
+    const fallbackPosition = resolveDefaultPosition(node, defaultPosition);
+    applyPosition(node, storedPosition || fallbackPosition);
+    if (node.dataset.snAssistantDragBound === "true") return;
+    node.dataset.snAssistantDragBound = "true";
+    let dragState = null;
+    let suppressClickUntil = 0;
+    const onPointerMove = (event) => {
+      if (!dragState) return;
+      const deltaX = event.clientX - dragState.startX;
+      const deltaY = event.clientY - dragState.startY;
+      const distance = Math.abs(deltaX) + Math.abs(deltaY);
+      if (distance < 4 && !dragState.moved) return;
+      dragState.moved = true;
+      event.preventDefault();
+      const nextLeft = clamp(
+        event.clientX - dragState.offsetX,
+        8,
+        Math.max(ownerWindow.innerWidth - dragState.width - 8, 8)
+      );
+      const nextTop = clamp(
+        event.clientY - dragState.offsetY,
+        8,
+        Math.max(ownerWindow.innerHeight - dragState.height - 8, 8)
+      );
+      state.ui[positionKey] = { left: nextLeft, top: nextTop };
+      applyPosition(node, state.ui[positionKey]);
+    };
+    const onPointerUp = () => {
+      if (dragState?.moved) {
+        suppressClickUntil = Date.now() + 120;
+      }
+      dragState = null;
+      ownerWindow.removeEventListener("pointermove", onPointerMove);
+      ownerWindow.removeEventListener("pointerup", onPointerUp);
+    };
+    node.addEventListener("pointerdown", (event) => {
+      if (event.button !== 0) return;
+      if (!event.target.closest(handleSelector)) return;
+      if (event.target.closest(INTERACTIVE_SELECTOR)) return;
+      const rect = node.getBoundingClientRect();
+      dragState = {
+        startX: event.clientX,
+        startY: event.clientY,
+        offsetX: event.clientX - rect.left,
+        offsetY: event.clientY - rect.top,
+        width: rect.width,
+        height: rect.height,
+        moved: false
+      };
+      ownerWindow.addEventListener("pointermove", onPointerMove, { passive: false });
+      ownerWindow.addEventListener("pointerup", onPointerUp);
+    });
+    node.addEventListener(
+      "click",
+      (event) => {
+        if (Date.now() < suppressClickUntil) {
+          event.preventDefault();
+          event.stopPropagation();
+        }
+      },
+      true
+    );
+  }
+
   // Assistant/sn/actions.js
   var USER_POPUP_SELECTORS = [
     ".popover",
@@ -12109,6 +11098,152 @@ ${value}` : value;
     </button>
   `;
   }
+  function renderWorkNotesPanelMarkup({ state, context, settings } = {}) {
+    const model = buildWorkNoteModel(context, settings, state);
+    const selectedTemplate = model.templates.find((template) => template.id === model.selectedTemplateId);
+    const previewText = cleanText2(state.ui.workNotesText) || model.draftText;
+    const searchText = cleanText2(state.ui.workNotesSearch);
+    const filteredTemplates = model.templates.filter((template) => matchesSearch(template, searchText));
+    const selectedLabel = selectedTemplate?.label || "Smart suggestion";
+    const recommendedTemplate = model.templates.find((template) => template.id === model.recommendedTemplateId) || model.recommendation.template || null;
+    const displayTemplates = searchText ? filteredTemplates : [
+      ...recommendedTemplate ? [recommendedTemplate] : [],
+      ...model.templates.filter((template) => template.id !== model.recommendedTemplateId)
+    ];
+    const shortTitle = context.ticketNumber || context.recordNumber || context.tableLabel || "Work Notes";
+    const userName = cleanText2(context?.user?.fullName || context?.requestedFor || context?.caller || "");
+    const subHeading = userName ? `${selectedLabel} - ${userName.split(" ")[0]}` : selectedLabel;
+    const { usageMap } = model;
+    const recentTemplates = !searchText ? model.templates.filter((template) => template.id !== model.recommendedTemplateId && getUsageScore(usageMap, template.id) > 0).slice(0, 3) : [];
+    const recentPhrases = Array.isArray(state?.ui?.workNotesRecentPhrases) ? state.ui.workNotesRecentPhrases.map(cleanText2).filter(Boolean) : [];
+    const cannedPhrases = [...new Set(recentPhrases)].slice(0, 5);
+    const charCount = previewText.length;
+    const templateSectionLabel = searchText ? `${displayTemplates.length} result${displayTemplates.length !== 1 ? "s" : ""}` : recentTemplates.length ? "All templates" : "Templates";
+    return `
+    <div class="sn-assistant-panel sn-assistant-worknotes-panel" data-work-notes-panel="true">
+      <div class="sn-assistant-panel__header">
+        <div class="sn-assistant-panel__title">
+          <span class="sn-assistant-panel__eyebrow">Work Notes</span>
+          <div class="sn-assistant-panel__heading">${escapeHtml(shortTitle)}</div>
+          <div class="sn-assistant-panel__subheading">${escapeHtml(subHeading)}</div>
+        </div>
+        <div class="sn-assistant-panel__header-actions">
+          <button type="button" class="sn-assistant-mini-button" data-action="work-notes-back" title="Back">Back</button>
+          <button type="button" class="sn-assistant-mini-button" data-action="work-notes-settings" title="Template Workspace" aria-label="Open Template Workspace">
+            <span class="sn-assistant-icon sn-assistant-icon--gear" aria-hidden="true"></span>
+          </button>
+          <button type="button" class="sn-assistant-mini-button" data-action="work-notes-smart" title="Use smart suggestion" aria-label="Use smart suggestion">S</button>
+          <button type="button" class="sn-assistant-mini-button sn-assistant-mini-button--danger" data-action="work-notes-close" title="Close" aria-label="Close Work Notes">
+            <span class="sn-assistant-icon sn-assistant-icon--close" aria-hidden="true"></span>
+          </button>
+        </div>
+      </div>
+      <div class="sn-assistant-panel__body">
+        <div class="sn-assistant-searchbar">
+          <span class="sn-assistant-searchbar__icon" aria-hidden="true"></span>
+          <input class="sn-assistant-input sn-assistant-searchbar__input" name="workNotesSearch" value="${escapeHtml(searchText)}" placeholder="Search templates..." />
+        </div>
+        <div class="sn-assistant-worknotes__canned">
+          <div class="sn-assistant-worknotes__templates-header">Quick phrases</div>
+          <div class="sn-assistant-worknotes__chips sn-assistant-worknotes__canned-chips">
+            ${cannedPhrases.length ? cannedPhrases.map((phrase) => `
+              <span class="sn-assistant-worknotes__chip sn-assistant-worknotes__canned-chip" title="${escapeHtml(phrase)}">
+                <button type="button" class="sn-assistant-worknotes__canned-label" data-action="work-notes-canned-phrase" data-phrase="${escapeHtml(phrase)}">${escapeHtml(phrase)}</button>
+                <button type="button" class="sn-assistant-worknotes__canned-remove" data-action="work-notes-remove-canned-phrase" data-phrase="${escapeHtml(phrase)}" title="Remove phrase" aria-label="Remove phrase">x</button>
+              </span>
+            `).join("") : '<div class="sn-assistant-note sn-assistant-note--empty">No quick phrases yet. Select or write a note to build them.</div>'}
+          </div>
+        </div>
+        ${recentTemplates.length ? `
+          <div class="sn-assistant-worknotes__templates">
+            <div class="sn-assistant-worknotes__templates-header">Recent</div>
+            <div class="sn-assistant-worknotes__chips">
+              ${recentTemplates.map((template) => renderTemplateButton(template, template.id === model.selectedTemplateId, false)).join("")}
+            </div>
+          </div>
+        ` : ""}
+        <div class="sn-assistant-worknotes__templates">
+          <div class="sn-assistant-worknotes__templates-header">
+            ${escapeHtml(templateSectionLabel)}
+            <span class="sn-assistant-worknotes__apply-hint">click to apply</span>
+          </div>
+          <div class="sn-assistant-worknotes__chips">
+            ${displayTemplates.length ? displayTemplates.map((template) => renderTemplateButton(template, template.id === model.selectedTemplateId, template.id === model.recommendedTemplateId)).join("") : '<div class="sn-assistant-note sn-assistant-note--empty">No work note templates match the search.</div>'}
+          </div>
+        </div>
+        <div class="sn-assistant-field sn-assistant-worknotes__editor">
+          <div class="sn-assistant-worknotes__editor-header">
+            <span class="sn-assistant-field__label">Note preview</span>
+            ${charCount ? `<span class="sn-assistant-worknotes__char-count">${escapeHtml(`${charCount} char${charCount !== 1 ? "s" : ""}`)}</span>` : ""}
+          </div>
+          <textarea class="sn-assistant-textarea sn-assistant-worknotes__textarea" name="workNotesText" data-action="work-notes-text" rows="7" placeholder="Write the note to apply to the ticket...">${escapeHtml(previewText)}</textarea>
+        </div>
+        <div class="sn-assistant-panel__footer sn-assistant-worknotes__footer">
+          <div class="sn-assistant-worknotes__footer-primary">
+            <button type="button" class="sn-assistant-button sn-assistant-button--primary" data-action="work-notes-append" title="Append this note below existing content in the work notes field">Append</button>
+            <button type="button" class="sn-assistant-button sn-assistant-button--secondary" data-action="work-notes-write" title="Replace all content in the work notes field with this note">Replace all</button>
+          </div>
+          <div class="sn-assistant-worknotes__footer-secondary">
+            <button type="button" class="sn-assistant-button sn-assistant-button--secondary" data-action="work-notes-copy" title="Copy note to clipboard">Copy</button>
+            <button type="button" class="sn-assistant-button sn-assistant-button--secondary" data-action="work-notes-clear" title="Clear and write a custom note from scratch">Custom</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  `;
+  }
+  function bindWorkNotesPanel(root, state, handlers) {
+    if (!root || root.dataset.snAssistantWorkNotesBound === "true") return;
+    root.dataset.snAssistantWorkNotesBound = "true";
+    root.addEventListener("click", (event) => {
+      const button = event.target.closest("[data-action]");
+      if (!button || !root.contains(button)) return;
+      const { action, phrase } = button.dataset;
+      if (action === "work-notes-close" || action === "work-notes-back") handlers.onCloseWorkNotes();
+      if (action === "work-notes-settings") handlers.onOpenSettings();
+      if (action === "work-notes-smart") handlers.onUseSmartWorkNote();
+      if (action === "work-notes-select-template") handlers.onSelectWorkNoteTemplate(button.dataset.templateId || "");
+      if (action === "work-notes-write") handlers.onWriteWorkNote("replace");
+      if (action === "work-notes-append") handlers.onWriteWorkNote("append");
+      if (action === "work-notes-copy") handlers.onCopyWorkNote();
+      if (action === "work-notes-clear") handlers.onClearWorkNote?.();
+      if (action === "work-notes-canned-phrase" && phrase) handlers.onCannedPhrase?.(phrase);
+      if (action === "work-notes-remove-canned-phrase" && phrase) {
+        event.preventDefault();
+        event.stopPropagation();
+        handlers.onRemoveQuickPhrase?.(phrase);
+      }
+    });
+    root.addEventListener("pointerdown", (event) => {
+      const button = event.target.closest('[data-action="work-notes-select-template"]');
+      if (!button || !root.contains(button)) return;
+      root.__snWorkNotesSnapshot = root.querySelector('[name="workNotesText"]')?.value || state.ui.workNotesText || "";
+    });
+    root.addEventListener("dblclick", (event) => {
+      const button = event.target.closest('[data-action="work-notes-select-template"]');
+      if (!button || !root.contains(button)) return;
+      event.preventDefault();
+      event.stopPropagation();
+      handlers.onAppendWorkNoteTemplate(button.dataset.templateId, root.__snWorkNotesSnapshot || "");
+      root.__snWorkNotesSnapshot = "";
+    });
+    root.addEventListener("input", (event) => {
+      const field = event.target.closest('[name="workNotesText"]');
+      if (field && root.contains(field)) {
+        handlers.onWorkNoteTextChange(field.value);
+        return;
+      }
+      const search = event.target.closest('[name="workNotesSearch"]');
+      if (search && root.contains(search)) handlers.onWorkNoteSearchChange(search.value);
+    });
+    root.addEventListener("keydown", (event) => {
+      if (event.key !== "Escape" && event.key !== "Esc") return;
+      if (!root.contains(event.target)) return;
+      handlers.onCloseWorkNotes();
+      event.preventDefault();
+      event.stopPropagation();
+    });
+  }
   function renderWorkNoteTemplateCards({ category, templates, selectedTemplateId, recommendedTemplateId }) {
     return uniqueTemplates(templates || [], recommendedTemplateId).map(
       (template) => `
@@ -12207,232 +11342,1023 @@ ${value}` : value;
       `
     ).join("");
   }
-  function ensureWorkNotesPanel({
-    hostDocument,
-    state,
-    context,
-    settings,
-    handlers
-  }) {
-    let root = hostDocument.getElementById(UI_IDS.workNotes);
+  function removeWorkNotesPanel(hostDocument) {
+    const root = hostDocument?.getElementById(UI_IDS.workNotes);
+    if (root) root.remove();
+  }
+
+  // Assistant/ui/launcher.js
+  var ICON = {
+    // Work Notes: lined page + pencil
+    notes: `<svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5.5 3h6.5l3 3v10.5a.5.5 0 0 1-.5.5h-9a.5.5 0 0 1-.5-.5V3.5a.5.5 0 0 1 .5-.5z"/><path d="M12 3v3h3"/><line x1="7.5" y1="9" x2="12.5" y2="9"/><line x1="7.5" y1="12" x2="11" y2="12"/><path d="M11.5 14.5l2.5-2.5 1.5 1.5-2.5 2.5h-1.5z"/><line x1="12.5" y1="13" x2="14" y2="14.5"/></svg>`,
+    // Prepare Draft: page + lightning bolt
+    draft: `<svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5.5 3h5l3 3v10.5a.5.5 0 0 1-.5.5h-9a.5.5 0 0 1-.5-.5V3.5a.5.5 0 0 1 .5-.5z"/><path d="M10.5 3v3h3"/><path d="M12 8.5l-3.5 4.5h3.5l-3 5"/></svg>`,
+    // Reminder: bell with notification dot
+    bell: `<svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 2.5a1 1 0 0 1 1 1v.6a5 5 0 0 1 4 4.9v3l1.5 2.5h-13L5 12v-3a5 5 0 0 1 4-4.9V3.5a1 1 0 0 1 1-1z"/><path d="M8.5 15.5a1.6 1.6 0 0 0 3 0"/><circle cx="15" cy="4" r="2.5" fill="currentColor" stroke="none"/></svg>`,
+    // Agenda / Calendar: calendar grid
+    calendar: `<svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="2.5" y="4" width="15" height="13" rx="1.5"/><path d="M2.5 8.5h15M7 2v4M13 2v4"/><rect x="6" y="11" width="2.5" height="2.5" rx=".4"/></svg>`,
+    // Export PDF: page with upward arrow
+    export: `<svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5.5 3h6.5l3 3v4.5"/><path d="M12 3v3h3"/><path d="M3 14.5h8M3 17.5h5.5"/><path d="M14 12v6M11.5 14.5l2.5-2.5 2.5 2.5"/></svg>`,
+    // Settings: 3 horizontal sliders at different positions
+    settings: `<svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="3" y1="6" x2="17" y2="6"/><line x1="3" y1="10" x2="17" y2="10"/><line x1="3" y1="14" x2="17" y2="14"/><circle cx="7" cy="6" r="2" fill="var(--sn-assistant-panel,#fff)" stroke="currentColor"/><circle cx="13" cy="10" r="2" fill="var(--sn-assistant-panel,#fff)" stroke="currentColor"/><circle cx="9" cy="14" r="2" fill="var(--sn-assistant-panel,#fff)" stroke="currentColor"/></svg>`,
+    // Close: ×
+    close: `<svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><line x1="5" y1="5" x2="15" y2="15"/><line x1="15" y1="5" x2="5" y2="15"/></svg>`,
+    // Customize / Brush (replace old edit/hide icon)
+    brush: `<svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 3l3 3-8 8-3.5.5.5-3.5z"/><line x1="11.5" y1="5.5" x2="14.5" y2="8.5"/><path d="M3.5 16.5c1-2 2-2.5 3-1.5"/></svg>`,
+    // Hide button (eye-slash)
+    hide: `<svg width="14" height="14" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2 10s3-5.5 8-5.5 8 5.5 8 5.5-3 5.5-8 5.5-8-5.5-8-5.5z"/><circle cx="10" cy="10" r="2.5"/><line x1="3" y1="17" x2="17" y2="3"/></svg>`,
+    // Chevron (collapsed tab)
+    chevron: `<svg class="sn-ep__chevron" width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="4 2 8 6 4 10"/></svg>`,
+    // User Tickets: person + tag
+    tickets: `<svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="8" cy="6.5" r="3"/><path d="M2.5 17c0-3 2.5-5 5.5-5"/><path d="M13 11.5h4a1 1 0 0 1 1 1v4a1 1 0 0 1-1 1h-4l-2-3z"/><line x1="14" y1="14" x2="16" y2="14"/></svg>`,
+    // User Info: ID / contact card with a portrait and detail lines
+    userInfo: `<svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="2.5" y="4" width="15" height="12" rx="2"/><circle cx="7" cy="8.5" r="2"/><path d="M3.8 14c0-1.8 1.4-3 3.2-3s3.2 1.2 3.2 3"/><line x1="12" y1="8" x2="15" y2="8"/><line x1="12" y1="11" x2="15" y2="11"/></svg>`,
+    // Assign: person + checkmark
+    assign: `<svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="8" cy="6.5" r="3"/><path d="M2.5 16.5c0-3 2.5-5 5.5-5"/><path d="M11 14l2 2 4-4.5"/></svg>`,
+    // Find CI: cube wireframe + node connector
+    findCi: `<svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 3l6 3v5l-6 3-6-3V6z"/><path d="M10 3v8M4 6l6 3 6-3"/><circle cx="15.5" cy="15.5" r="2" /><line x1="14" y1="14" x2="11" y2="11.5"/></svg>`,
+    // EP Links: chain links
+    links: `<svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8.5 11.5a4.5 4.5 0 0 0 6.4 0l1.8-1.8a4.5 4.5 0 0 0-6.4-6.4l-1 1"/><path d="M11.5 8.5a4.5 4.5 0 0 0-6.4 0l-1.8 1.8a4.5 4.5 0 0 0 6.4 6.4l1-1"/></svg>`,
+    // Position picker (3×3 dot grid)
+    position: `<svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" aria-hidden="true"><circle cx="3" cy="3" r="1.2" fill="currentColor" stroke="none"/><circle cx="8" cy="3" r="1.2" fill="currentColor" stroke="none"/><circle cx="13" cy="3" r="1.2" fill="currentColor" stroke="none"/><circle cx="3" cy="8" r="1.2" fill="currentColor" stroke="none"/><circle cx="8" cy="8" r="1.5" stroke="currentColor" fill="none" stroke-width="1.6"/><circle cx="13" cy="8" r="1.2" fill="currentColor" stroke="none"/><circle cx="3" cy="13" r="1.2" fill="currentColor" stroke="none"/><circle cx="8" cy="13" r="1.2" fill="currentColor" stroke="none"/><circle cx="13" cy="13" r="1.2" fill="currentColor" stroke="none"/></svg>`,
+    // Pin / Keep button (push pin) — outlined when inactive
+    iconsOnly: `<svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="4" y="4" width="4.5" height="4.5" rx="1"/><rect x="11.5" y="4" width="4.5" height="4.5" rx="1"/><rect x="4" y="11.5" width="4.5" height="4.5" rx="1"/><rect x="11.5" y="11.5" width="4.5" height="4.5" rx="1"/></svg>`,
+    pin: `<svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10.5 2.5c0 0 .5 3 .5 6v.5c0 .5.5 1 1 1h.5c3 0 6 .5 6 .5s-1-2-2-3-1-1-2-2-3-1-3-2c-1.5 0-2.5 0-2.5 0z"/><path d="M7.5 12c-1 1-2.5 2.5-4 4.5-1.5 2-1 3-1 3s1 .5 3-1c2-1.5 3.5-3 4.5-4"/></svg>`,
+    // Filled variant — used when the pin is active (panel locked open)
+    pinFilled: `<svg width="20" height="20" viewBox="0 0 20 20" fill="currentColor" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10.5 2.5c0 0 .5 3 .5 6v.5c0 .5.5 1 1 1h.5c3 0 6 .5 6 .5s-1-2-2-3-1-1-2-2-3-1-3-2c-1.5 0-2.5 0-2.5 0z"/><path fill="none" d="M7.5 12c-1 1-2.5 2.5-4 4.5-1.5 2-1 3-1 3s1 .5 3-1c2-1.5 3.5-3 4.5-4"/></svg>`
+  };
+  function resolveLauncherButtonDef(buttonId) {
+    const spec = LAUNCHER_BUTTON_SPECS[buttonId];
+    if (!spec) return null;
+    const semanticClassMap = {
+      [LAUNCHER_BUTTON_IDS.quickDraft]: "sn-ep__action--draft",
+      [LAUNCHER_BUTTON_IDS.openReminder]: "sn-ep__action--reminder",
+      [LAUNCHER_BUTTON_IDS.openWorkNotes]: "sn-ep__action--work-notes",
+      [LAUNCHER_BUTTON_IDS.incidentResolutionNotes]: "sn-ep__action--resolution",
+      [LAUNCHER_BUTTON_IDS.createCalendarEvent]: "sn-ep__action--agenda",
+      [LAUNCHER_BUTTON_IDS.openPdf]: "sn-ep__action--pdf",
+      [LAUNCHER_BUTTON_IDS.openSettings]: "sn-ep__action--settings",
+      [LAUNCHER_BUTTON_IDS.openEpLinks]: "sn-ep__action--links",
+      [LAUNCHER_BUTTON_IDS.userOpenTickets]: "sn-ep__action--user-tickets",
+      [LAUNCHER_BUTTON_IDS.userInfo]: "sn-ep__action--user-info",
+      [LAUNCHER_BUTTON_IDS.findCi]: "sn-ep__action--find-ci",
+      [LAUNCHER_BUTTON_IDS.generateEmailDraft]: "sn-ep__action--draft",
+      [LAUNCHER_BUTTON_IDS.generateCloseNotes]: "sn-ep__action--resolution",
+      [LAUNCHER_BUTTON_IDS.generateWorkNotes]: "sn-ep__action--work-notes",
+      [LAUNCHER_BUTTON_IDS.generateAllNotes]: "sn-ep__action--draft"
+    };
+    return {
+      ...spec,
+      icon: ICON[spec.iconKey] || ICON.settings,
+      semanticClass: semanticClassMap[buttonId] || ""
+    };
+  }
+  function isCalendarReady(context) {
+    const stateValue = String(context?.state || "").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/\s+/g, " ").trim();
+    return stateValue.includes("intervention") || stateValue === "appointment" || stateValue.includes("planifie");
+  }
+  function isSlaWarning(context) {
+    const raw = String(context?.dueDate || context?.followUp || "").trim();
+    if (!raw) return false;
+    try {
+      const due = new Date(raw);
+      if (isNaN(due.getTime())) return false;
+      const today = /* @__PURE__ */ new Date();
+      today.setHours(0, 0, 0, 0);
+      due.setHours(0, 0, 0, 0);
+      return due.getTime() <= today.getTime();
+    } catch (error2) {
+      return false;
+    }
+  }
+  var SNAP_STORAGE_KEY = "sn_assistant_snap_position";
+  var SNAP_POSITIONS = ["tl", "tc", "tr", "cl", "cc", "cr", "bl", "bc", "br"];
+  function loadSnapPosition(rootWindow) {
+    try {
+      return rootWindow.localStorage?.getItem(SNAP_STORAGE_KEY) || "";
+    } catch {
+      return "";
+    }
+  }
+  function saveSnapPosition(rootWindow, pos) {
+    try {
+      if (pos) rootWindow.localStorage?.setItem(SNAP_STORAGE_KEY, pos);
+      else rootWindow.localStorage?.removeItem(SNAP_STORAGE_KEY);
+    } catch {
+    }
+  }
+  function applyEdgePanelPosition(root, state) {
+    const shell = root.querySelector(".sn-ep");
+    if (!shell) return;
+    const ownerWindow = root.ownerDocument?.defaultView || window;
+    const snapPos = loadSnapPosition(ownerWindow);
+    SNAP_POSITIONS.forEach((p) => shell.classList.remove(`sn-ep--snap-${p}`));
+    if (snapPos && SNAP_POSITIONS.includes(snapPos)) {
+      shell.classList.add(`sn-ep--snap-${snapPos}`);
+      shell.style.left = "";
+      shell.style.right = "";
+      shell.style.top = "";
+      shell.style.bottom = "";
+      shell.style.transform = "";
+      return;
+    }
+    const top = state.ui.edgePanelTop;
+    const edge = state.ui.edgePanelEdge || "right";
+    if (top !== null && top !== void 0) {
+      shell.style.top = `${top}px`;
+      shell.style.transform = "none";
+    } else {
+      shell.style.top = "50%";
+      shell.style.transform = "translateY(-50%)";
+    }
+    shell.classList.toggle("sn-ep--left", edge === "left");
+  }
+  function makePanelDraggable(root, state) {
+    if (root.dataset.snEpDragBound === "true") return;
+    root.dataset.snEpDragBound = "true";
+    const ownerWindow = root.ownerDocument.defaultView || window;
+    let drag = null;
+    let suppressClickUntil = 0;
+    root.addEventListener("pointerdown", (event) => {
+      if (event.button !== 0) return;
+      if (!event.target.closest(".sn-ep__tab, .sn-ep__header")) return;
+      const shell = root.querySelector(".sn-ep");
+      if (!shell) return;
+      const rect = shell.getBoundingClientRect();
+      drag = {
+        startX: event.clientX,
+        startY: event.clientY,
+        offsetX: event.clientX - rect.left,
+        offsetY: event.clientY - rect.top,
+        width: rect.width,
+        height: rect.height,
+        moved: false
+      };
+      ownerWindow.addEventListener("pointermove", onMove, { passive: false });
+      ownerWindow.addEventListener("pointerup", onUp);
+    });
+    function onMove(event) {
+      if (!drag) return;
+      const dist = Math.abs(event.clientX - drag.startX) + Math.abs(event.clientY - drag.startY);
+      if (dist < 4 && !drag.moved) return;
+      drag.moved = true;
+      event.preventDefault();
+      const shell = root.querySelector(".sn-ep");
+      if (!shell) return;
+      if (!drag.snapCleared) {
+        drag.snapCleared = true;
+        saveSnapPosition(ownerWindow, "");
+        SNAP_POSITIONS.forEach((p) => shell.classList.remove(`sn-ep--snap-${p}`));
+      }
+      shell.classList.remove("sn-ep--left");
+      const maxLeft = ownerWindow.innerWidth - drag.width;
+      const maxTop = ownerWindow.innerHeight - drag.height - 8;
+      shell.style.left = `${clamp(event.clientX - drag.offsetX, 0, maxLeft)}px`;
+      shell.style.right = "auto";
+      shell.style.top = `${clamp(event.clientY - drag.offsetY, 8, maxTop)}px`;
+      shell.style.transform = "none";
+    }
+    function onUp() {
+      ownerWindow.removeEventListener("pointermove", onMove);
+      ownerWindow.removeEventListener("pointerup", onUp);
+      if (drag?.moved) {
+        suppressClickUntil = Date.now() + 150;
+        const shell = root.querySelector(".sn-ep");
+        if (shell) {
+          const rect = shell.getBoundingClientRect();
+          const leftDist = rect.left;
+          const rightDist = ownerWindow.innerWidth - rect.right;
+          const newEdge = leftDist <= rightDist ? "left" : "right";
+          state.ui.edgePanelEdge = newEdge;
+          state.ui.edgePanelTop = clamp(rect.top, 8, ownerWindow.innerHeight - rect.height - 8);
+          shell.style.left = "";
+          shell.style.right = "";
+          shell.classList.toggle("sn-ep--left", newEdge === "left");
+        }
+      }
+      drag = null;
+    }
+    root.addEventListener(
+      "click",
+      (event) => {
+        if (Date.now() < suppressClickUntil) {
+          event.preventDefault();
+          event.stopPropagation();
+        }
+      },
+      true
+    );
+  }
+  function renderLauncherButton(buttonId, { draftLabel, calendarReady, context, buttonColor = "", editMode = false }) {
+    const def = resolveLauncherButtonDef(buttonId);
+    if (!def) return "";
+    const label = typeof def.label === "function" ? def.label(draftLabel) : def.label;
+    const sub = typeof def.sub === "function" ? def.sub(calendarReady, context) : def.sub;
+    const baseTitle = typeof def.title === "function" ? def.title(calendarReady, context) : def.title;
+    const title = sub && sub !== label ? `${baseTitle} \u2014 ${sub}` : baseTitle;
+    const className = typeof def.className === "function" ? def.className(calendarReady, context) : def.className || "";
+    const semanticClass = def.semanticClass || "";
+    const iconOnly = false;
+    const badge = def.badge ? `<span class="sn-ep__badge">${escapeHtml(def.badge)}</span>` : "";
+    const canHide = ![
+      LAUNCHER_BUTTON_IDS.openSettings,
+      LAUNCHER_BUTTON_IDS.openReminder,
+      LAUNCHER_BUTTON_IDS.findCi
+    ].includes(buttonId);
+    const colorStyle = buttonColor ? ` style="--btn-color:${escapeHtml(buttonColor)};"` : "";
+    let editOverlay = "";
+    if (editMode) {
+      const hideBtn = canHide ? `<button type="button" class="sn-ep__edit-hide" data-action="ep-hide-button" data-button-id="${escapeHtml(buttonId)}" title="Hide">${ICON.hide}</button>` : "";
+      const currentColor = buttonColor || "#2563eb";
+      const colorPicker = `<label class="sn-ep__edit-color" title="Pick colour">
+        <input type="color" class="sn-ep__color-input" data-action="ep-btn-color" data-button-id="${escapeHtml(buttonId)}" value="${escapeHtml(currentColor)}" title="Button colour"/>
+      </label>`;
+      editOverlay = `<div class="sn-ep__edit-overlay">${colorPicker}${hideBtn}</div>`;
+    }
+    return `
+    <button
+      type="button"
+      draggable="true"
+      class="sn-ep__action${semanticClass ? ` ${semanticClass}` : ""}${className ? ` ${className}` : ""}${editMode ? " sn-ep__action--edit" : ""}"
+      data-action="${escapeHtml(buttonId)}"
+      data-button-id="${escapeHtml(buttonId)}"
+      title="${escapeHtml(title)}"${colorStyle}
+    >
+      <span class="sn-ep__icon">${def.icon}</span>
+      <span class="sn-ep__text"><span class="sn-ep__label">${escapeHtml(label)}</span></span>
+      ${badge}
+      ${editOverlay}
+    </button>
+  `;
+  }
+  function renderLauncherActions(rootWindow, context, draftLabel, calendarReady, hiddenButtons = [], buttonColors = {}, editMode = false, topWorkNoteTemplates = []) {
+    const order = loadAssistantButtonOrder(rootWindow);
+    const hidden = Array.isArray(hiddenButtons) ? hiddenButtons : [];
+    const colors = buttonColors && typeof buttonColors === "object" ? buttonColors : {};
+    const visibleIds = order.concat(PINNED_LAUNCHER_BUTTON_IDS).filter((buttonId) => {
+      if (hidden.includes(buttonId)) return false;
+      if (buttonId === LAUNCHER_BUTTON_IDS.incidentResolutionNotes && cleanText(context?.table) !== "incident") return false;
+      return true;
+    });
+    const buckets = /* @__PURE__ */ new Map();
+    for (const groupDef of LAUNCHER_GROUPS) {
+      buckets.set(groupDef.id, []);
+    }
+    for (const buttonId of visibleIds) {
+      const groupId = getLauncherButtonGroup(buttonId);
+      if (!buckets.has(groupId)) buckets.set(groupId, []);
+      buckets.get(groupId).push(buttonId);
+    }
+    return LAUNCHER_GROUPS.map((groupDef) => {
+      const ids = buckets.get(groupDef.id) || [];
+      if (!ids.length) return "";
+      const buttonsHtml = ids.map((buttonId) => {
+        if (buttonId === LAUNCHER_BUTTON_IDS.quickDraftTop3) return "";
+        if (buttonId === LAUNCHER_BUTTON_IDS.generateEmailDraft || buttonId === LAUNCHER_BUTTON_IDS.generateCloseNotes || buttonId === LAUNCHER_BUTTON_IDS.generateWorkNotes || buttonId === LAUNCHER_BUTTON_IDS.generateAllNotes) return "";
+        if (buttonId === LAUNCHER_BUTTON_IDS.openWorkNotes) {
+          const workNotesBtn = renderLauncherButton(buttonId, { draftLabel, calendarReady, context, buttonColor: colors[buttonId] || "", editMode });
+          const boltBtn = `<button type="button" class="sn-ep__action sn-ep__action--mini-bolt sn-ep__action--work-notes" data-action="generate-menu-toggle" title="Quick write / generate" aria-haspopup="menu" aria-expanded="false"><span class="sn-ep__icon">${ICON.draft}</span></button>`;
+          const quickWriteItems = Array.isArray(topWorkNoteTemplates) && topWorkNoteTemplates.length ? [
+            `<div class="sn-ep__generate-section-label">Quick write</div>`,
+            ...topWorkNoteTemplates.map(
+              (t) => `<button type="button" class="sn-ep__generate-item sn-ep__generate-item--template" data-action="quick-write-work-note" data-template-id="${escapeHtml(t.id)}" title="${escapeHtml(t.label)}"><span class="sn-ep__icon">${ICON.notes}</span><span>${escapeHtml(t.label)}</span></button>`
+            ),
+            `<div class="sn-ep__generate-divider"></div>`,
+            `<div class="sn-ep__generate-section-label">AI generate</div>`
+          ].join("") : "";
+          const generateItems = [
+            { action: LAUNCHER_BUTTON_IDS.generateEmailDraft, icon: ICON.draft, label: "Generate Email Draft" },
+            { action: LAUNCHER_BUTTON_IDS.generateCloseNotes, icon: ICON.notes, label: "Generate Close Notes" },
+            { action: LAUNCHER_BUTTON_IDS.generateWorkNotes, icon: ICON.notes, label: "Generate Work Notes" },
+            { action: LAUNCHER_BUTTON_IDS.generateAllNotes, icon: ICON.draft, label: "Generate All" }
+          ].map(
+            (item) => `<button type="button" class="sn-ep__generate-item" data-action="${escapeHtml(item.action)}" title="${escapeHtml(item.label)}"><span class="sn-ep__icon">${item.icon}</span><span>${escapeHtml(item.label)}</span></button>`
+          ).join("");
+          return `<div class="sn-ep__action-row">${workNotesBtn}${boltBtn}</div><div class="sn-ep__generate-menu" data-generate-menu>${quickWriteItems}${generateItems}</div>`;
+        }
+        if (buttonId === LAUNCHER_BUTTON_IDS.quickDraft) {
+          const draftBtn = renderLauncherButton(buttonId, {
+            draftLabel,
+            calendarReady,
+            context,
+            buttonColor: colors[buttonId] || "",
+            editMode
+          });
+          const boltBtn = renderLauncherButton(LAUNCHER_BUTTON_IDS.quickDraftTop3, {
+            draftLabel,
+            calendarReady,
+            context,
+            buttonColor: colors[LAUNCHER_BUTTON_IDS.quickDraftTop3] || colors[buttonId] || "",
+            editMode
+          }).replace("sn-ep__action", "sn-ep__action sn-ep__action--mini-bolt");
+          return `<div class="sn-ep__action-row">${draftBtn}${boltBtn}</div>`;
+        }
+        if (buttonId === LAUNCHER_BUTTON_IDS.assignToMyGroup) {
+          const assignBtn = renderLauncherButton(buttonId, {
+            draftLabel,
+            calendarReady,
+            context,
+            buttonColor: colors[buttonId] || "",
+            editMode
+          });
+          const configBtn = `<button type="button" class="sn-ep__action sn-ep__action--mini-bolt" data-action="configure-assign-group" title="Choose your assignment group" aria-label="Choose your assignment group"><span class="sn-ep__icon">${ICON.settings}</span></button>`;
+          return `<div class="sn-ep__action-row">${assignBtn}${configBtn}</div>`;
+        }
+        return renderLauncherButton(buttonId, {
+          draftLabel,
+          calendarReady,
+          context,
+          buttonColor: colors[buttonId] || "",
+          editMode
+        });
+      }).filter(Boolean).join("");
+      if (!buttonsHtml) return "";
+      return `
+        <div class="sn-ep__group" data-group="${escapeHtml(groupDef.id)}">
+          <div class="sn-ep__group-header">${escapeHtml(groupDef.label)}</div>
+          <div class="sn-ep__group-buttons">${buttonsHtml}</div>
+        </div>
+      `;
+    }).filter(Boolean).join("");
+  }
+  function bindLauncher(root, state, handlers) {
+    if (root.dataset.snAssistantBound === "true") return;
+    root.dataset.snAssistantBound = "true";
+    const ownerWindow = root.ownerDocument.defaultView || window;
+    let draggedButtonId = "";
+    let assignPressTimer = 0;
+    let assignPressTriggered = false;
+    function clearAssignPressTimer() {
+      if (assignPressTimer) {
+        ownerWindow.clearTimeout(assignPressTimer);
+        assignPressTimer = 0;
+      }
+    }
+    root.addEventListener("click", (event) => {
+      const button = event.target.closest("[data-action]");
+      if (!button) return;
+      const { action } = button.dataset;
+      const shell = root.querySelector(".sn-ep");
+      if (action !== "generate-menu-toggle") {
+        root.querySelector("[data-generate-menu]")?.classList.remove("is-open");
+        root.querySelector('[data-action="generate-menu-toggle"]')?.setAttribute("aria-expanded", "false");
+      }
+      if (action === "generate-menu-toggle") {
+        const open = root.querySelector("[data-generate-menu]")?.classList.toggle("is-open");
+        button.setAttribute("aria-expanded", open ? "true" : "false");
+        return;
+      }
+      if (action === "ep-toggle") {
+        const isOpen = state.ui.edgePanelMode === "expanded" || state.ui.edgePanelMode === "icons";
+        const next = isOpen ? "tab" : "expanded";
+        if (next === "tab" && state.ui.edgePanelPinned) return;
+        state.ui.edgePanelMode = next;
+        if (shell) shell.dataset.epMode = next;
+        if (state.ui.edgePanelPinned) {
+          savePinState(ownerWindow, {
+            pinned: true,
+            lastOpenState: next !== "tab",
+            mode: next
+          });
+        }
+        return;
+      }
+      if (action === "ep-icons") {
+        root.querySelector("[data-generate-menu]")?.classList.remove("is-open");
+        const next = state.ui.edgePanelMode === "icons" ? "expanded" : "icons";
+        state.ui.edgePanelMode = next;
+        if (shell) shell.dataset.epMode = next;
+        if (state.ui.edgePanelPinned) {
+          savePinState(ownerWindow, {
+            pinned: true,
+            lastOpenState: next !== "tab",
+            mode: next
+          });
+        }
+        const iconButton = button;
+        iconButton.classList.toggle("is-active", next === "icons");
+        iconButton.title = next === "icons" ? "Show full labels" : "Show icons only";
+        iconButton.setAttribute("aria-pressed", next === "icons" ? "true" : "false");
+        return;
+      }
+      if (action === "ep-close") {
+        if (state.ui.edgePanelPinned) {
+          state.ui.edgePanelPinned = false;
+          if (shell) {
+            shell.removeAttribute("data-ep-pinned");
+            savePinState(ownerWindow, { pinned: false, lastOpenState: false, mode: "tab" });
+          }
+        }
+        state.ui.edgePanelMode = "tab";
+        if (shell) shell.dataset.epMode = "tab";
+        return;
+      }
+      if (action === "ep-pin") {
+        state.ui.edgePanelPinned = !state.ui.edgePanelPinned;
+        if (state.ui.edgePanelPinned) {
+          if (state.ui.edgePanelMode === "tab") {
+            state.ui.edgePanelMode = "expanded";
+            if (shell) shell.dataset.epMode = "expanded";
+          }
+          state.ui.assistantHidden = false;
+        }
+        if (shell) {
+          if (state.ui.edgePanelPinned) {
+            shell.setAttribute("data-ep-pinned", "true");
+            button.classList.add("is-active");
+          } else {
+            shell.removeAttribute("data-ep-pinned");
+            button.classList.remove("is-active");
+          }
+          button.title = state.ui.edgePanelPinned ? "Unpin panel \u2014 close normally" : "Pin to keep open";
+          button.setAttribute("aria-pressed", state.ui.edgePanelPinned ? "true" : "false");
+          button.innerHTML = state.ui.edgePanelPinned ? ICON.pinFilled : ICON.pin;
+        }
+        savePinState(ownerWindow, {
+          pinned: state.ui.edgePanelPinned,
+          lastOpenState: state.ui.edgePanelMode !== "tab",
+          mode: state.ui.edgePanelMode === "tab" ? "icons" : state.ui.edgePanelMode || "icons"
+        });
+        handlers.onToggleEdgePanelPinned?.(state.ui.edgePanelPinned);
+        return;
+      }
+      if (action === "ep-edit") {
+        handlers.onToggleLauncherEditMode?.();
+        return;
+      }
+      if (action === "configure-assign-group") {
+        handlers.onConfigureAssignGroup?.();
+        return;
+      }
+      if (action === "ep-hide-button") {
+        const buttonId = button.dataset.buttonId || "";
+        handlers.onHideLauncherButton?.(buttonId);
+        return;
+      }
+      if (action === LAUNCHER_BUTTON_IDS.quickDraft) handlers.onQuickDraft();
+      if (action === LAUNCHER_BUTTON_IDS.quickDraftTop3) handlers.onQuickDraftTop3?.();
+      if (action === LAUNCHER_BUTTON_IDS.openWorkNotes) handlers.onOpenWorkNotes();
+      if (action === LAUNCHER_BUTTON_IDS.openReminder) handlers.onOpenReminder();
+      if (action === LAUNCHER_BUTTON_IDS.incidentResolutionNotes) handlers.onIncidentResolutionNotes?.();
+      if (action === LAUNCHER_BUTTON_IDS.createCalendarEvent) handlers.onCreateCalendarEvent();
+      if (action === LAUNCHER_BUTTON_IDS.openPdf) handlers.onOpenPdf(button);
+      if (action === LAUNCHER_BUTTON_IDS.openSettings) handlers.onOpenSettings();
+      if (action === LAUNCHER_BUTTON_IDS.openEpLinks) handlers.onOpenEpLinks();
+      if (action === LAUNCHER_BUTTON_IDS.userInfo) handlers.onOpenUserInfo?.();
+      if (action === LAUNCHER_BUTTON_IDS.userOpenTickets) handlers.onOpenUserTickets?.();
+      if (action === LAUNCHER_BUTTON_IDS.findCi) handlers.onOpenFindCi?.();
+      if (action === LAUNCHER_BUTTON_IDS.assignToMyGroup) {
+        if (assignPressTriggered) {
+          assignPressTriggered = false;
+          return;
+        }
+        handlers.onAssignToMyGroup?.();
+      }
+      if (action === LAUNCHER_BUTTON_IDS.generateEmailDraft) handlers.onGenerateEmailDraft?.();
+      if (action === LAUNCHER_BUTTON_IDS.generateCloseNotes) handlers.onGenerateCloseNotes?.();
+      if (action === LAUNCHER_BUTTON_IDS.generateWorkNotes) handlers.onGenerateWorkNotes?.();
+      if (action === LAUNCHER_BUTTON_IDS.generateAllNotes) handlers.onGenerateAllNotes?.();
+      if (action === "quick-write-work-note") handlers.onQuickWriteWorkNote?.(button.dataset.templateId || "");
+      if (action === "open-my-assigned-list") openMyAssignedList(button.dataset.filter || "incident");
+    });
+    root.addEventListener("keydown", (event) => {
+      if (event.key !== "Escape" && event.key !== "Esc") return;
+      const menu = root.querySelector("[data-generate-menu].is-open");
+      if (!menu) return;
+      menu.classList.remove("is-open");
+      root.querySelector('[data-action="generate-menu-toggle"]')?.setAttribute("aria-expanded", "false");
+      event.preventDefault();
+      event.stopPropagation();
+    });
+    root.addEventListener("contextmenu", (event) => {
+      const button = event.target.closest("[data-action]");
+      if (!button) return;
+      if (button.dataset.action !== LAUNCHER_BUTTON_IDS.assignToMyGroup) return;
+      event.preventDefault();
+      clearAssignPressTimer();
+      assignPressTriggered = true;
+      handlers.onConfigureAssignGroup?.();
+    });
+    root.addEventListener("pointerdown", (event) => {
+      const button = event.target.closest("[data-action]");
+      if (!button) return;
+      if (button.dataset.action !== LAUNCHER_BUTTON_IDS.assignToMyGroup) return;
+      clearAssignPressTimer();
+      assignPressTriggered = false;
+      assignPressTimer = ownerWindow.setTimeout(() => {
+        assignPressTriggered = true;
+        handlers.onConfigureAssignGroup?.();
+      }, 600);
+    });
+    root.addEventListener("pointerup", clearAssignPressTimer);
+    root.addEventListener("pointerleave", clearAssignPressTimer);
+    root.addEventListener("pointercancel", clearAssignPressTimer);
+    const persistLauncherOrder = () => {
+      const actions = root.querySelector(".sn-ep__actions");
+      if (!actions) return;
+      const nextOrder = Array.from(actions.querySelectorAll("[data-button-id]")).map((item) => item.dataset.buttonId || "").filter((buttonId) => buttonId && buttonId !== LAUNCHER_BUTTON_IDS.openReminder);
+      saveAssistantButtonOrder(ownerWindow, nextOrder);
+    };
+    root.addEventListener("dragstart", (event) => {
+      const item = event.target.closest("[data-button-id]");
+      if (!item || item.dataset.buttonId === LAUNCHER_BUTTON_IDS.openReminder) return;
+      draggedButtonId = item.dataset.buttonId || "";
+      item.classList.add("is-dragging");
+      try {
+        event.dataTransfer.effectAllowed = "move";
+        event.dataTransfer.setData("text/plain", draggedButtonId);
+      } catch (error2) {
+      }
+    });
+    root.addEventListener("dragover", (event) => {
+      const target = event.target.closest("[data-button-id]");
+      if (!target || !draggedButtonId || target.dataset.buttonId === draggedButtonId || target.dataset.buttonId === LAUNCHER_BUTTON_IDS.openReminder) {
+        return;
+      }
+      event.preventDefault();
+      const groupContainer = target.closest(".sn-ep__group-buttons") || root.querySelector(".sn-ep__actions");
+      const dragged = root.querySelector(".sn-ep__action.is-dragging");
+      if (!groupContainer || !dragged || dragged === target) return;
+      const rect = target.getBoundingClientRect();
+      const before = event.clientY < rect.top + rect.height / 2;
+      groupContainer.insertBefore(dragged, before ? target : target.nextElementSibling);
+    });
+    root.addEventListener("drop", (event) => {
+      const target = event.target.closest("[data-button-id]");
+      if (!target || !draggedButtonId) return;
+      event.preventDefault();
+      persistLauncherOrder();
+    });
+    root.addEventListener("dragend", () => {
+      root.querySelectorAll(".sn-ep__action.is-dragging").forEach((item) => item.classList.remove("is-dragging"));
+      draggedButtonId = "";
+    });
+    root.addEventListener("input", (event) => {
+      const colorInput = event.target.closest('[data-action="ep-btn-color"]');
+      if (!colorInput) return;
+      event.stopPropagation();
+      const buttonId = colorInput.dataset.buttonId || "";
+      const color = colorInput.value || "";
+      handlers.onSetButtonColor?.(buttonId, color);
+    });
+  }
+  function ensureLauncher({ hostDocument, state, context, settings = {}, handlers, topWorkNoteTemplates = [] }) {
+    let root = hostDocument.getElementById(UI_IDS.launcher);
     if (!root) {
       root = hostDocument.createElement("div");
-      root.id = UI_IDS.workNotes;
+      root.id = UI_IDS.launcher;
       root.setAttribute(ROOT_ATTRIBUTE, ROOT_VALUE);
       (hostDocument.body || hostDocument.documentElement).appendChild(root);
     }
-    root.className = "sn-assistant-floating sn-assistant-worknotes-root";
-    const model = buildWorkNoteModel(context, settings, state);
-    const selectedTemplate = model.templates.find((template) => template.id === model.selectedTemplateId);
-    const previewText = cleanText2(state.ui.workNotesText) || model.draftText;
-    const searchText = cleanText2(state.ui.workNotesSearch);
-    const filteredTemplates = model.templates.filter((template) => matchesSearch(template, searchText));
-    const selectedLabel = selectedTemplate?.label || "Smart suggestion";
-    const recommendedTemplate = model.templates.find((template) => template.id === model.recommendedTemplateId) || model.recommendation.template || null;
-    const displayTemplates = searchText ? filteredTemplates : [
-      ...recommendedTemplate ? [recommendedTemplate] : [],
-      ...model.templates.filter((template) => template.id !== model.recommendedTemplateId)
-    ];
-    const shortTitle = context.ticketNumber || context.recordNumber || context.tableLabel || "Work Notes";
-    const userName = cleanText2(
-      context?.user?.fullName || context?.requestedFor || context?.caller || ""
-    );
-    const userFirstName = userName ? userName.split(" ")[0] : "";
-    const subHeading = userFirstName ? `${selectedLabel} \xB7 ${userFirstName}` : selectedLabel;
-    const { usageMap } = model;
-    const recentTemplates = !searchText ? model.templates.filter((t) => t.id !== model.recommendedTemplateId && getUsageScore(usageMap, t.id) > 0).slice(0, 3) : [];
-    const recentPhrases = Array.isArray(state?.ui?.workNotesRecentPhrases) ? state.ui.workNotesRecentPhrases.map(cleanText2).filter(Boolean) : [];
-    const cannedPhrases = [...new Set(recentPhrases)].slice(0, 5);
-    const charCount = previewText.length;
-    const charCountLabel = charCount > 0 ? `${charCount} char${charCount !== 1 ? "s" : ""}` : "";
-    const allTemplateCount = displayTemplates.length;
-    const templateSectionLabel = searchText ? `${allTemplateCount} result${allTemplateCount !== 1 ? "s" : ""}` : recentTemplates.length ? "All templates" : `Templates`;
-    const markup = `
-    <div class="sn-assistant-panel sn-assistant-worknotes-panel" data-work-notes-panel="true">
-        <div class="sn-assistant-panel__header" data-drag-handle="work-notes">
-          <div class="sn-assistant-panel__title">
-            <span class="sn-assistant-panel__eyebrow">Work Notes</span>
-            <div class="sn-assistant-panel__heading">${escapeHtml(shortTitle)}</div>
-            <div class="sn-assistant-panel__subheading">${escapeHtml(subHeading)}</div>
-          </div>
-          <div class="sn-assistant-panel__header-actions">
-            <button type="button" class="sn-assistant-mini-button" data-action="work-notes-settings" title="Template Workspace" aria-label="Open Template Workspace">
-              <span class="sn-assistant-icon sn-assistant-icon--gear" aria-hidden="true"></span>
-            </button>
-            <button type="button" class="sn-assistant-mini-button" data-action="work-notes-smart" title="Use smart suggestion" aria-label="Use smart suggestion">S</button>
-            <button type="button" class="sn-assistant-mini-button sn-assistant-mini-button--danger" data-action="work-notes-close" title="Close" aria-label="Close Work Notes">
-              <span class="sn-assistant-icon sn-assistant-icon--close" aria-hidden="true"></span>
-            </button>
-          </div>
-        </div>
-        <div class="sn-assistant-panel__body">
-          <div class="sn-assistant-searchbar">
-            <span class="sn-assistant-searchbar__icon" aria-hidden="true"></span>
-            <input
-              class="sn-assistant-input sn-assistant-searchbar__input"
-              name="workNotesSearch"
-              value="${escapeHtml(searchText)}"
-              placeholder="Search templates\u2026"
-            />
-          </div>
-          <div class="sn-assistant-worknotes__canned">
-            <div class="sn-assistant-worknotes__templates-header">Quick phrases</div>
-            <div class="sn-assistant-worknotes__chips sn-assistant-worknotes__canned-chips">
-              ${cannedPhrases.length ? cannedPhrases.map((phrase) => `
-                <button
-                  type="button"
-                  class="sn-assistant-worknotes__chip sn-assistant-worknotes__canned-chip"
-                  data-action="work-notes-canned-phrase"
-                  data-phrase="${escapeHtml(phrase)}"
-                  title="${escapeHtml(phrase)}"
-                >
-                  <span class="sn-assistant-worknotes__canned-label">${escapeHtml(phrase)}</span>
-                  <button
-                    type="button"
-                    class="sn-assistant-worknotes__canned-remove"
-                    data-action="work-notes-remove-canned-phrase"
-                    data-phrase="${escapeHtml(phrase)}"
-                    title="Remove phrase"
-                    aria-label="Remove phrase"
-                  >\xD7</button>
-                </button>
-              `).join("") : '<div class="sn-assistant-note sn-assistant-note--empty">No quick phrases yet. Select or write a note to build them.</div>'}
+    const ownerWin = hostDocument.defaultView || window;
+    if (!state.ui.edgePanelPinned) {
+      const restored = loadPinState(ownerWin);
+      if (restored.pinned) {
+        state.ui.edgePanelPinned = true;
+        state.ui.edgePanelMode = restored.mode === "tab" ? "icons" : restored.mode || (restored.lastOpenState ? "expanded" : "icons");
+      }
+    }
+    const edgeMode = state.ui.edgePanelMode || "icons";
+    const calendarReady = isCalendarReady(context);
+    const slaWarn = isSlaWarning(context);
+    const draftLabel = state.settings?.draftButtonLabel || "Prepare Draft";
+    const buttonTheme = state.settings?.buttonColorTheme || "subtle";
+    const hiddenButtons = state.settings?.hiddenButtons || [];
+    const buttonColors = state.settings?.buttonColors || {};
+    const buttonOpacity = state.settings?.buttonOpacity ?? 1;
+    const editMode = Boolean(state.ui.launcherEditMode);
+    const snapPos = loadSnapPosition(ownerWin);
+    const headerCounts = getHeaderCounts(state);
+    const incDisabled = headerCounts.ready && headerCounts.inc === 0;
+    const taskDisabled = headerCounts.ready && headerCounts.task === 0;
+    const iconsOnly = edgeMode === "icons";
+    const panelStyle = `--btn-opacity:${buttonOpacity}`;
+    const actionsMarkup = state.ui.workNotesOpen ? renderWorkNotesPanelMarkup({ state, context, settings }) : renderLauncherActions(ownerWin, context, draftLabel, calendarReady, hiddenButtons, buttonColors, editMode, topWorkNoteTemplates);
+    root.innerHTML = `
+    <div class="sn-ep sn-ep--${escapeHtml(state.ui.edgePanelEdge || "right")}${snapPos ? ` sn-ep--snap-${escapeHtml(snapPos)}` : ""}" data-ep-mode="${escapeHtml(edgeMode)}" data-button-theme="${escapeHtml(buttonTheme)}" data-ep-theme="${escapeHtml(state.ui.edgePanelTheme || "light")}"${state.ui.edgePanelPinned ? ' data-ep-pinned="true"' : ""} style="${panelStyle}">
+      ${slaWarn ? '<div class="sn-ep__tab sn-ep__tab--sla-warn sn-ep__tab--indicator" aria-label="SLA warning"><span class="sn-ep__sla-dot"></span></div>' : ""}
+
+      <div class="sn-ep__panel">
+        <div class="sn-ep__header">
+          <div class="sn-ep__header-main">
+            <div class="sn-ep__title">SN Assistant${slaWarn ? ' <span class="sn-ep__sla-badge" title="Due date reached or overdue">SLA</span>' : ""}</div>
+            <div class="sn-assistant-header-counts" aria-label="My assigned work">
+              <button type="button"
+                class="sn-assistant-header-counts__badge sn-assistant-header-counts__badge--inc"
+                data-action="open-my-assigned-list"
+                data-filter="incident"
+                data-loading="${headerCounts.loading ? "true" : "false"}"
+                data-ready="${headerCounts.ready ? "true" : "false"}"
+                ${incDisabled ? 'disabled aria-disabled="true"' : ""}
+                title="${incDisabled ? "No open incidents assigned to me" : "Show my open incidents"}">
+                INC ${headerCounts.loading && !headerCounts.ready ? "..." : headerCounts.error ? "!" : escapeHtml(String(headerCounts.inc))}
+              </button>
+              <button type="button"
+                class="sn-assistant-header-counts__badge sn-assistant-header-counts__badge--task"
+                data-action="open-my-assigned-list"
+                data-filter="sc_task"
+                data-loading="${headerCounts.loading ? "true" : "false"}"
+                data-ready="${headerCounts.ready ? "true" : "false"}"
+                ${taskDisabled ? 'disabled aria-disabled="true"' : ""}
+                title="${taskDisabled ? "No open tasks assigned to me" : "Show my open tasks"}">
+                TASK ${headerCounts.loading && !headerCounts.ready ? "..." : headerCounts.error ? "!" : escapeHtml(String(headerCounts.task))}
+              </button>
             </div>
           </div>
-          ${recentTemplates.length ? `
-          <div class="sn-assistant-worknotes__templates">
-            <div class="sn-assistant-worknotes__templates-header">Recent</div>
-            <div class="sn-assistant-worknotes__chips">
-              ${recentTemplates.map(
-      (template) => renderTemplateButton(template, template.id === model.selectedTemplateId, false)
+          <div class="sn-ep__header-actions">
+            <button type="button" class="sn-ep__icon-btn sn-ep__icon-btn--header" data-action="ep-close" title="${state.ui.edgePanelPinned ? "Unpin and close" : "Close"}">${ICON.close}</button>
+          </div>
+        </div>
+
+        <div class="sn-ep__actions">
+          ${actionsMarkup}
+        </div>
+
+        <div class="sn-ep__footer">
+          <span class="sn-ep__version">${escapeHtml(`v${VERSION}`)}</span>
+          <div class="sn-ep__footer-actions">
+            <button type="button" class="sn-ep__icon-btn" data-action="open-settings" title="Settings">${ICON.settings}</button>
+            <button type="button" class="sn-ep__icon-btn${iconsOnly ? " is-active" : ""}" data-action="ep-icons" aria-pressed="${iconsOnly ? "true" : "false"}" title="${iconsOnly ? "Show full labels" : "Show icons only"}">${ICON.iconsOnly}</button>
+            <button type="button" class="sn-ep__icon-btn sn-ep__icon-btn--pin${state.ui.edgePanelPinned ? " is-active" : ""}" data-action="ep-pin" aria-pressed="${state.ui.edgePanelPinned ? "true" : "false"}" title="${state.ui.edgePanelPinned ? "Unpin panel \u2014 close normally" : "Pin to keep open"}">${state.ui.edgePanelPinned ? ICON.pinFilled : ICON.pin}</button>
+            <button type="button" class="sn-ep__icon-btn${editMode ? " is-active" : ""}" data-action="ep-edit" title="${editMode ? "Exit customise mode" : "Customise buttons"}">${ICON.brush}</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  `;
+    bindLauncher(root, state, handlers);
+    if (state.ui.workNotesOpen) {
+      bindWorkNotesPanel(root.querySelector("[data-work-notes-panel]"), state, handlers);
+    }
+    applyEdgePanelPosition(root, state);
+    makePanelDraggable(root, state);
+    return root;
+  }
+  function removeLauncher(hostDocument) {
+    hostDocument.getElementById(UI_IDS.launcher)?.remove();
+  }
+
+  // Assistant/ui/preview.js
+  function renderMeta(label, value) {
+    return `
+    <div class="sn-assistant-preview__meta-block">
+      <span class="sn-assistant-preview__meta-label">${escapeHtml(label)}</span>
+      <div class="sn-assistant-preview__meta-value">${escapeHtml(value || "Not available")}</div>
+    </div>
+  `;
+  }
+  function hasUnfilledPlaceholders(text2) {
+    return /\{\{[^}]+\}\}/.test(String(text2 || ""));
+  }
+  function renderBodyWithHighlights(text2) {
+    const escaped = escapeHtml(String(text2 || ""));
+    return escaped.replace(
+      /\{\{([^}]+)\}\}/g,
+      (_, name) => `<mark class="sn-assistant-preview__unfilled">{{${escapeHtml(name)}}}</mark>`
+    );
+  }
+  function renderPreview(renderedTemplate) {
+    if (!renderedTemplate) {
+      return `<div class="sn-assistant-preview__empty">Select a template to generate a preview.</div>`;
+    }
+    const bodyText = renderedTemplate.body || "";
+    const subjectText = renderedTemplate.subject || "";
+    const hasWarnings = hasUnfilledPlaceholders(bodyText) || hasUnfilledPlaceholders(subjectText);
+    const metaBlocks = renderedTemplate.category === "email" ? `
+          <div class="sn-assistant-preview__meta">
+            ${renderMeta("Recipient", renderedTemplate.recipient || "Not detected")}
+            ${renderMeta("Subject", renderedTemplate.subject)}
+          </div>
+        ` : `
+          <div class="sn-assistant-preview__meta">
+            ${renderMeta("Target", renderedTemplate.target || "work_notes")}
+            ${renderMeta("Template", renderedTemplate.label)}
+          </div>
+        `;
+    const warningBanner = hasWarnings ? `<div class="sn-assistant-preview__warn-banner">Some placeholders were not resolved \u2014 review highlighted text before sending.</div>` : "";
+    return `
+    ${metaBlocks}
+    ${warningBanner}
+    <div class="sn-assistant-preview__body">${renderBodyWithHighlights(bodyText)}</div>
+  `;
+  }
+
+  // Assistant/ui/templates.js
+  function renderTemplateSelector({
+    categories,
+    activeCategory,
+    templates,
+    selectedTemplateId
+  }) {
+    const tabs = categories.map(
+      (category) => `
+        <button
+          type="button"
+          class="sn-assistant-tab ${category.id === activeCategory ? "is-active" : ""}"
+          data-action="select-category"
+          data-category="${escapeHtml(category.id)}"
+        >
+          ${escapeHtml(category.label)}
+        </button>
+      `
+    ).join("");
+    const options = templates.map(
+      (template) => `
+        <option value="${escapeHtml(template.id)}" ${template.id === selectedTemplateId ? "selected" : ""}>
+          ${escapeHtml(template.label)}
+        </option>
+      `
+    ).join("");
+    return `
+    <div class="sn-assistant-tabs">${tabs}</div>
+    <div class="sn-assistant-field">
+      <span class="sn-assistant-field__label">Template</span>
+      <select class="sn-assistant-select" data-action="select-template">
+        ${options}
+      </select>
+    </div>
+  `;
+  }
+
+  // Assistant/ui/panel.js
+  function getDefaultPanelPosition(node) {
+    const ownerWindow = node.ownerDocument.defaultView || window;
+    return {
+      left: Math.max(ownerWindow.innerWidth - 404, 12),
+      top: 136
+    };
+  }
+  function renderCmdbCiLookup(context, state) {
+    const currentValue = state.ui.ciLookupQuery || context.configurationItem || context.configurationItemDisplay || context.configurationItemValue || "";
+    const results = Array.isArray(state.ui.ciLookupResults) ? state.ui.ciLookupResults : [];
+    const showResults = state.ui.ciLookupOpen || state.ui.ciLookupLoading || results.length > 0;
+    const resultMarkup = state.ui.ciLookupLoading ? '<div class="sn-assistant-note sn-assistant-note--empty">Searching Configuration Item...</div>' : results.length ? results.map(
+      (item) => `
+              <button
+                type="button"
+                class="sn-assistant-ci-lookup__result"
+                data-action="select-ci-suggestion"
+                data-ci-sys-id="${escapeHtml(item.sys_id || "")}"
+                data-ci-name="${escapeHtml(item.name || "")}"
+              >
+                <strong>${escapeHtml(item.name || "")}</strong>
+                <span>${escapeHtml(item.sys_id || "")}</span>
+              </button>
+            `
+    ).join("") : '<div class="sn-assistant-note sn-assistant-note--empty">No Configuration Item found.</div>';
+    return `
+    <div class="sn-assistant-ci-lookup">
+      <div class="sn-assistant-field">
+        <span class="sn-assistant-field__label">Configuration Item</span>
+        <input
+          class="sn-assistant-input sn-assistant-ci-lookup__input"
+          name="ciLookupQuery"
+          value="${escapeHtml(currentValue)}"
+          placeholder="Search Configuration Item"
+          autocomplete="off"
+        />
+      </div>
+      ${showResults ? `<div class="sn-assistant-ci-lookup__results">${resultMarkup}</div>` : ""}
+    </div>
+  `;
+  }
+  function isDraftCapableTemplate(renderedTemplate) {
+    return ["email", "appointment"].includes(String(renderedTemplate?.category || "").trim());
+  }
+  function isResolutionTemplate(renderedTemplate) {
+    return String(renderedTemplate?.category || "").trim() === "close_note";
+  }
+  function isResolved(stateText) {
+    const s = String(stateText || "").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+    return s === "resolved" || s === "resolu" || s.includes("closed") || s.includes("ferme");
+  }
+  function renderManualDraftFallback(state) {
+    const composeUrl = String(state.ui.lastDraftComposeUrl || "");
+    if (!composeUrl) return "";
+    return `
+    <div class="sn-assistant-note sn-assistant-note--warning">
+      <div>Draft created, but automatic opening was blocked or unavailable.</div>
+      <div class="sn-assistant-row" style="margin-top:8px;">
+        <a class="sn-assistant-button sn-assistant-button--secondary" href="${escapeHtml(composeUrl)}" target="_blank" rel="noopener noreferrer">Open draft manually</a>
+      </div>
+    </div>
+  `;
+  }
+  function bindPanel(root, handlers) {
+    if (root.dataset.snAssistantBound === "true") return;
+    root.dataset.snAssistantBound = "true";
+    root.addEventListener("click", (event) => {
+      const button = event.target.closest("[data-action]");
+      if (!button) return;
+      const { action, category } = button.dataset;
+      if (action === "close-panel") handlers.onClosePanel();
+      if (action === "force-close") handlers.onForceClose();
+      if (action === "toggle-collapse") handlers.onToggleCollapse();
+      if (action === "open-settings") handlers.onOpenSettings();
+      if (action === "select-category") handlers.onSelectCategory(category);
+      if (action === "select-suggested-template") handlers.onSelectTemplate(button.dataset.templateId || "");
+      if (action === "copy-template") handlers.onCopy();
+      if (action === "insert-template") handlers.onInsert();
+      if (action === "open-draft") handlers.onDraft();
+      if (action === "run-pi-search") handlers.onPiSearch();
+      if (action === "suggest-resolved") handlers.onSuggestResolved?.();
+      if (action === "select-ci-suggestion") {
+        handlers.onSelectCiSuggestion(button.dataset.ciSysId || "", button.dataset.ciName || "");
+      }
+      if (action === "open-my-assigned-list") openMyAssignedList(button.dataset.filter || "incident");
+    });
+    root.addEventListener("change", (event) => {
+      const select = event.target.closest('select[data-action="select-template"]');
+      if (!select) return;
+      handlers.onSelectTemplate(select.value);
+    });
+    root.addEventListener("focusin", (event) => {
+      const field = event.target.closest('[name="ciLookupQuery"]');
+      if (!field) return;
+      handlers.onCiLookupOpen();
+    });
+    root.addEventListener("blur", (event) => {
+      const field = event.target.closest('[name="ciLookupQuery"]');
+      if (!field) return;
+      handlers.onCiLookupBlur();
+    }, true);
+    root.addEventListener("input", (event) => {
+      const field = event.target.closest('[name="ciLookupQuery"]');
+      if (!field) return;
+      handlers.onCiLookupChange(field.value);
+    });
+    root.addEventListener("toggle", (event) => {
+      const details = event.target.closest(".sn-assistant-preview-collapsible");
+      if (!details) return;
+      handlers.onPreviewToggle?.(details.open);
+    });
+  }
+  function ensurePanel({
+    hostDocument,
+    state,
+    context,
+    categories,
+    templates,
+    selectedTemplateId,
+    emailSuggestions = [],
+    showEmailSuggestions = false,
+    renderedTemplate,
+    handlers
+  }) {
+    let root = hostDocument.getElementById(UI_IDS.panel);
+    if (!root) {
+      root = hostDocument.createElement("div");
+      root.id = UI_IDS.panel;
+      root.className = "sn-assistant-floating";
+      root.setAttribute(ROOT_ATTRIBUTE, ROOT_VALUE);
+      (hostDocument.body || hostDocument.documentElement).appendChild(root);
+    }
+    const collapsed = state.ui.panelCollapsed;
+    const pending = Object.values(state.pendingActions).some(Boolean);
+    const showPiSearch = context.table === "sc_task";
+    const headerCounts = getHeaderCounts(state);
+    const incDisabled = headerCounts.ready && headerCounts.inc === 0;
+    const taskDisabled = headerCounts.ready && headerCounts.task === 0;
+    const headerCountsMarkup = `
+    <div id="assistant-header-counts" class="sn-assistant-header-counts" aria-label="Open tickets for current user">
+      <button type="button" id="inc-badge"
+        class="sn-assistant-header-counts__badge sn-assistant-header-counts__badge--inc"
+        data-action="open-my-assigned-list"
+        data-filter="incident"
+        data-loading="${headerCounts.loading ? "true" : "false"}"
+        data-ready="${headerCounts.ready ? "true" : "false"}"
+        ${incDisabled ? 'disabled aria-disabled="true"' : ""}
+        title="${incDisabled ? "No open incidents assigned to me" : "Show my open incidents"}">
+        INC ${headerCounts.loading && !headerCounts.ready ? "\u2026" : headerCounts.error ? "!" : escapeHtml(String(headerCounts.inc))}
+      </button>
+      <button type="button" id="task-badge"
+        class="sn-assistant-header-counts__badge sn-assistant-header-counts__badge--task"
+        data-action="open-my-assigned-list"
+        data-filter="sc_task"
+        data-loading="${headerCounts.loading ? "true" : "false"}"
+        data-ready="${headerCounts.ready ? "true" : "false"}"
+        ${taskDisabled ? 'disabled aria-disabled="true"' : ""}
+        title="${taskDisabled ? "No open SCTASKs assigned to me" : "Show my open SCTASKs"}">
+        TASK ${headerCounts.loading && !headerCounts.ready ? "\u2026" : headerCounts.error ? "!" : escapeHtml(String(headerCounts.task))}
+      </button>
+    </div>
+  `;
+    const draftButtonLabel = state.settings?.draftButtonLabel || "Prepare Draft";
+    const selectorMarkup = renderTemplateSelector({
+      categories,
+      activeCategory: state.ui.activeCategory,
+      templates,
+      selectedTemplateId
+    });
+    const ciLookupMarkup = renderCmdbCiLookup(context, state);
+    const suggestionsMarkup = showEmailSuggestions && emailSuggestions.length ? `
+          <div class="sn-assistant-suggestions">
+            <div class="sn-assistant-suggestions__title">Short description is unclear. Choose a template:</div>
+            <div class="sn-assistant-suggestions__list">
+              ${emailSuggestions.map(
+      (suggestion) => `
+                    <button
+                      type="button"
+                      class="sn-assistant-suggestions__item ${suggestion.templateId === selectedTemplateId ? "is-selected" : ""}"
+                      data-action="select-suggested-template"
+                      data-template-id="${escapeHtml(suggestion.templateId)}"
+                    >
+                      <div class="sn-assistant-suggestions__label">${escapeHtml(suggestion.label || suggestion.templateId)}</div>
+                      <div class="sn-assistant-suggestions__subject">${escapeHtml(suggestion.subject || "No subject")}</div>
+                      <div class="sn-assistant-suggestions__body">${escapeHtml((suggestion.body || "").slice(0, 180))}</div>
+                    </button>
+                  `
     ).join("")}
             </div>
           </div>
-          ` : ""}
-          <div class="sn-assistant-worknotes__templates">
-            <div class="sn-assistant-worknotes__templates-header">
-              ${escapeHtml(templateSectionLabel)}
-              <span class="sn-assistant-worknotes__apply-hint">click to apply</span>
-            </div>
-            <div class="sn-assistant-worknotes__chips">
-              ${displayTemplates.length ? displayTemplates.map(
-      (template) => renderTemplateButton(
-        template,
-        template.id === model.selectedTemplateId,
-        template.id === model.recommendedTemplateId
-      )
-    ).join("") : '<div class="sn-assistant-note sn-assistant-note--empty">No work note templates match the search.</div>'}
-            </div>
+        ` : "";
+    const markup = `
+    <div class="sn-assistant-panel">
+      <div class="sn-assistant-panel__header" data-drag-handle="panel">
+        <div class="sn-assistant-panel__title">
+          <span class="sn-assistant-panel__eyebrow">SN Assistant</span>
+          <span class="sn-assistant-panel__version">${escapeHtml(`v${VERSION}`)}</span>
+          <div class="sn-assistant-panel__generator">
+            <span class="sn-assistant-panel__generator-icon" aria-hidden="true">\u{1F916}</span>
+            <span class="sn-assistant-panel__generator-label">Bot EU</span>
           </div>
-          <div class="sn-assistant-field sn-assistant-worknotes__editor">
-            <div class="sn-assistant-worknotes__editor-header">
-              <span class="sn-assistant-field__label">Note preview</span>
-              ${charCountLabel ? `<span class="sn-assistant-worknotes__char-count">${escapeHtml(charCountLabel)}</span>` : ""}
-            </div>
-            <textarea
-              class="sn-assistant-textarea sn-assistant-worknotes__textarea"
-              name="workNotesText"
-              data-action="work-notes-text"
-              rows="7"
-              placeholder="Write the note to apply to the ticket\u2026"
-            >${escapeHtml(previewText)}</textarea>
-          </div>
-          <div class="sn-assistant-panel__footer sn-assistant-worknotes__footer">
-            <div class="sn-assistant-worknotes__footer-primary">
-              <button type="button" class="sn-assistant-button sn-assistant-button--primary" data-action="work-notes-append" title="Append this note below existing content in the work notes field">Append</button>
-              <button type="button" class="sn-assistant-button sn-assistant-button--secondary" data-action="work-notes-write" title="Replace all content in the work notes field with this note">Replace all</button>
-            </div>
-            <div class="sn-assistant-worknotes__footer-secondary">
-              <button type="button" class="sn-assistant-button sn-assistant-button--secondary" data-action="work-notes-copy" title="Copy note to clipboard">Copy</button>
-              <button type="button" class="sn-assistant-button sn-assistant-button--secondary" data-action="work-notes-clear" title="Clear and write a custom note from scratch">\u270E Custom</button>
-            </div>
-          </div>
+          ${headerCountsMarkup}
+          <div class="sn-assistant-panel__subheading">${escapeHtml(context.ticketNumber || context.tableLabel || "Record")} \xB7 ${escapeHtml(context.tableLabel)} | ${escapeHtml(
+      context.recordKey
+    )}</div>
         </div>
+        <div class="sn-assistant-panel__header-actions">
+          <button type="button" class="sn-assistant-mini-button" data-action="toggle-collapse" title="Collapse">
+            ${collapsed ? "+" : "-"}
+          </button>
+          <button type="button" class="sn-assistant-mini-button" data-action="open-settings" title="Settings">
+            <span class="sn-assistant-icon sn-assistant-icon--gear" aria-hidden="true"></span>
+          </button>
+          <button type="button" class="sn-assistant-mini-button sn-assistant-mini-button--danger" data-action="force-close" title="Shut down the assistant" aria-label="Shut down the assistant">
+            <span class="sn-assistant-icon sn-assistant-icon--power" aria-hidden="true"></span>
+          </button>
+          <button type="button" class="sn-assistant-mini-button" data-action="close-panel" title="Close panel" aria-label="Close panel">
+            <span class="sn-assistant-icon sn-assistant-icon--close" aria-hidden="true"></span>
+          </button>
+        </div>
+      </div>
+      ${collapsed ? "" : `
+            <div class="sn-assistant-panel__body">
+              <div class="sn-assistant-chip-row">
+                <span class="sn-assistant-chip"><strong>Office</strong> ${escapeHtml(state.settings.officeName)}</span>
+                <span class="sn-assistant-chip sn-assistant-chip--person">
+                  <span class="sn-assistant-chip__icon" aria-hidden="true">\u{1F464}</span>
+                  <strong>User</strong> ${escapeHtml(context.user.fullName || context.user.email || "Not detected")}
+                </span>
+              </div>
+              ${ciLookupMarkup}
+              ${selectorMarkup}
+              ${suggestionsMarkup}
+              ${renderManualDraftFallback(state)}
+              ${showPiSearch ? '<div class="sn-assistant-row"><button type="button" class="sn-assistant-button sn-assistant-button--secondary" data-action="run-pi-search">Find PI</button></div>' : ""}
+              <details class="sn-assistant-preview-collapsible" ${!state.ui.previewExpanded ? "" : "open"}>
+                <summary class="sn-assistant-preview__summary">\u{1F441}\uFE0F Preview</summary>
+                <div class="sn-assistant-preview">${renderPreview(renderedTemplate)}</div>
+              </details>
+              ${renderedTemplate && isDraftCapableTemplate(renderedTemplate) ? (() => {
+      const missingFields = getMissingFields(renderedTemplate, { context, settings: state.settings });
+      return missingFields.length > 0 ? `<div class="sn-assistant-missing-fields">
+                             ${missingFields.map(
+        (field) => `<span class="sn-assistant-missing-field-chip">\u26A0\uFE0F ${escapeHtml(field)} not found</span>`
+      ).join("")}
+                           </div>` : "";
+    })() : ""}
+              ${isResolutionTemplate(renderedTemplate) && context.state && !isResolved(context.state) ? `
+              <div class="sn-assistant-note sn-assistant-note--info">
+                Close note template selected.
+                <button type="button" class="sn-assistant-button sn-assistant-button--secondary sn-assistant-button--compact" data-action="suggest-resolved" style="margin-left:8px;" ${pending ? "disabled" : ""}>Mark Resolved</button>
+              </div>
+              ` : ""}
+              <div class="sn-assistant-panel__footer">
+                <button type="button" class="sn-assistant-button sn-assistant-button--secondary" data-action="copy-template" ${pending ? "disabled" : ""}>Copy</button>
+                <button type="button" class="sn-assistant-button sn-assistant-button--secondary" data-action="insert-template" ${pending || !renderedTemplate ? "disabled" : ""}>Insert</button>
+                <button type="button" class="sn-assistant-button sn-assistant-button--primary" data-action="open-draft" ${pending || !isDraftCapableTemplate(renderedTemplate) ? "disabled" : ""}>${escapeHtml(draftButtonLabel)}</button>
+              </div>
+            </div>
+          `}
     </div>
   `;
     if (root.__snAssistantMarkup !== markup) {
-      const ownerDoc = root.ownerDocument;
-      const activeEl = ownerDoc?.activeElement;
-      const activeName = activeEl?.getAttribute?.("name") || "";
-      const activeStart = typeof activeEl?.selectionStart === "number" ? activeEl.selectionStart : null;
-      const activeEnd = typeof activeEl?.selectionEnd === "number" ? activeEl.selectionEnd : null;
       root.innerHTML = markup;
       root.__snAssistantMarkup = markup;
-      if (activeName && root.contains(ownerDoc?.activeElement) === false) {
-        const nextField = root.querySelector(`[name="${CSS.escape(activeName)}"]`);
-        if (nextField && typeof nextField.focus === "function") {
-          nextField.focus({ preventScroll: true });
-          if (typeof nextField.setSelectionRange === "function" && activeStart !== null && activeEnd !== null) {
-            nextField.setSelectionRange(activeStart, activeEnd);
-          }
-        }
-      }
     }
-    if (root.dataset.snAssistantBound !== "true") {
-      root.dataset.snAssistantBound = "true";
-      root.addEventListener("click", (event) => {
-        const button = event.target.closest("[data-action]");
-        if (!button) return;
-        const { action, templateId, phrase } = button.dataset;
-        if (action === "work-notes-close") handlers.onCloseWorkNotes();
-        if (action === "work-notes-settings") handlers.onOpenSettings();
-        if (action === "work-notes-smart") handlers.onUseSmartWorkNote();
-        if (action === "work-notes-select-template") handlers.onSelectWorkNoteTemplate(button.dataset.templateId || "");
-        if (action === "work-notes-write") handlers.onWriteWorkNote("replace");
-        if (action === "work-notes-append") handlers.onWriteWorkNote("append");
-        if (action === "work-notes-copy") handlers.onCopyWorkNote();
-        if (action === "work-notes-clear") handlers.onClearWorkNote?.();
-        if (action === "work-notes-canned-phrase" && phrase) handlers.onCannedPhrase?.(phrase);
-        if (action === "work-notes-remove-canned-phrase" && phrase) handlers.onRemoveQuickPhrase?.(phrase);
-      });
-      root.addEventListener("pointerdown", (event) => {
-        const button = event.target.closest('[data-action="work-notes-select-template"]');
-        if (!button) return;
-        root.__snWorkNotesSnapshot = state.ui.workNotesText || previewText;
-      });
-      root.addEventListener("dblclick", (event) => {
-        const button = event.target.closest('[data-action="work-notes-select-template"]');
-        if (!button) return;
-        event.preventDefault();
-        event.stopPropagation();
-        handlers.onAppendWorkNoteTemplate(button.dataset.templateId, root.__snWorkNotesSnapshot || "");
-        root.__snWorkNotesSnapshot = "";
-      });
-      root.addEventListener("input", (event) => {
-        const field = event.target.closest('[name="workNotesText"]');
-        if (field) {
-          handlers.onWorkNoteTextChange(field.value);
-          return;
-        }
-        const search = event.target.closest('[name="workNotesSearch"]');
-        if (search) {
-          handlers.onWorkNoteSearchChange(search.value);
-        }
-      });
-      root.addEventListener("keydown", (event) => {
-        if (event.key !== "Escape" && event.key !== "Esc") return;
-        handlers.onCloseWorkNotes();
-        event.preventDefault();
-        event.stopPropagation();
-      });
-    }
+    bindPanel(root, handlers);
     makeDraggable({
       node: root,
-      handleSelector: '[data-drag-handle="work-notes"]',
+      handleSelector: '[data-drag-handle="panel"]',
       state,
-      positionKey: "workNotesPosition",
-      defaultPosition: (node) => {
-        const ownerWindow = node.ownerDocument.defaultView || window;
-        return {
-          left: Math.max(ownerWindow.innerWidth - 360, 12),
-          top: 110
-        };
-      }
+      positionKey: "panelPosition",
+      defaultPosition: getDefaultPanelPosition
     });
     return root;
   }
-  function removeWorkNotesPanel(hostDocument) {
-    const root = hostDocument?.getElementById(UI_IDS.workNotes);
+  function removePanel(hostDocument) {
+    const root = hostDocument?.getElementById(UI_IDS.panel);
     if (root) root.remove();
   }
 
@@ -38079,6 +38005,8 @@ Verification completed with ${requestedFor}. Ticket moved to Resolved.`;
     state.ui.panelCollapsed = false;
     state.ui.settingsOpen = false;
     state.ui.workNotesOpen = true;
+    state.ui.assistantHidden = false;
+    state.ui.edgePanelMode = "expanded";
     state.ui.workNotesTemplateId = templateId || "";
     state.ui.workNotesText = draftText || "";
     state.ui.workNotesSource = "template";
@@ -38088,6 +38016,7 @@ Verification completed with ${requestedFor}. Ticket moved to Resolved.`;
   function closeWorkNotes(state) {
     state.ui.workNotesOpen = false;
     state.ui.assistantHidden = false;
+    state.ui.edgePanelMode = state.ui.edgePanelMode || "expanded";
   }
   function setWorkNotesText(state, value) {
     state.ui.workNotesText = String(value || "");
@@ -40759,16 +40688,13 @@ ${text2}` : text2;
       return v === "3" || v === "7" || d.includes("closed");
     }
     function isLauncherRefreshReason(reason) {
-      return ["initial-start", "duplicate-loader", "start-reentry"].includes(reason);
+      return ["initial-start", "duplicate-loader", "start-reentry"].includes(reason) || reason.startsWith("work-notes-") || reason.startsWith("workNotes-");
     }
     function isPanelRefreshReason(reason) {
       return isLauncherRefreshReason(reason) || reason.startsWith("template-") || reason.startsWith("action:") || reason.startsWith("panel-") || reason === "settings-saved" || reason === "settings-imported" || reason === "settings-reset-draft" || reason === "settings-template-selected" || reason === "settings-template-restore" || reason === "header-counts-loaded";
     }
     function isSettingsRefreshReason(reason) {
       return isLauncherRefreshReason(reason) || reason.startsWith("settings-");
-    }
-    function isWorkNotesRefreshReason(reason) {
-      return isLauncherRefreshReason(reason) || reason.startsWith("work-notes-") || reason.startsWith("workNotes-");
     }
     function isUserTicketsRefreshReason(reason) {
       return isLauncherRefreshReason(reason) || reason.startsWith("user-tickets-");
@@ -41300,7 +41226,6 @@ ${text2}` : text2;
         const launcherMissing = !hostDocument.getElementById(UI_IDS.launcher);
         const panelMissing = !hostDocument.getElementById(UI_IDS.panel);
         const settingsMissing = !hostDocument.getElementById(UI_IDS.settings);
-        const workNotesMissing = !hostDocument.getElementById(UI_IDS.workNotes);
         if (!assistantSuppressed && (launcherMissing || contextDidChange || isLauncherRefreshReason(reason))) {
           const workNoteModel = buildWorkNoteModel(nextContext || {}, getEffectiveSettings(), state);
           const topWorkNoteTemplates = workNoteModel.templates.slice(0, 5).map((t) => ({ id: t.id, label: t.label || t.id }));
@@ -41308,6 +41233,7 @@ ${text2}` : text2;
             hostDocument,
             state,
             context: nextContext,
+            settings: getEffectiveSettings(),
             handlers,
             topWorkNoteTemplates
           });
@@ -41354,17 +41280,7 @@ ${text2}` : text2;
         } else if (!state.ui.panelOpen) {
           removePanel(hostDocument);
         }
-        if (state.ui.workNotesOpen && (workNotesMissing || contextDidChange || isWorkNotesRefreshReason(reason))) {
-          ensureWorkNotesPanel({
-            hostDocument,
-            state,
-            context: state.context || nextContext,
-            settings: getEffectiveSettings(),
-            handlers
-          });
-        } else if (!state.ui.workNotesOpen) {
-          removeWorkNotesPanel(hostDocument);
-        }
+        removeWorkNotesPanel(hostDocument);
         const userTicketsMissing = !hostDocument.getElementById(UI_IDS.userTickets);
         if (state.ui.userTicketsOpen && (userTicketsMissing || contextDidChange || isUserTicketsRefreshReason(reason))) {
           ensureUserTicketsPanel({
