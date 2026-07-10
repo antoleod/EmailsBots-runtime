@@ -5853,7 +5853,6 @@
         selectedTemplates: {
           email: "",
           reminder: "",
-          close_ticket: "",
           close_note: "",
           work_note: "",
           appointment: ""
@@ -5861,7 +5860,6 @@
         templateSearch: {
           email: "",
           reminder: "",
-          close_ticket: "",
           close_note: "",
           work_note: "",
           appointment: ""
@@ -5869,7 +5867,6 @@
         templateSubcategory: {
           email: "all",
           reminder: "all",
-          close_ticket: "all",
           close_note: "all",
           work_note: "all",
           appointment: "all"
@@ -5886,6 +5883,7 @@
         workNotesRecentPhrasesReset: false,
         findCiPdfSourceSysId: "",
         favoriteTemplates: null,
+        onboardingStep: 0,
         headerCounts: {
           inc: 0,
           task: 0,
@@ -5969,8 +5967,10 @@
     favoriteTemplates: `${STORAGE_PREFIX}favorite_templates_v1`,
     // Per Module 2 spec — kept on its own key (not inside settings) so it can be
     // shared with other browser-injected scripts that look for the same key.
-    userGroup: "snlc_user_group"
+    userGroup: "snlc_user_group",
+    onboarding: `${STORAGE_PREFIX}onboarding_v1`
   };
+  var LEGACY_STORAGE_KEYS = ["sn_assistant_settings_v2"];
   var HIDEABLE_BUTTON_IDS = Object.freeze([
     "quick-draft",
     "open-work-notes",
@@ -6005,7 +6005,6 @@
     templateOverrides: {
       email: {},
       reminder: {},
-      close_ticket: {},
       close_note: {},
       work_note: {},
       appointment: {}
@@ -6079,6 +6078,18 @@
   function getPersistentStorage(rootWindow) {
     return getLocalStorage(rootWindow) || getSessionStorage(rootWindow);
   }
+  function getLegacySettings(rootWindow) {
+    const storages = [getLocalStorage(rootWindow), getSessionStorage(rootWindow)].filter(Boolean);
+    for (const storage of storages) {
+      for (const key of LEGACY_STORAGE_KEYS) {
+        const rawValue = storage.getItem(key);
+        if (rawValue) {
+          return rawValue;
+        }
+      }
+    }
+    return "";
+  }
   function sanitizeTemplateOverrideEntry(value) {
     const entry = value && typeof value === "object" ? value : {};
     return {
@@ -6090,11 +6101,11 @@
     };
   }
   function sanitizeTemplateOverrides(rawValue) {
-    const categories = ["email", "reminder", "close_ticket", "close_note", "work_note", "appointment"];
+    const categories = ["email", "reminder", "close_note", "work_note", "appointment"];
     const output = {};
     categories.forEach((category) => {
       output[category] = {};
-      const rawCategory = rawValue && typeof rawValue === "object" ? rawValue[category] : null;
+      const rawCategory = rawValue && typeof rawValue === "object" ? category === "close_note" ? rawValue[category] || rawValue.resolution : category === "work_note" ? rawValue[category] || rawValue.internal : rawValue[category] : null;
       if (!rawCategory || typeof rawCategory !== "object") return;
       Object.entries(rawCategory).forEach(([templateId, override]) => {
         output[category][templateId] = sanitizeTemplateOverrideEntry(override);
@@ -6105,7 +6116,7 @@
   function sanitizeCustomTemplateEntry(value) {
     const entry = value && typeof value === "object" ? value : {};
     const rawCategory = cleanText(entry.category);
-    const category = ["email", "reminder", "close_ticket", "close_note", "work_note", "appointment"].includes(rawCategory) ? rawCategory : "email";
+    const category = ["email", "reminder", "close_note", "work_note", "appointment"].includes(rawCategory) ? rawCategory : rawCategory === "resolution" ? "close_note" : rawCategory === "internal" ? "work_note" : "email";
     const id = cleanText(entry.id);
     return {
       id,
@@ -6253,7 +6264,7 @@
       logger?.warn("browser storage unavailable, using defaults");
       return getDefaultSettings();
     }
-    const rawValue = storage.getItem(STORAGE_KEYS.settings);
+    const rawValue = storage.getItem(STORAGE_KEYS.settings) || getLegacySettings(rootWindow);
     const parsed = parseJson(rawValue, getDefaultSettings());
     return sanitizeSettings(parsed);
   }
@@ -6551,6 +6562,26 @@
     }
     return normalised;
   }
+  var _onboardingSeenInMemory = false;
+  function hasSeenOnboarding(rootWindow) {
+    if (_onboardingSeenInMemory) return true;
+    const storage = getPersistentStorage(rootWindow);
+    if (!storage) return false;
+    try {
+      return storage.getItem(STORAGE_KEYS.onboarding) === "1";
+    } catch {
+      return false;
+    }
+  }
+  function markOnboardingSeen(rootWindow) {
+    _onboardingSeenInMemory = true;
+    const storage = getPersistentStorage(rootWindow);
+    if (!storage) return;
+    try {
+      storage.setItem(STORAGE_KEYS.onboarding, "1");
+    } catch {
+    }
+  }
 
   // Assistant/application/launcher/buttons.js
   var LAUNCHER_BUTTON_IDS = Object.freeze({
@@ -6758,6 +6789,7 @@
 
   // Assistant/application/persistence/panelPinState.js
   var PIN_STATE_KEY = "sn-assistant-pin-state";
+  var LEGACY_PIN_KEY = "sn_ep_pinned";
   function loadPinState(rootWindow) {
     const fallback = { pinned: false, lastOpenState: false };
     try {
@@ -6773,6 +6805,10 @@
         };
         if (mode) state.mode = mode;
         return state;
+      }
+      const legacy = storage.getItem(LEGACY_PIN_KEY);
+      if (legacy === "true") {
+        return { pinned: true, lastOpenState: false };
       }
     } catch {
     }
@@ -6792,6 +6828,7 @@
         PIN_STATE_KEY,
         JSON.stringify(payload)
       );
+      storage.removeItem(LEGACY_PIN_KEY);
     } catch {
     }
   }
@@ -6808,176 +6845,9 @@
     findCi: "sn-assistant-find-ci",
     settingsImportInput: "sn-assistant-settings-import",
     toastViewport: "sn-assistant-toasts",
-    pdfSelector: "sn-assistant-pdf-selector"
+    pdfSelector: "sn-assistant-pdf-selector",
+    onboarding: "sn-assistant-onboarding"
   };
-
-  // Assistant/ui/layout.js
-  var SAFE_MARGIN = 10;
-  var GAP = 12;
-  function getViewportRect(ownerWindow) {
-    const width = Math.max(0, ownerWindow?.innerWidth || 0);
-    const height = Math.max(0, ownerWindow?.innerHeight || 0);
-    return {
-      left: SAFE_MARGIN,
-      top: SAFE_MARGIN,
-      right: Math.max(SAFE_MARGIN, width - SAFE_MARGIN),
-      bottom: Math.max(SAFE_MARGIN, height - SAFE_MARGIN),
-      width: Math.max(0, width - SAFE_MARGIN * 2),
-      height: Math.max(0, height - SAFE_MARGIN * 2)
-    };
-  }
-  function intersects(a, b) {
-    return !(a.right <= b.left || a.left >= b.right || a.bottom <= b.top || a.top >= b.bottom);
-  }
-  function normalizeRect(rect = {}) {
-    return {
-      left: Number(rect.left || 0),
-      top: Number(rect.top || 0),
-      right: Number(rect.right || rect.left || 0),
-      bottom: Number(rect.bottom || rect.top || 0),
-      width: Number(rect.width || Math.max(0, (rect.right || 0) - (rect.left || 0))),
-      height: Number(rect.height || Math.max(0, (rect.bottom || 0) - (rect.top || 0)))
-    };
-  }
-  function clampRectToViewport(rect, viewport) {
-    const width = Math.min(rect.width, viewport.width);
-    const height = Math.min(rect.height, viewport.height);
-    const left = clamp(rect.left, viewport.left, Math.max(viewport.left, viewport.right - width));
-    const top = clamp(rect.top, viewport.top, Math.max(viewport.top, viewport.bottom - height));
-    return {
-      left,
-      top,
-      width,
-      height,
-      right: left + width,
-      bottom: top + height
-    };
-  }
-  function sanitizeFloatingSurface(node, { safeMargin = SAFE_MARGIN, avoidRects = [] } = {}) {
-    if (!node) return null;
-    const ownerWindow = node.ownerDocument?.defaultView || window;
-    const viewport = getViewportRect(ownerWindow);
-    const rect = normalizeRect(node.getBoundingClientRect());
-    if (!rect.width || !rect.height) return rect;
-    const clamped = clampRectToViewport(rect, viewport);
-    node.style.left = `${clamped.left}px`;
-    node.style.top = `${clamped.top}px`;
-    node.style.right = "auto";
-    node.style.bottom = "auto";
-    return resolveCollision(node, { viewport, avoidRects, safeMargin });
-  }
-  function forceVisibleSurface(node) {
-    if (!node) return;
-    node.style.display = "block";
-    node.style.visibility = "visible";
-    node.style.opacity = "1";
-  }
-  function resolveCollision(node, { viewport, avoidRects = [], safeMargin = SAFE_MARGIN } = {}) {
-    if (!node) return null;
-    const ownerWindow = node.ownerDocument?.defaultView || window;
-    const vp = viewport || getViewportRect(ownerWindow);
-    const current = normalizeRect(node.getBoundingClientRect());
-    if (!current.width || !current.height) return current;
-    const overlaps = [...avoidRects].map(normalizeRect).filter((rect) => rect.width && rect.height);
-    if (!overlaps.some((rect) => intersects(current, rect))) {
-      return current;
-    }
-    const candidates = [];
-    const width = Math.min(current.width, vp.width);
-    const height = Math.min(current.height, vp.height);
-    const anchor = overlaps[0] || current;
-    candidates.push({ left: anchor.left - width - GAP, top: anchor.top });
-    candidates.push({ left: anchor.right + GAP, top: anchor.top });
-    candidates.push({ left: anchor.left, top: anchor.bottom + GAP });
-    candidates.push({ left: anchor.left, top: anchor.top - height - GAP });
-    for (const candidate of candidates) {
-      const next = clampRectToViewport({ ...candidate, width, height }, vp);
-      if (!overlaps.some((rect) => intersects(next, rect))) {
-        node.style.left = `${next.left}px`;
-        node.style.top = `${next.top}px`;
-        node.style.right = "auto";
-        node.style.bottom = "auto";
-        return next;
-      }
-    }
-    const stacked = clampRectToViewport({
-      left: vp.left,
-      top: Math.max(vp.top, anchor.bottom + GAP),
-      width,
-      height
-    }, vp);
-    node.style.left = `${stacked.left}px`;
-    node.style.top = `${stacked.top}px`;
-    node.style.right = "auto";
-    node.style.bottom = "auto";
-    return stacked;
-  }
-  function positionSecondarySurface(node, anchorNode, options = {}) {
-    if (!node || !anchorNode) return null;
-    const ownerWindow = node.ownerDocument?.defaultView || window;
-    const viewport = getViewportRect(ownerWindow);
-    const anchor = normalizeRect(anchorNode.getBoundingClientRect());
-    const current = normalizeRect(node.getBoundingClientRect());
-    const width = Math.min(current.width || node.offsetWidth || 0, viewport.width);
-    const height = Math.min(current.height || node.offsetHeight || 0, viewport.height);
-    if (!width || !height) return current;
-    const spaceLeft = anchor.left - viewport.left - GAP;
-    const spaceRight = viewport.right - anchor.right - GAP;
-    const spaceBelow = viewport.bottom - anchor.bottom - GAP;
-    const spaceAbove = anchor.top - viewport.top - GAP;
-    const candidates = [];
-    if (spaceLeft >= width) candidates.push({ left: anchor.left - width - GAP, top: anchor.top });
-    if (spaceRight >= width) candidates.push({ left: anchor.right + GAP, top: anchor.top });
-    if (spaceBelow >= height) candidates.push({ left: anchor.left, top: anchor.bottom + GAP });
-    if (spaceAbove >= height) candidates.push({ left: anchor.left, top: anchor.top - height - GAP });
-    candidates.push({ left: viewport.left, top: viewport.top });
-    const avoidRects = [anchor, ...options.avoidRects || []];
-    for (const candidate of candidates) {
-      const next = clampRectToViewport({ ...candidate, width, height }, viewport);
-      if (!avoidRects.some((rect) => intersects(next, normalizeRect(rect)))) {
-        node.style.left = `${next.left}px`;
-        node.style.top = `${next.top}px`;
-        node.style.right = "auto";
-        node.style.bottom = "auto";
-        return next;
-      }
-    }
-    const fallback = clampRectToViewport({ left: viewport.left, top: viewport.top, width, height }, viewport);
-    node.style.left = `${fallback.left}px`;
-    node.style.top = `${fallback.top}px`;
-    node.style.right = "auto";
-    node.style.bottom = "auto";
-    return fallback;
-  }
-  function repositionSecondarySurfaces(hostDocument, anchorNode, options = {}) {
-    if (!hostDocument || !anchorNode) return;
-    const nodes = Array.from(hostDocument.querySelectorAll([
-      "#sn-assistant-work-notes .sn-assistant-panel",
-      "#sn-assistant-user-info .sn-assistant-panel",
-      "#sn-assistant-user-tickets .sn-assistant-panel",
-      "#sn-assistant-find-ci .sn-assistant-panel",
-      "#sn-ep-links-panel .sn-ep-links__panel"
-    ].join(", ")));
-    const anchorRect = normalizeRect(anchorNode.getBoundingClientRect());
-    const viewport = getViewportRect(anchorNode.ownerDocument?.defaultView || window);
-    const usedRects = [anchorRect];
-    nodes.forEach((node) => {
-      const positioned = positionSecondarySurface(node, anchorNode, {
-        avoidRects: usedRects,
-        ...options
-      });
-      if (positioned) usedRects.push(positioned);
-    });
-    const dialogs = Array.from(hostDocument.querySelectorAll("#sn-assistant-settings .sn-assistant-modal__dialog, #sn-assistant-pdf-selector .sn-assistant-modal__dialog"));
-    dialogs.forEach((dialog) => {
-      const rect = normalizeRect(dialog.getBoundingClientRect());
-      const clamped = clampRectToViewport(rect, viewport);
-      dialog.style.maxWidth = `calc(100vw - ${SAFE_MARGIN * 2}px)`;
-      dialog.style.maxHeight = `calc(100dvh - ${SAFE_MARGIN * 2}px)`;
-      dialog.style.left = `${clamped.left}px`;
-      dialog.style.top = `${clamped.top}px`;
-    });
-  }
 
   // Assistant/core/state/selectors.js
   function getHeaderCounts(state) {
@@ -6985,7 +6855,7 @@
   }
 
   // Assistant/version.js
-  var VERSION = "V3.0";
+  var VERSION = "V2.7";
 
   // Assistant/ui/launcher.js
   var ICON = {
@@ -7040,7 +6910,7 @@
       [LAUNCHER_BUTTON_IDS.openSettings]: "sn-ep__action--settings",
       [LAUNCHER_BUTTON_IDS.openEpLinks]: "sn-ep__action--links",
       [LAUNCHER_BUTTON_IDS.userOpenTickets]: "sn-ep__action--user-tickets",
-      [LAUNCHER_BUTTON_IDS.userInfo]: "sn-ep__action--user-tickets",
+      [LAUNCHER_BUTTON_IDS.userInfo]: "sn-ep__action--user-info",
       [LAUNCHER_BUTTON_IDS.findCi]: "sn-ep__action--find-ci",
       [LAUNCHER_BUTTON_IDS.generateEmailDraft]: "sn-ep__action--draft",
       [LAUNCHER_BUTTON_IDS.generateCloseNotes]: "sn-ep__action--resolution",
@@ -7174,7 +7044,6 @@
           shell.style.left = "";
           shell.style.right = "";
           shell.classList.toggle("sn-ep--left", newEdge === "left");
-          repositionSecondarySurfaces(root.ownerDocument, shell);
         }
       }
       drag = null;
@@ -7232,7 +7101,7 @@
     </button>
   `;
   }
-  function renderLauncherActions(rootWindow, context, draftLabel, calendarReady, hiddenButtons = [], buttonColors = {}, editMode = false) {
+  function renderLauncherActions(rootWindow, context, draftLabel, calendarReady, hiddenButtons = [], buttonColors = {}, editMode = false, topWorkNoteTemplates = []) {
     const order = loadAssistantButtonOrder(rootWindow);
     const hidden = Array.isArray(hiddenButtons) ? hiddenButtons : [];
     const colors = buttonColors && typeof buttonColors === "object" ? buttonColors : {};
@@ -7258,8 +7127,16 @@
         if (buttonId === LAUNCHER_BUTTON_IDS.generateEmailDraft || buttonId === LAUNCHER_BUTTON_IDS.generateCloseNotes || buttonId === LAUNCHER_BUTTON_IDS.generateWorkNotes || buttonId === LAUNCHER_BUTTON_IDS.generateAllNotes) return "";
         if (buttonId === LAUNCHER_BUTTON_IDS.openWorkNotes) {
           const workNotesBtn = renderLauncherButton(buttonId, { draftLabel, calendarReady, context, buttonColor: colors[buttonId] || "", editMode });
-          const boltBtn = `<button type="button" class="sn-ep__action sn-ep__action--mini-bolt sn-ep__action--work-notes" data-action="generate-menu-toggle" title="Generate notes" aria-haspopup="menu" aria-expanded="false"><span class="sn-ep__icon">${ICON.draft}</span></button>`;
-          const menuItems = [
+          const boltBtn = `<button type="button" class="sn-ep__action sn-ep__action--mini-bolt sn-ep__action--work-notes" data-action="generate-menu-toggle" title="Quick write / generate" aria-haspopup="menu" aria-expanded="false"><span class="sn-ep__icon">${ICON.draft}</span></button>`;
+          const quickWriteItems = Array.isArray(topWorkNoteTemplates) && topWorkNoteTemplates.length ? [
+            `<div class="sn-ep__generate-section-label">Quick write</div>`,
+            ...topWorkNoteTemplates.map(
+              (t) => `<button type="button" class="sn-ep__generate-item sn-ep__generate-item--template" data-action="quick-write-work-note" data-template-id="${escapeHtml(t.id)}" title="${escapeHtml(t.label)}"><span class="sn-ep__icon">${ICON.notes}</span><span>${escapeHtml(t.label)}</span></button>`
+            ),
+            `<div class="sn-ep__generate-divider"></div>`,
+            `<div class="sn-ep__generate-section-label">AI generate</div>`
+          ].join("") : "";
+          const generateItems = [
             { action: LAUNCHER_BUTTON_IDS.generateEmailDraft, icon: ICON.draft, label: "Generate Email Draft" },
             { action: LAUNCHER_BUTTON_IDS.generateCloseNotes, icon: ICON.notes, label: "Generate Close Notes" },
             { action: LAUNCHER_BUTTON_IDS.generateWorkNotes, icon: ICON.notes, label: "Generate Work Notes" },
@@ -7267,7 +7144,7 @@
           ].map(
             (item) => `<button type="button" class="sn-ep__generate-item" data-action="${escapeHtml(item.action)}" title="${escapeHtml(item.label)}"><span class="sn-ep__icon">${item.icon}</span><span>${escapeHtml(item.label)}</span></button>`
           ).join("");
-          return `<div class="sn-ep__action-row">${workNotesBtn}${boltBtn}</div><div class="sn-ep__generate-menu" data-generate-menu>${menuItems}</div>`;
+          return `<div class="sn-ep__action-row">${workNotesBtn}${boltBtn}</div><div class="sn-ep__generate-menu" data-generate-menu>${quickWriteItems}${generateItems}</div>`;
         }
         if (buttonId === LAUNCHER_BUTTON_IDS.quickDraft) {
           const draftBtn = renderLauncherButton(buttonId, {
@@ -7379,11 +7256,11 @@
           state.ui.edgePanelPinned = false;
           if (shell) {
             shell.removeAttribute("data-ep-pinned");
-            savePinState(ownerWindow, { pinned: false, lastOpenState: true, mode: "icons" });
+            savePinState(ownerWindow, { pinned: false, lastOpenState: false, mode: "tab" });
           }
         }
-        state.ui.edgePanelMode = "icons";
-        if (shell) shell.dataset.epMode = "icons";
+        state.ui.edgePanelMode = "tab";
+        if (shell) shell.dataset.epMode = "tab";
         return;
       }
       if (action === "ep-pin") {
@@ -7410,7 +7287,7 @@
         savePinState(ownerWindow, {
           pinned: state.ui.edgePanelPinned,
           lastOpenState: state.ui.edgePanelMode !== "tab",
-          mode: state.ui.edgePanelMode || "tab"
+          mode: state.ui.edgePanelMode === "tab" ? "icons" : state.ui.edgePanelMode || "icons"
         });
         handlers.onToggleEdgePanelPinned?.(state.ui.edgePanelPinned);
         return;
@@ -7430,13 +7307,7 @@
       }
       if (action === LAUNCHER_BUTTON_IDS.quickDraft) handlers.onQuickDraft();
       if (action === LAUNCHER_BUTTON_IDS.quickDraftTop3) handlers.onQuickDraftTop3?.();
-      if (action === LAUNCHER_BUTTON_IDS.openWorkNotes) {
-        try {
-          handlers.onOpenWorkNotes?.();
-        } catch (err) {
-          console.error("[Launcher] Error in onOpenWorkNotes:", err);
-        }
-      }
+      if (action === LAUNCHER_BUTTON_IDS.openWorkNotes) handlers.onOpenWorkNotes();
       if (action === LAUNCHER_BUTTON_IDS.openReminder) handlers.onOpenReminder();
       if (action === LAUNCHER_BUTTON_IDS.incidentResolutionNotes) handlers.onIncidentResolutionNotes?.();
       if (action === LAUNCHER_BUTTON_IDS.createCalendarEvent) handlers.onCreateCalendarEvent();
@@ -7457,7 +7328,7 @@
       if (action === LAUNCHER_BUTTON_IDS.generateCloseNotes) handlers.onGenerateCloseNotes?.();
       if (action === LAUNCHER_BUTTON_IDS.generateWorkNotes) handlers.onGenerateWorkNotes?.();
       if (action === LAUNCHER_BUTTON_IDS.generateAllNotes) handlers.onGenerateAllNotes?.();
-      if (action === "copy-ticket-summary") handlers.onCopyTicketSummary?.();
+      if (action === "quick-write-work-note") handlers.onQuickWriteWorkNote?.(button.dataset.templateId || "");
       if (action === "open-my-assigned-list") openMyAssignedList(button.dataset.filter || "incident");
     });
     root.addEventListener("keydown", (event) => {
@@ -7541,7 +7412,7 @@
       handlers.onSetButtonColor?.(buttonId, color);
     });
   }
-  function ensureLauncher({ hostDocument, state, context, handlers }) {
+  function ensureLauncher({ hostDocument, state, context, handlers, topWorkNoteTemplates = [] }) {
     let root = hostDocument.getElementById(UI_IDS.launcher);
     if (!root) {
       root = hostDocument.createElement("div");
@@ -7609,11 +7480,11 @@
         </div>
 
         <div class="sn-ep__actions">
-          ${renderLauncherActions(ownerWin, context, draftLabel, calendarReady, hiddenButtons, buttonColors, editMode)}
+          ${renderLauncherActions(ownerWin, context, draftLabel, calendarReady, hiddenButtons, buttonColors, editMode, topWorkNoteTemplates)}
         </div>
 
         <div class="sn-ep__footer">
-          <span class="sn-ep__version">${escapeHtml(VERSION)}</span>
+          <span class="sn-ep__version">${escapeHtml(`v${VERSION}`)}</span>
           <div class="sn-ep__footer-actions">
             <button type="button" class="sn-ep__icon-btn" data-action="open-settings" title="Settings">${ICON.settings}</button>
             <button type="button" class="sn-ep__icon-btn${iconsOnly ? " is-active" : ""}" data-action="ep-icons" aria-pressed="${iconsOnly ? "true" : "false"}" title="${iconsOnly ? "Show full labels" : "Show icons only"}">${ICON.iconsOnly}</button>
@@ -7627,7 +7498,6 @@
     bindLauncher(root, state, handlers);
     applyEdgePanelPosition(root, state);
     makePanelDraggable(root, state);
-    repositionSecondarySurfaces(hostDocument, root.querySelector(".sn-ep"));
     return root;
   }
   function removeLauncher(hostDocument) {
@@ -7644,16 +7514,12 @@
   function resolveDefaultPosition(node, defaultPosition) {
     return typeof defaultPosition === "function" ? defaultPosition(node) : defaultPosition;
   }
-  function makeDraggable({ node, handleSelector, state, positionKey, defaultPosition, onPositionChange }) {
+  function makeDraggable({ node, handleSelector, state, positionKey, defaultPosition }) {
     if (!node) return;
     const ownerWindow = node.ownerDocument.defaultView || window;
     const storedPosition = state.ui[positionKey];
     const fallbackPosition = resolveDefaultPosition(node, defaultPosition);
     applyPosition(node, storedPosition || fallbackPosition);
-    const sanitized = sanitizeFloatingSurface(node);
-    if (sanitized) {
-      state.ui[positionKey] = { left: sanitized.left, top: sanitized.top };
-    }
     if (node.dataset.snAssistantDragBound === "true") return;
     node.dataset.snAssistantDragBound = "true";
     let dragState = null;
@@ -7678,14 +7544,10 @@
       );
       state.ui[positionKey] = { left: nextLeft, top: nextTop };
       applyPosition(node, state.ui[positionKey]);
-      const sanitized2 = sanitizeFloatingSurface(node);
-      if (sanitized2) state.ui[positionKey] = { left: sanitized2.left, top: sanitized2.top };
-      onPositionChange?.();
     };
     const onPointerUp = () => {
       if (dragState?.moved) {
         suppressClickUntil = Date.now() + 120;
-        onPositionChange?.();
       }
       dragState = null;
       ownerWindow.removeEventListener("pointermove", onPointerMove);
@@ -7746,7 +7608,7 @@
     const bodyText = renderedTemplate.body || "";
     const subjectText = renderedTemplate.subject || "";
     const hasWarnings = hasUnfilledPlaceholders(bodyText) || hasUnfilledPlaceholders(subjectText);
-    const metaBlocks = ["email", "close_ticket"].includes(renderedTemplate.category) ? `
+    const metaBlocks = renderedTemplate.category === "email" ? `
           <div class="sn-assistant-preview__meta">
             ${renderMeta("Recipient", renderedTemplate.recipient || "Not detected")}
             ${renderMeta("Subject", renderedTemplate.subject)}
@@ -7776,11 +7638,11 @@
       (category) => `
         <button
           type="button"
-          class="sn-assistant-tab ${category.id === activeCategory ? "is-active" : ""} ${category.badge === "green" ? "sn-assistant-tab--close-ticket" : ""}"
+          class="sn-assistant-tab ${category.id === activeCategory ? "is-active" : ""}"
           data-action="select-category"
           data-category="${escapeHtml(category.id)}"
         >
-          ${escapeHtml(category.label)}${category.badge === "green" ? '<span class="sn-assistant-category-badge">Close</span>' : ""}
+          ${escapeHtml(category.label)}
         </button>
       `
     ).join("");
@@ -7791,17 +7653,6 @@
         </option>
       `
     ).join("");
-    const selectedTemplate = templates.find((template) => template.id === selectedTemplateId) || null;
-    const recommendation = selectedTemplate?.recommendedUsage || selectedTemplate?.preview || "";
-    const tags = Array.isArray(selectedTemplate?.tags) ? selectedTemplate.tags : [];
-    const templateMeta = activeCategory === "close_ticket" && selectedTemplate ? `<div class="sn-assistant-template-guidance">
-         <div class="sn-assistant-template-guidance__top">
-           <span class="sn-assistant-best-match">Best Match</span>
-           <span class="sn-assistant-confidence">${escapeHtml(String(selectedTemplate.confidenceScore || 0))}% confidence</span>
-         </div>
-         <div>${escapeHtml(recommendation)}</div>
-         ${tags.length ? `<div class="sn-assistant-template-tags">${tags.map((tag) => `<span>${escapeHtml(tag)}</span>`).join("")}</div>` : ""}
-       </div>` : "";
     return `
     <div class="sn-assistant-tabs">${tabs}</div>
     <div class="sn-assistant-field">
@@ -7810,7 +7661,6 @@
         ${options}
       </select>
     </div>
-    ${templateMeta}
   `;
   }
 
@@ -7823,7 +7673,7 @@
     { type: "appointment", keywords: ["appointment", "visit", "schedule", "rendez-vous", "rdv", "intervention planned"] },
     { type: "request_delivery", keywords: ["delivery", "deliver", "handover", "prepare", "ready for delivery", "livraison"] },
     { type: "software_request", keywords: ["software", "application", "install", "installation", "license", "adobe", "sap", "teams", "outlook", "sharepoint", "web2print"] },
-    { type: "connectivity_issue", keywords: ["vpn", "wifi", "network", "connection", "connectivity", "drops", "sync", "cannot connect", "no connection"] },
+    { type: "connectivity_issue", keywords: ["vpn", "wifi", "network", "connection", "connectivity", "drops", "sync", "cannot connect", "no connection", "wired", "ethernet", "disconnect", "disconnects"] },
     { type: "hardware_issue", keywords: ["screen", "monitor", "keyboard", "webcam", "printer", "battery", "sim", "mouse", "dock", "audio", "laptop", "desktop", "tablet", "iphone", "ipad"] },
     { type: "account_access", keywords: ["access", "login", "password", "reset", "unlock", "permission", "shared mailbox", "mailbox", "sharepoint", "eu login", "authentication"] },
     { type: "incident_resolution_check", keywords: ["resolved", "resolution", "close", "closure", "closed", "completed", "follow up"] },
@@ -7876,7 +7726,7 @@
     workspace_quality_check: "close_note_confirmation_received",
     asset_recovery: "close_note_it_material_recovered",
     incident_resolution_check: "incident_closed_after_user_confirmation",
-    connectivity_issue: "incident_closed_after_user_confirmation",
+    connectivity_issue: "closenote_connectivity_resolved",
     hardware_issue: "incident_closed_after_user_confirmation",
     incident_active: "incident_resolution_smart",
     generic: "close_note_confirmation_received",
@@ -8164,7 +8014,8 @@
     if (hasAny(text2, ["deliver", "delivery", "livraison", "remise", "handover", "ready for delivery", "preparation", "prepare", "loan", "replacement"]) && hasAny(text2, ["laptop", "desktop", "smartphone", "phone", "mobile", "tablet", "ipad", "iphone", "device", "item", "hybrid"])) return "request_delivery";
     if (hasAny(text2, ["certificate"])) return "request_user_action";
     if (hasAny(text2, ["password", "reset", "unlock", "shared mailbox", "mailbox", "sharepoint", "eu login", "login", "authentication"]) || hasAny(text2, ["access"]) && !hasAny(text2, ["install", "installation", "software", "application", "update", "web2print", "adobe", "teams", "outlook", "calendar"])) return "account_access";
-    if (hasAny(text2, ["vpn", "wifi", "wi-fi", "network", "connection", "connectivity", "sync", "drops", "drop", "no connection", "cannot connect"])) return "connectivity_issue";
+    if (hasAny(text2, ["vpn", "wifi", "wi-fi", "network", "connection", "connectivity", "sync", "drops", "drop", "no connection", "cannot connect", "wired", "ethernet", "disconnect", "disconnects"])) return "connectivity_issue";
+    if (hasAny(text2, ["outlook", "calendar", "teams"]) && hasAny(text2, ["freeze", "frozen", "crash", "not responding", "scheduling assistant", "profile"])) return "incident_active";
     if (hasAny(text2, ["screen", "keyboard", "monitor", "webcam", "printer", "battery", "sim", "dock", "docking", "audio", "speaker"]) && hasAny(text2, ["broken", "not working", "not detected", "stuck", "flickering", "missing", "response"])) return "hardware_issue";
     if (hasAny(text2, ["install", "installation", "software", "application", "license", "licence", "update", "adobe", "web2print"]) || hasAny(text2, ["outlook", "calendar", "teams", "email", "sharepoint"]) && hasAny(text2, ["request", "access", "update", "support"])) return "software_request";
     if (hasAny(text2, ["signature"]) && hasAny(text2, ["email", "outlook", "mail"])) return "incident_active";
@@ -8387,6 +8238,12 @@
     if (/\bgpupdate\b|\bgroup policy\b|\bgpo\b/.test(rawText)) {
       templateId = "worknote_gpupdate_executed";
     }
+    if (/\boutlook\b.*\bprofile\b|\bprofile\b.*\boutlook\b|\bscheduling.?assistant\b|\bfreeze\b.*\boutlook\b|\boutlook\b.*\bfreeze\b|\boutlook\b.*\bcrash\b/.test(rawText)) {
+      templateId = "worknote_outlook_profile_recreated";
+    }
+    if (/\bwired\b|\bethernet\b|\bdisconnect/.test(rawText) && context.intent === "connectivity_issue") {
+      templateId = "incident_resolution_ipconfig_vpn";
+    }
     const template = findTemplateById(templates, templateId) || templates[0] || null;
     return { context, template, templateId: template?.id || "", intent: context.intent, ticketType: context.ticketType };
   }
@@ -8413,58 +8270,19 @@
     }
     const smartGroup = detectSmartGroup(ticket, metadata);
     const closeGroupTemplateMap = {
-      outlook: "closenote_outlook_signature_completed",
       delivery: "closenote_delivered_to_user",
       return: "closenote_equipment_returned",
       mdm: "closenote_mdm_completed",
       no_answer: "closenote_closed_no_response"
     };
-    if (smartGroup !== "generic" && closeGroupTemplateMap[smartGroup]) {
+    if (smartGroup === "outlook") {
+      const outlookText = normalizeText([context.shortDescription, context.description].filter(Boolean).join(" "));
+      templateId = /freeze|frozen|crash|profile|scheduling|not.?respond/.test(outlookText) ? "closenote_outlook_client_resolved" : "closenote_outlook_signature_completed";
+    } else if (smartGroup !== "generic" && closeGroupTemplateMap[smartGroup]) {
       templateId = closeGroupTemplateMap[smartGroup];
     }
     const template = findTemplateById(templates, templateId) || templates[0] || null;
     return { context, template, templateId: template?.id || "", intent: context.intent, ticketType: context.ticketType };
-  }
-  function selectCloseTicketTemplate(templates = [], ticket = {}, metadata = {}) {
-    const context = detectContext(ticket, metadata);
-    const stateText = normalizeText([
-      ticket.state,
-      ticket.stateDisplay,
-      ticket.state_display,
-      metadata.state
-    ].filter(Boolean).join(" "));
-    const notesText = normalizeText([
-      ticket.latestWorkNote,
-      ticket.latest_work_note,
-      ticket.workNotes,
-      ticket.work_notes,
-      metadata.latestWorkNote,
-      metadata.workNotes
-    ].filter(Boolean).join(" "));
-    const lifecycleText = `${stateText} ${notesText}`.trim();
-    const completionSignal = /\b(resolved|pending closure|closed|closed complete|completed|complete|solution applied|fixed|fulfilled|delivered|ready to close|no response|no reply|unreachable)\b/.test(lifecycleText);
-    const ranked = templates.map((template2, index) => {
-      const signalScore = scoreKeywords(lifecycleText, template2.signals || template2.tags || []);
-      const confidence = Number(template2.confidenceScore || 0);
-      return { template: template2, index, score: signalScore * 100 + confidence };
-    }).sort((left, right) => right.score - left.score || left.index - right.index);
-    let template = ranked[0]?.template || templates[0] || null;
-    if (/\bclosed(?: complete)?\b/.test(stateText)) {
-      template = findTemplateById(templates, "close_ticket_closed") || template;
-    } else if (/\b(no response|no reply|unreachable|awaiting user)\b/.test(lifecycleText)) {
-      template = findTemplateById(templates, "close_ticket_no_response") || template;
-    } else if (/\b(pending closure|completed|complete|fulfilled|delivered|ready to close)\b/.test(lifecycleText)) {
-      template = findTemplateById(templates, "close_ticket_ready_to_close") || template;
-    } else if (/\b(resolved|solution applied|fixed|working now)\b/.test(lifecycleText)) {
-      template = findTemplateById(templates, "close_ticket_resolution_confirmed") || template;
-    }
-    return {
-      context,
-      template,
-      templateId: template?.id || "",
-      confidence: Number(template?.confidenceScore || 0),
-      recommended: completionSignal
-    };
   }
   function cleanIssueTitle(shortDescription = "", description = "") {
     const raw = cleanText(shortDescription || description).replace(/^\s*(?:fw|re|fwd)\s*:\s*/i, "").replace(/\b(?:ritm|req|sctask|inc)\d{4,}\b/gi, " ").replace(/\b[a-z][a-z0-9._-]{2,}\b/gi, " ").replace(/[|]+/g, " ").replace(/--+/g, " ").replace(/\s{2,}/g, " ").trim();
@@ -9087,8 +8905,7 @@
       equipment_asset_tag: cleanText(context?.equipmentAssetTag || context?.equipment_asset_tag),
       equipment_summary: cleanText(context?.equipmentSummary || context?.equipment_summary),
       dynamic_resolution: dynamicResolution,
-      resolution_summary: dynamicResolution,
-      closure_period: cleanText(settings?.closeTicketClosurePeriod) || "3 business days"
+      resolution_summary: dynamicResolution
     };
   }
   function replacePlaceholders(value, placeholders) {
@@ -9143,20 +8960,20 @@
       context
     );
     subject = subject.replace(/^[\s-]+/, "").trim();
-    if (["email", "close_ticket", "reminder", "appointment"].includes(template.category)) {
+    if (template.category === "email" || template.category === "reminder" || template.category === "appointment") {
       subject = subject || buildSubject(subjectContext, template) || `${cleanText(subjectContext?.ticketNumber || subjectContext?.recordNumber || "your ticket")} - reported issue follow-up`;
     }
     const rawBody = finalizeTemplateText(cleanupRenderedText(replacePlaceholders(template.body, placeholders)), {
       paragraphSpacing: template.paragraphSpacing
     });
     const signature = cleanText(settings?.emailSignature);
-    const isOutbound = ["email", "close_ticket", "reminder", "appointment"].includes(String(template.category || "").trim());
+    const isOutbound = ["email", "reminder", "appointment"].includes(String(template.category || "").trim());
     let body = isOutbound && signature ? `${rawBody}
 
 --
 ${signature}` : rawBody;
     body = body.replace(/\bundefined\b/gi, "").replace(/\bnull\b/gi, "").replace(/on your \./gi, "on your request.").replace(/about the \./gi, "about the reported issue.").replace(/\s{2,}/g, " ").trim();
-    const clipboardText = ["email", "close_ticket"].includes(template.category) ? finalizeTemplateText(`Subject: ${subject}
+    const clipboardText = template.category === "email" ? finalizeTemplateText(`Subject: ${subject}
 
 ${body}`) : body;
     return {
@@ -9212,7 +9029,7 @@ ${body}`) : body;
   `;
   }
   function isDraftCapableTemplate(renderedTemplate) {
-    return ["email", "close_ticket", "appointment"].includes(String(renderedTemplate?.category || "").trim());
+    return ["email", "appointment"].includes(String(renderedTemplate?.category || "").trim());
   }
   function isResolutionTemplate(renderedTemplate) {
     return String(renderedTemplate?.category || "").trim() === "close_note";
@@ -9442,11 +9259,8 @@ ${body}`) : body;
       handleSelector: '[data-drag-handle="panel"]',
       state,
       positionKey: "panelPosition",
-      defaultPosition: getDefaultPanelPosition,
-      onPositionChange: () => repositionSecondarySurfaces(hostDocument, root)
+      defaultPosition: getDefaultPanelPosition
     });
-    sanitizeFloatingSurface(root);
-    repositionSecondarySurfaces(hostDocument, root);
     return root;
   }
   function removePanel(hostDocument) {
@@ -9454,23 +9268,876 @@ ${body}`) : body;
     if (root) root.remove();
   }
 
-  // Assistant/templates/generated/emailTemplateCatalog.json
-  var emailTemplateCatalog_default = [
+  // Assistant/templates/emailTemplates.js
+  var GREETING = "Dear {{user_name}}";
+  var SIGN_OFF = "Kind regards,\n{{agent_name}}";
+  var CLOSINGS = {
+    reply: "Thank you in advance for your reply. Should you need any assistance in the meantime, please do not hesitate to contact us.",
+    confirm: "Thank you in advance for your confirmation. Should you have any questions, please do not hesitate to contact us.",
+    review: "We will keep you informed as soon as there is an update on your request. Should you have any questions in the meantime, please do not hesitate to contact us.",
+    schedule: "Thank you in advance for your feedback so that we can schedule this at a time that suits you.",
+    info: "Should you require any further clarification, please do not hesitate to contact us."
+  };
+  function aboutTicket(topic) {
+    return `We are contacting you regarding ticket {{ticket_number}} concerning ${topic}.`;
+  }
+  function reminderAbout(topic) {
+    return `This is a friendly reminder regarding ticket {{ticket_number}} concerning ${topic}.`;
+  }
+  function buildEmail({ greeting = GREETING, context, action, closing = CLOSINGS.reply }) {
+    return [`${greeting},`, context, action, closing, SIGN_OFF].filter(Boolean).join("\n\n");
+  }
+  function buildDeliveryEmailBody({
+    greeting = GREETING,
+    context,
+    intro,
+    deviceLine = "Device: {{device_label}}",
+    configurationItemLine = "PI / Configuration item: {{configuration_item}}",
+    action,
+    closing = CLOSINGS.confirm
+  }) {
+    return [
+      `${greeting},`,
+      context,
+      `${intro}
+
+${deviceLine}
+${configurationItemLine}`,
+      action,
+      closing,
+      SIGN_OFF
+    ].filter(Boolean).join("\n\n");
+  }
+  function withReminder(template, reminder = {}) {
+    return {
+      ...template,
+      reminderSubject: reminder.subject || "",
+      reminderBody: reminder.body || "",
+      reminderWorkNote: reminder.workNote || ""
+    };
+  }
+  var EMAIL_TEMPLATES = [
     {
-      id: "ticket_hardware_issue_follow_up",
+      id: "accessory_request_headset",
       category: "email",
-      label: "Ticket - Hardware issue follow-up",
+      label: "Accessory Request - Headset",
       target: "comments",
-      subject: "{{ticket_number}} - Follow-up",
-      body: "Dear {{user_name}},\nI am following up regarding the issue you reported (Ticket {{ticket_number}}): {{short_description}}.\nCould you please confirm whether you are still experiencing the issue or if it has been resolved?\nIf the issue persists, we can arrange either a remote or on-site intervention to investigate further. Please let us know your preferred date and time, and we will be happy to schedule it accordingly.\nOnce we receive your reply, we will continue working on your request and take the appropriate next steps.\nThank you in advance for your feedback.\nKind regards,\n \n\n{{agent_name}}\nIT support External Consultant \n\nEuropean Parliament\nDirectorate-General for Information Technologies and Cybersecurity\nDirectorate for Customers and Digital Workplace\nMembers' Digital Experience Unit\nDigital Workplace Support\nBRU - Remard 02J006\nTel +32 228 43913\njuan.dioses@ext.europarl.europa.eu\nwww.europarl.europa.eu",
-      recipient: "{{user_email}}",
-      preview: "Dear {{user_name}}, I am following up regarding the issue you reported (Ticket {{ticket_number}}): {{short_description}}. Could you please confirm whether you are still experiencin",
-      tags: [
-        "hardware"
-      ],
-      source: "Assistant/templates/email/{Ticket} - Hardware issue follow-up.msg",
-      format: "msg",
-      contentHash: "cb28e26f45318900a5f85c03bddf9f1d72a4eef1c7517a1cc3e4ec671450d920"
+      subject: "{{ticket_number}} - Headset request follow-up",
+      body: buildEmail({
+        context: aboutTicket("your headset request"),
+        action: "Could you please confirm whether the headset is still required? Once confirmed, we will proceed with the delivery or handover without delay.",
+        closing: CLOSINGS.reply
+      })
+    },
+    {
+      id: "outlook_policy_font",
+      category: "email",
+      label: "Outlook Policy - Font",
+      target: "comments",
+      subject: "{{ticket_number}} - Outlook font policy",
+      body: buildEmail({
+        context: aboutTicket("your request to change the default Outlook font"),
+        action: "Please note that the default font is managed centrally through the standard Outlook configuration. Any manual change may therefore be reverted when Outlook is restarted or when the policy is refreshed, and a permanent local change cannot be guaranteed from our side.",
+        closing: CLOSINGS.info
+      })
+    },
+    {
+      id: "device_delivery_win11",
+      category: "email",
+      label: "Device Delivery WIN-11",
+      target: "comments",
+      subject: "{{ticket_number}} - WIN-11 laptop delivery",
+      body: buildEmail({
+        context: aboutTicket(
+          "the delivery of your new WIN-11 laptop, arranged as part of the migration process"
+        ),
+        action: "If applicable, please ensure your previous WIN-10 device is available so that it can be returned during the handover. Kindly let us know your availability so that we can proceed.",
+        closing: CLOSINGS.confirm
+      })
+    },
+    {
+      id: "generic_clarification",
+      category: "email",
+      label: "Generic Clarification",
+      target: "comments",
+      subject: "{{ticket_number}} - Additional information required",
+      body: buildEmail({
+        context: aboutTicket("your request"),
+        action: "To direct your request to the most suitable team, could you please provide some additional details, including the device or application concerned and the exact error message displayed, if any?",
+        closing: CLOSINGS.reply
+      })
+    },
+    withReminder(
+      {
+        id: "smartphone_delivery_initial",
+        category: "email",
+        label: "Smartphone Delivery - Initial",
+        target: "comments",
+        subject: "{{ticket_number}} - Smartphone delivery scheduling",
+        body: "Dear {{user_name}},\n\nWe are contacting you regarding ticket {{ticket_number}} to arrange the delivery of your corporate smartphone.\n\nYour new device has been prepared and tested, and is now ready for handover.\n\nDevice: {{model}}\nPI / Configuration item: {{configuration_item}}\n\nAs part of the iPhone Replacement Plan 2026, we kindly ask you to confirm your availability so that we can arrange the delivery and proceed with the closure of the request. You may come to the IT Welcome Desk at your convenience, or we can arrange a visit to your office if you prefer.\n\nThank you in advance for your confirmation. Should you have any questions, please do not hesitate to contact us.\n\nKind regards,\n{{agent_name}}"
+      },
+      {
+        subject: "{{ticket_number}} - Smartphone delivery scheduling (reminder)",
+        body: "Dear {{user_name}},\n\nThis is a kind reminder regarding ticket {{ticket_number}} and the scheduling of your corporate smartphone delivery.\n\nYour new device has been prepared and tested, and is ready for handover.\n\nDevice: {{model}}\nPI / Configuration item: {{configuration_item}}\n\nAs part of the iPhone Replacement Plan 2026, we would appreciate it if you could let us know your availability so that we can arrange the delivery and close the request. You may come to the IT Welcome Desk at your convenience, or we can arrange a visit to your office if you prefer.\n\nThank you in advance for your confirmation. Should you have any questions, please do not hesitate to contact us.\n\nKind regards,\n{{agent_name}}"
+      }
+    ),
+    withReminder(
+      {
+        id: "smartphone_delivery_reminder",
+        category: "email",
+        label: "Smartphone Delivery Reminder",
+        target: "comments",
+        subject: "{{ticket_number}} - Smartphone delivery reminder",
+        body: buildDeliveryEmailBody({
+          context: reminderAbout("the delivery of your corporate smartphone"),
+          intro: "Your device has been prepared and tested, and is ready for handover.",
+          deviceLine: "Device: {{model}}",
+          action: "We kindly ask you to share your availability so that we can arrange the handover at the IT Welcome Desk ({{office_location}}). If you have any timing constraints, please let us know so that we can assist you accordingly.",
+          closing: CLOSINGS.confirm
+        })
+      },
+      {
+        subject: "{{ticket_number}} - Smartphone delivery reminder",
+        body: buildDeliveryEmailBody({
+          context: reminderAbout("the delivery of your corporate smartphone"),
+          intro: "Your device has been prepared and tested, and is ready for handover.",
+          deviceLine: "Device: {{model}}",
+          action: "We kindly ask you to share your availability so that we can arrange the handover at the IT Welcome Desk ({{office_location}}). If you have any timing constraints, please let us know so that we can assist you accordingly.",
+          closing: CLOSINGS.confirm
+        })
+      }
+    ),
+    withReminder(
+      {
+        id: "outlook_followup_reminder",
+        category: "email",
+        label: "Outlook Follow-up Reminder",
+        target: "comments",
+        subject: "{{ticket_number}} - Outlook follow-up",
+        body: buildEmail({
+          context: reminderAbout("your request regarding Outlook email and calendar"),
+          action: "Could you please confirm whether you are still experiencing the issue, or whether it has already been resolved? If the issue persists, we can arrange an intervention, either on-site or remotely, and we would appreciate it if you could share your availability, including preferred dates and time slots.",
+          closing: CLOSINGS.reply
+        })
+      },
+      {
+        subject: "{{ticket_number}} - Outlook follow-up (reminder)",
+        body: buildEmail({
+          context: reminderAbout("your request regarding Outlook email and calendar"),
+          action: "Could you please confirm whether you are still experiencing the issue, or whether it has already been resolved? If the issue persists, we can arrange an intervention, either on-site or remotely, and we would appreciate it if you could share your availability, including preferred dates and time slots.",
+          closing: CLOSINGS.reply
+        })
+      }
+    ),
+    withReminder(
+      {
+        id: "my_request_not_listed",
+        category: "email",
+        label: "My Request Is Not Listed",
+        target: "comments",
+        subject: "{{ticket_number}} - Request review",
+        body: buildEmail({
+          context: aboutTicket('your request "{{short_description}}"'),
+          action: "Your request has been assigned for analysis to ensure it reaches the most suitable team. To help us prioritise it correctly, we kindly ask you to share any additional context or timing constraints that may be relevant.",
+          closing: CLOSINGS.review
+        })
+      },
+      {
+        subject: "{{ticket_number}} - Request review (reminder)",
+        body: buildEmail({
+          context: reminderAbout('your request "{{short_description}}"'),
+          action: "Your request is still under analysis to ensure it reaches the most suitable team. Could you please share any additional context or timing constraints that may help us prioritise it correctly?",
+          closing: CLOSINGS.review
+        })
+      }
+    ),
+    withReminder(
+      {
+        id: "safe_tablet_sync_issue",
+        category: "email",
+        label: "SAFE Tablet Synchronisation Issue",
+        target: "comments",
+        subject: "{{ticket_number}} - Tablet synchronisation follow-up",
+        body: buildEmail({
+          context: aboutTicket("the synchronisation issue reported on your SAFE tablet"),
+          action: "Could you please confirm whether the issue persists? If so, kindly share any error codes or screenshots so that our team can investigate further.",
+          closing: CLOSINGS.reply
+        })
+      },
+      {
+        subject: "{{ticket_number}} - Tablet synchronisation follow-up (reminder)",
+        body: buildEmail({
+          context: reminderAbout("the synchronisation issue reported on your SAFE tablet"),
+          action: "Could you please confirm whether the issue persists? If so, kindly share any error codes or screenshots so that our team can investigate further.",
+          closing: CLOSINGS.reply
+        })
+      }
+    ),
+    withReminder(
+      {
+        id: "other_it_equipment_request",
+        category: "email",
+        label: "Other IT Equipment Request",
+        target: "comments",
+        subject: "{{ticket_number}} - IT equipment request in review",
+        body: buildEmail({
+          context: aboutTicket("your IT equipment request"),
+          action: "Our team is currently reviewing inventory availability. We kindly ask you to confirm any specific requirements or deadlines so that we can process your request accordingly.",
+          closing: CLOSINGS.review
+        })
+      },
+      {
+        subject: "{{ticket_number}} - IT equipment request in review (reminder)",
+        body: buildEmail({
+          context: reminderAbout("your IT equipment request"),
+          action: "Our team is still reviewing inventory availability. Could you please confirm any specific requirements or deadlines so that we can process your request accordingly?",
+          closing: CLOSINGS.review
+        })
+      }
+    ),
+    withReminder(
+      {
+        id: "laptop_swap_appointment",
+        category: "email",
+        label: "Laptop Swap Appointment",
+        target: "comments",
+        subject: "{{ticket_number}} - Laptop swap appointment",
+        body: buildDeliveryEmailBody({
+          context: aboutTicket("the coordination of your laptop swap"),
+          intro: "Your replacement device has been prepared and tested, and is ready for handover.",
+          action: "We kindly ask you to confirm your availability at {{office_location}} so that we can finalise the swap. For any questions, you may reach us at {{phone}}.",
+          closing: CLOSINGS.confirm
+        })
+      },
+      {
+        subject: "{{ticket_number}} - Laptop swap appointment (reminder)",
+        body: buildDeliveryEmailBody({
+          context: reminderAbout("the coordination of your laptop swap"),
+          intro: "Your replacement device has been prepared and is ready for handover.",
+          action: "Could you please confirm your availability at {{office_location}} so that we can finalise the swap? For any questions, you may reach us at {{phone}}.",
+          closing: CLOSINGS.confirm
+        }),
+        workNote: "Email reminder sent to the user regarding ticket {{ticket_number}} for the laptop swap appointment. Replacement device prepared and ready for handover. User asked to confirm availability at {{office_location}}."
+      }
+    ),
+    withReminder(
+      {
+        id: "pda_official_mail_blocked",
+        category: "email",
+        label: "PDA Blocked for Official Mail",
+        target: "comments",
+        subject: "{{ticket_number}} - Official mail access on PDA",
+        body: buildEmail({
+          context: aboutTicket("the access issue reported with official mail on your PDA"),
+          action: "Could you please confirm whether access remains blocked, and share the exact step or error message where the process fails? This will help us resolve the issue more quickly.",
+          closing: CLOSINGS.reply
+        })
+      },
+      {
+        subject: "{{ticket_number}} - Official mail access on PDA (reminder)",
+        body: buildEmail({
+          context: reminderAbout("the access issue reported with official mail on your PDA"),
+          action: "Could you please confirm whether access remains blocked, and share the exact step or error message where the process fails? This will help us resolve the issue more quickly.",
+          closing: CLOSINGS.reply
+        })
+      }
+    ),
+    withReminder(
+      {
+        id: "laptop_loan_request",
+        category: "email",
+        label: "Laptop Loan Request",
+        target: "comments",
+        subject: "{{ticket_number}} - Laptop loan request",
+        body: buildEmail({
+          context: aboutTicket("your laptop loan request"),
+          action: "Our team is currently locating an available unit. We kindly ask you to confirm the expected duration of use and any specific software configurations required.",
+          closing: CLOSINGS.review
+        })
+      },
+      {
+        subject: "{{ticket_number}} - Laptop loan request (reminder)",
+        body: buildEmail({
+          context: reminderAbout("your laptop loan request"),
+          action: "Our team is still locating an available unit. Could you please confirm the expected duration of use and any specific software configurations required?",
+          closing: CLOSINGS.review
+        })
+      }
+    ),
+    withReminder(
+      {
+        id: "eu_login_new_smartphone",
+        category: "email",
+        label: "EU Login for New Smartphone",
+        target: "comments",
+        subject: "{{ticket_number}} - EU Login support",
+        body: buildEmail({
+          context: aboutTicket("the EU Login configuration on your new smartphone"),
+          action: "Could you please confirm whether the issue persists, and share the specific step or error message where the process stops? This will help us assist you more effectively.",
+          closing: CLOSINGS.reply
+        })
+      },
+      {
+        subject: "{{ticket_number}} - EU Login support (reminder)",
+        body: buildEmail({
+          context: reminderAbout("the EU Login configuration on your new smartphone"),
+          action: "Could you please confirm whether the issue persists, and share the specific step or error message where the process stops? This will help us assist you more effectively.",
+          closing: CLOSINGS.reply
+        })
+      }
+    ),
+    withReminder(
+      {
+        id: "personal_device_mdm_byd_removal",
+        category: "email",
+        label: "Personal Device MDM and BYOD Removal",
+        target: "comments",
+        subject: "{{ticket_number}} - MDM and BYOD removal",
+        body: buildEmail({
+          context: aboutTicket(
+            "the removal of the MDM and BYOD profiles from your personal device"
+          ),
+          action: "We kindly ask you to confirm your availability, and whether you would prefer remote instructions or an on-site appointment to complete this.",
+          closing: CLOSINGS.confirm
+        })
+      },
+      {
+        subject: "{{ticket_number}} - MDM and BYOD removal (reminder)",
+        body: buildEmail({
+          context: reminderAbout(
+            "the removal of the MDM and BYOD profiles from your personal device"
+          ),
+          action: "Could you please confirm your availability, and whether you would prefer remote instructions or an on-site appointment to complete this?",
+          closing: CLOSINGS.confirm
+        })
+      }
+    ),
+    withReminder(
+      {
+        id: "laptop_delivery",
+        category: "email",
+        label: "Laptop Delivery",
+        target: "comments",
+        subject: "{{ticket_number}} - Laptop ready for delivery",
+        body: buildDeliveryEmailBody({
+          context: aboutTicket("the delivery of your laptop"),
+          intro: "Your laptop has been prepared and tested, and is ready for handover.",
+          action: "We kindly ask you to confirm your availability so that we can arrange the collection at {{office_location}}.",
+          closing: CLOSINGS.confirm
+        })
+      },
+      {
+        subject: "{{ticket_number}} - Laptop ready for delivery (reminder)",
+        body: buildDeliveryEmailBody({
+          context: reminderAbout("the delivery of your laptop"),
+          intro: "Your laptop has been prepared and tested, and is ready for handover.",
+          action: "Could you please confirm your availability so that we can arrange the collection at {{office_location}}?",
+          closing: CLOSINGS.confirm
+        }),
+        workNote: "Email reminder sent to the user regarding ticket {{ticket_number}} for laptop delivery. Device prepared and ready for handover. PI / Configuration item: {{configuration_item}}. User asked to confirm availability for collection."
+      }
+    ),
+    withReminder(
+      {
+        id: "tablet_loan_request",
+        category: "email",
+        label: "Tablet Loan Request",
+        target: "comments",
+        subject: "{{ticket_number}} - Tablet loan request",
+        body: buildEmail({
+          context: aboutTicket("your tablet loan request"),
+          action: "Our team is currently reviewing tablet availability. We kindly ask you to confirm the expected duration of use and any specific application requirements.",
+          closing: CLOSINGS.review
+        })
+      },
+      {
+        subject: "{{ticket_number}} - Tablet loan request (reminder)",
+        body: buildEmail({
+          context: reminderAbout("your tablet loan request"),
+          action: "Our team is still reviewing tablet availability. Could you please confirm the expected duration of use and any specific application requirements?",
+          closing: CLOSINGS.review
+        })
+      }
+    ),
+    withReminder(
+      {
+        id: "smartphone_delivery_schedule",
+        category: "email",
+        label: "Schedule Smartphone Delivery",
+        target: "comments",
+        subject: "{{ticket_number}} - Smartphone delivery scheduling",
+        body: buildDeliveryEmailBody({
+          context: aboutTicket("the delivery of your corporate smartphone"),
+          intro: "Your device has been prepared and tested, and is ready for handover.",
+          action: "We kindly ask you to share your availability so that we can arrange the handover at {{office_location}}.",
+          closing: CLOSINGS.confirm
+        })
+      },
+      {
+        subject: "{{ticket_number}} - Smartphone delivery scheduling (reminder)",
+        body: buildDeliveryEmailBody({
+          context: reminderAbout("the delivery of your corporate smartphone"),
+          intro: "Your device has been prepared and tested, and is ready for handover.",
+          deviceLine: "Device: {{model}}",
+          action: "Could you please confirm your availability so that we can proceed with the handover at {{office_location}}?",
+          closing: CLOSINGS.confirm
+        }),
+        workNote: "Email reminder sent to the user regarding ticket {{ticket_number}} for the delivery of the corporate smartphone. Device prepared and ready for handover. PI / Configuration item: {{configuration_item}}. User asked to confirm availability for the handover at {{office_location}}."
+      }
+    ),
+    {
+      id: "quality_check_new_workspace",
+      category: "email",
+      label: "Quality Check - New Workspace",
+      target: "comments",
+      subject: "{{ticket_number}} - New workspace quality check",
+      body: buildEmail({
+        context: aboutTicket("a quality check of your new workspace"),
+        action: "Could you please confirm that everything is working correctly, including:\n\n- Your workstation (laptop or desktop)\n- Network connection (LAN or Wi-Fi)\n- Phone and mobile devices\n- Any additional equipment (dock, monitors, peripherals)\n\nIf everything is working as expected, we will proceed with the closure of the ticket. Otherwise, please let us know which issues you are experiencing and we will be glad to assist you.",
+        closing: CLOSINGS.reply
+      })
+    },
+    {
+      id: "sim_card_management",
+      category: "email",
+      label: "SIM Card Management",
+      target: "comments",
+      subject: "{{ticket_number}} - SIM card request",
+      body: buildEmail({
+        context: aboutTicket("your SIM card request"),
+        action: "We kindly ask you to confirm the required action: a new activation, a physical replacement, or an eSIM provision.",
+        closing: CLOSINGS.reply
+      })
+    },
+    {
+      id: "local_printer_request",
+      category: "email",
+      label: "Local Printer Request",
+      target: "comments",
+      subject: "{{ticket_number}} - Local printer request",
+      body: buildEmail({
+        context: aboutTicket("your local printer request"),
+        action: "We kindly ask you to confirm whether this concerns a new installation, a replacement, or support for an existing device.",
+        closing: CLOSINGS.reply
+      })
+    },
+    {
+      id: "smartphone_preparation",
+      category: "email",
+      label: "Smartphone Preparation",
+      target: "comments",
+      subject: "{{ticket_number}} - Smartphone being prepared",
+      body: buildEmail({
+        context: aboutTicket("the preparation of your corporate smartphone"),
+        action: "Your device is currently being prepared and configured. We will contact you again as soon as it is ready for handover. In the meantime, please let us know of any upcoming periods of unavailability.",
+        closing: CLOSINGS.review
+      })
+    },
+    {
+      id: "iphone_battery_below_80",
+      category: "email",
+      label: "iPhone Battery Below 80%",
+      target: "comments",
+      subject: "{{ticket_number}} - iPhone battery health review",
+      body: buildEmail({
+        context: aboutTicket("the reported iPhone battery capacity below 80%"),
+        action: "Could you please confirm whether the device is available for assessment, and whether the battery is affecting your daily use?",
+        closing: CLOSINGS.reply
+      })
+    },
+    {
+      id: "outlook_email_calendar_support",
+      category: "email",
+      label: "Outlook Email and Calendar Support",
+      target: "comments",
+      subject: "{{ticket_number}} - Outlook and Calendar support",
+      body: buildEmail({
+        context: aboutTicket("your Outlook and Calendar support request"),
+        action: "Could you please confirm whether the issue persists, and share any relevant details about the device or network environment where it occurs?",
+        closing: CLOSINGS.reply
+      })
+    },
+    {
+      id: "request_access_sharepoint",
+      category: "email",
+      label: "Request Access - SharePoint",
+      target: "comments",
+      subject: "{{ticket_number}} - SharePoint access support",
+      body: buildEmail({
+        context: aboutTicket("your SharePoint access request"),
+        action: 'We kindly ask you to confirm the exact name of the site or mailbox concerned, and whether you are still receiving a "Permission denied" error.',
+        closing: CLOSINGS.reply
+      })
+    },
+    {
+      id: "request_software_install",
+      category: "email",
+      label: "Request Software Install",
+      target: "comments",
+      subject: "{{ticket_number}} - Software installation request",
+      body: buildEmail({
+        context: aboutTicket("your software request for {{software_name}}"),
+        action: "We kindly ask you to confirm the required version and the target device (CI or asset tag) so that we can proceed with the installation.",
+        closing: CLOSINGS.reply
+      })
+    },
+    {
+      id: "vpn_connectivity_issue",
+      category: "email",
+      label: "VPN Connectivity Issue",
+      target: "comments",
+      subject: "{{ticket_number}} - VPN connectivity follow-up",
+      body: buildEmail({
+        context: aboutTicket("the reported VPN connectivity issue"),
+        action: "Could you please confirm whether the connection remains unstable, and share the approximate time of the last disconnection along with your network environment (office or remote)?",
+        closing: CLOSINGS.reply
+      })
+    },
+    {
+      id: "wifi_connectivity_issue",
+      category: "email",
+      label: "WiFi Connectivity Issue",
+      target: "comments",
+      subject: "{{ticket_number}} - Wi-Fi connectivity follow-up",
+      body: buildEmail({
+        context: aboutTicket("the reported Wi-Fi connectivity issue"),
+        action: "Could you please confirm whether the issue is still occurring, and whether it affects only your corporate laptop or other devices as well? Your building or floor location would also help us investigate.",
+        closing: CLOSINGS.reply
+      })
+    },
+    {
+      id: "calendar_sync_issue",
+      category: "email",
+      label: "Calendar Sync Issue",
+      target: "comments",
+      subject: "{{ticket_number}} - Calendar synchronisation support",
+      body: buildEmail({
+        context: aboutTicket(
+          "the synchronisation issue between your Outlook and Teams calendars"
+        ),
+        action: "Could you please confirm whether the problem affects all of your synchronised devices, including both mobile and laptop?",
+        closing: CLOSINGS.reply
+      })
+    },
+    {
+      id: "incident_connectivity_issue",
+      category: "email",
+      label: "Incident - Connectivity Issue",
+      target: "comments",
+      subject: "{{ticket_number}} - Connectivity follow-up",
+      body: buildEmail({
+        context: aboutTicket("the connectivity issue reported on your {{device_type}}"),
+        action: "Could you please confirm whether the issue persists, and share the time of the last occurrence along with any error message displayed?",
+        closing: CLOSINGS.reply
+      })
+    },
+    {
+      id: "incident_hardware_issue",
+      category: "email",
+      label: "Incident - Hardware Issue",
+      target: "comments",
+      subject: "{{ticket_number}} - Hardware issue follow-up",
+      body: buildEmail({
+        context: aboutTicket("the hardware issue reported on your {{device_type}}"),
+        action: "Could you please confirm whether the issue is still present, and describe any visible symptoms, such as physical damage, screen problems, or intermittent failures?",
+        closing: CLOSINGS.reply
+      })
+    },
+    {
+      id: "incident_software_issue",
+      category: "email",
+      label: "Incident - Software Issue",
+      target: "comments",
+      subject: "{{ticket_number}} - Software issue follow-up",
+      body: buildEmail({
+        context: aboutTicket("the reported issue with {{software_name}}"),
+        action: "Could you please confirm whether the issue is still occurring, and share the exact error message and where it appears?",
+        closing: CLOSINGS.reply
+      })
+    },
+    {
+      id: "account_access_shared_mailbox",
+      category: "email",
+      label: "Shared Mailbox Access",
+      target: "comments",
+      subject: "{{ticket_number}} - Shared mailbox access review",
+      body: buildEmail({
+        context: aboutTicket("your shared mailbox access request"),
+        action: "We kindly ask you to confirm the exact email address of the target mailbox, and whether the required departmental approvals have already been obtained.",
+        closing: CLOSINGS.reply
+      })
+    },
+    {
+      id: "certificate_installation_confirmation",
+      category: "email",
+      label: "Certificate Installation Confirmation",
+      target: "comments",
+      subject: "{{ticket_number}} - Certificate installation confirmation",
+      body: buildEmail({
+        context: aboutTicket("the digital certificate installation on your device"),
+        action: "Could you please confirm whether the certificate has been installed successfully, and whether you can now access the required services?",
+        closing: CLOSINGS.reply
+      })
+    },
+    {
+      id: "appointment_confirmation",
+      category: "email",
+      label: "Appointment Confirmation",
+      target: "comments",
+      subject: "{{ticket_number}} - Appointment confirmation",
+      body: buildDeliveryEmailBody({
+        context: aboutTicket("your scheduled support appointment"),
+        intro: "Please find the appointment details below.",
+        deviceLine: "Location: {{office_location}}",
+        configurationItemLine: "Contact: {{phone}}",
+        action: "Could you please confirm whether this time slot is still convenient for you?",
+        closing: CLOSINGS.confirm
+      })
+    },
+    {
+      id: "request_validation_and_approval",
+      category: "email",
+      label: "Request Validation and Approval",
+      target: "comments",
+      subject: "{{ticket_number}} - Request under validation",
+      body: buildEmail({
+        context: aboutTicket("your request, which is currently under validation and approval"),
+        action: "We will notify you as soon as the review has been finalised, or if any additional information is required from your side.",
+        closing: CLOSINGS.review
+      })
+    },
+    withReminder(
+      {
+        id: "smartphone_delivery",
+        category: "email",
+        label: "Smartphone Delivery and Closure",
+        target: "comments",
+        subject: "{{ticket_number}} - Smartphone delivery and closure",
+        body: buildDeliveryEmailBody({
+          context: aboutTicket("the delivery of your corporate smartphone"),
+          intro: "Your device has been prepared and tested, and is ready for handover.",
+          action: "We kindly ask you to share your availability so that we can arrange the handover at {{office_location}} and complete the closure of your request.",
+          closing: CLOSINGS.confirm
+        })
+      },
+      {
+        subject: "{{ticket_number}} - Smartphone delivery and closure (reminder)",
+        body: buildEmail({
+          context: reminderAbout("the delivery of your corporate smartphone"),
+          action: "Your new Apple device is available under the iPhone Replacement Plan 2026. You may come to {{office_location}} for the device exchange and configuration. Could you please confirm your availability so that we can proceed with the handover and complete the closure?",
+          closing: CLOSINGS.confirm
+        }),
+        workNote: "Email reminder sent to the user regarding ticket {{ticket_number}} for smartphone delivery and closure. Device ready for handover at {{office_location}}. User asked to confirm availability to proceed."
+      }
+    ),
+    {
+      id: "recover_it_material_before_due_date",
+      category: "email",
+      label: "Recover IT Material (ASAP)",
+      target: "comments",
+      subject: "{{ticket_number}} - IT equipment return before {{return_date}}",
+      body: buildEmail({
+        context: aboutTicket("the return of IT equipment currently assigned to you"),
+        action: "According to our records, the following equipment should be returned before {{return_date}}:\n\n{{equipment_model}}\nAsset tag: {{equipment_asset_tag}}\n\nCould you please confirm when you would be available to return the device, or let us know if you would like to arrange an appointment for the handover? You may also indicate your preferred location for the return.",
+        closing: CLOSINGS.confirm
+      })
+    },
+    {
+      id: "recover_mobile_devices_before_due_date",
+      category: "email",
+      label: "Recover Mobile Devices (ASAP)",
+      target: "comments",
+      subject: "{{ticket_number}} - Mobile device return before {{return_date}}",
+      body: buildEmail({
+        context: aboutTicket("the return of mobile devices currently assigned to you"),
+        action: "According to our records, the following equipment should be returned before {{return_date}}:\n\n{{equipment_model}}\nAsset tag: {{equipment_asset_tag}}\n\nCould you please confirm when you would be available to return the device, or let us know if you would like to arrange an appointment for the handover? You may also indicate your preferred location for the return.",
+        closing: CLOSINGS.confirm
+      })
+    },
+    {
+      id: "quality_check_after_move",
+      category: "email",
+      label: "Quality Check After Move",
+      target: "comments",
+      subject: "{{ticket_number}} - Post-move quality check",
+      body: buildEmail({
+        context: aboutTicket("a quality check following your recent office move"),
+        action: "Could you please confirm that everything is working correctly in your new workspace, including:\n\n- Your workstation (laptop or desktop)\n- Network connection (LAN or Wi-Fi)\n- Phone and mobile devices\n- Any additional equipment (dock, monitors, peripherals)\n\nIf everything is working as expected, we will proceed with the closure of your ticket. Otherwise, please let us know which issues you are experiencing and we will be glad to assist you.",
+        closing: CLOSINGS.reply
+      })
+    },
+    {
+      id: "delivery_of_items",
+      category: "email",
+      label: "Delivery of Items",
+      target: "comments",
+      subject: "{{ticket_number}} - Item delivery arrangement",
+      body: buildDeliveryEmailBody({
+        context: aboutTicket("the delivery of your requested items"),
+        intro: "The requested items have been prepared and are ready for handover.",
+        action: "We kindly ask you to confirm your availability for the handover at {{office_location}}.",
+        closing: CLOSINGS.confirm
+      })
+    },
+    {
+      id: "smartphone_return_schedule",
+      category: "email",
+      label: "Schedule Smartphone Return",
+      target: "comments",
+      subject: "{{ticket_number}} - Smartphone return scheduling",
+      body: buildEmail({
+        context: aboutTicket("the return of your corporate smartphone"),
+        action: "We kindly ask you to confirm your availability for the collection so that we can proceed with the closure of your request.",
+        closing: CLOSINGS.confirm
+      })
+    },
+    {
+      id: "adobe_acrobat_reader_access_update",
+      category: "email",
+      label: "Adobe Acrobat Reader Access and Update",
+      target: "comments",
+      subject: "{{ticket_number}} - Adobe Acrobat Reader support",
+      body: buildEmail({
+        context: aboutTicket("your Adobe Acrobat Reader request"),
+        action: "We kindly ask you to confirm whether this concerns an installation, an update, or an access issue, so that we can proceed appropriately.",
+        closing: CLOSINGS.reply
+      })
+    },
+    {
+      id: "tablet_delivery_schedule",
+      category: "email",
+      label: "Schedule Tablet Delivery",
+      target: "comments",
+      subject: "{{ticket_number}} - Tablet delivery scheduling",
+      body: buildDeliveryEmailBody({
+        context: aboutTicket("the delivery of your tablet"),
+        intro: "Your device has been prepared and tested, and is ready for handover.",
+        action: "We kindly ask you to confirm your availability at {{office_location}}. For any questions, you may reach us at {{phone}}.",
+        closing: CLOSINGS.confirm
+      })
+    },
+    {
+      id: "smartphone_eligibility_validation",
+      category: "email",
+      label: "Smartphone Eligibility Validation",
+      target: "comments",
+      subject: "{{ticket_number}} - Smartphone eligibility review",
+      body: buildEmail({
+        context: aboutTicket(
+          "your smartphone request, which is currently under eligibility review"
+        ),
+        action: "We will notify you as soon as the validation has been completed, or if any additional information is required from your side.",
+        closing: CLOSINGS.review
+      })
+    },
+    {
+      id: "tablet_preparation",
+      category: "email",
+      label: "Tablet Preparation",
+      target: "comments",
+      subject: "{{ticket_number}} - Tablet being prepared",
+      body: buildEmail({
+        context: aboutTicket("the preparation of your tablet"),
+        action: "Your device is currently being prepared. We will contact you again as soon as it is ready for collection or delivery.",
+        closing: CLOSINGS.review
+      })
+    },
+    {
+      id: "incident_follow_up",
+      category: "email",
+      label: "Incident Follow-Up",
+      target: "comments",
+      subject: "{{ticket_number}} - Incident follow-up",
+      body: buildEmail({
+        context: aboutTicket("the issue you reported: {{short_description}}"),
+        action: "Could you please confirm whether the issue is still occurring? If so, we kindly ask you to share the latest error message or a screenshot so that we can continue our investigation.",
+        closing: CLOSINGS.reply
+      })
+    },
+    {
+      id: "incident_resolution_check",
+      category: "email",
+      label: "Incident Resolution Check",
+      target: "comments",
+      subject: "{{ticket_number}} - Confirmation before closure",
+      body: buildEmail({
+        context: aboutTicket("the issue you reported"),
+        action: "Could you please confirm whether the issue has now been resolved and whether we may proceed with the closure of the ticket? If it is not yet resolved, kindly let us know what is still failing so that we can continue.",
+        closing: CLOSINGS.reply
+      })
+    },
+    {
+      id: "loss_or_theft_follow_up",
+      category: "email",
+      label: "Loss or Theft Follow-Up",
+      target: "comments",
+      subject: "{{ticket_number}} - Reported loss or theft follow-up",
+      body: buildEmail({
+        context: aboutTicket("the reported loss or theft of IT equipment"),
+        action: "We kindly ask you to confirm whether a formal report has already been filed, and whether you require any supporting documentation or further assistance.",
+        closing: CLOSINGS.reply
+      })
+    },
+    {
+      id: "account_access_support",
+      category: "email",
+      label: "Account Access Support",
+      target: "comments",
+      subject: "{{ticket_number}} - Account access follow-up",
+      body: buildEmail({
+        context: aboutTicket("your account access request"),
+        action: "Could you please confirm whether access is still failing, and share the exact step or error message encountered, if possible?",
+        closing: CLOSINGS.reply
+      })
+    },
+    {
+      id: "appointment_coordination",
+      category: "email",
+      label: "Appointment Coordination",
+      target: "comments",
+      subject: "{{ticket_number}} - Appointment required",
+      body: buildEmail({
+        context: aboutTicket("your request, for which an appointment is required to proceed"),
+        action: "The appointment would take place at {{office_location}}. We kindly ask you to share two or three time slots during which you would be available.",
+        closing: CLOSINGS.schedule
+      })
+    },
+    {
+      id: "delivery_coordination",
+      category: "email",
+      label: "Delivery Coordination",
+      target: "comments",
+      subject: "{{ticket_number}} - Delivery planning",
+      body: buildDeliveryEmailBody({
+        context: aboutTicket("the coordination of your equipment delivery"),
+        intro: "Your equipment has been prepared and is ready for handover.",
+        action: "We kindly ask you to confirm your availability for the delivery or collection at {{office_location}}.",
+        closing: CLOSINGS.confirm
+      })
+    },
+    {
+      id: "generic_ticket_follow_up",
+      category: "email",
+      label: "Generic Ticket Follow-Up",
+      target: "comments",
+      subject: "{{ticket_number}} - Ticket follow-up",
+      body: buildEmail({
+        context: aboutTicket("the following request: {{short_description}}"),
+        action: "Please let us know whether you require an update, or whether you have a preferred next step. We remain at your disposal to assist you.",
+        closing: CLOSINGS.reply
+      })
+    },
+    {
+      id: "ivote_ipad_support",
+      category: "email",
+      label: "IVOTE Support (On-site)",
+      target: "comments",
+      subject: "{{ticket_number}} - IVOTE access support",
+      body: buildEmail({
+        context: aboutTicket("the difficulties reported with IVOTE access on your {{device_type}}"),
+        action: "We kindly ask you to visit {{office_location}} so that we can carry out a direct diagnostic. Please ensure your {{device_type}} is updated to the latest iOS version before your visit, and let us know your preferred schedule for this appointment.",
+        closing: CLOSINGS.schedule
+      })
     }
   ];
 
@@ -9598,11 +10265,29 @@ ${body}`) : body;
       subject: "Closure of your request {{ticket_number}}",
       keywords: ["confirmed", "valid\xE9", "resolved"],
       body: "Dear {{requested_for}},\n\nThank you for confirming that your request has been resolved.\n\nThis ticket is now closed.\nShould you require any further assistance, please do not hesitate to contact the IT Service Desk.\n\nKind regards,\n{{agent_name}}"
+    },
+    {
+      id: "closenote_connectivity_resolved",
+      category: "close_note",
+      label: "Close Note - Connectivity Resolved",
+      target: "close_notes",
+      subject: "Resolution of your connectivity issue {{ticket_number}}",
+      keywords: ["connectivity", "network", "vpn", "wifi", "wired", "ethernet", "connection", "disconnect"],
+      body: "Dear {{user_name}},\n\nYour connectivity issue has been resolved and network access has been validated.\n\nShould you experience any further issues, please do not hesitate to contact the IT Service Desk.\n\nKind regards,\n{{agent_name}}"
+    },
+    {
+      id: "closenote_outlook_client_resolved",
+      category: "close_note",
+      label: "Close Note - Outlook Issue Resolved",
+      target: "close_notes",
+      subject: "Resolution of your Outlook issue {{ticket_number}}",
+      keywords: ["outlook", "freeze", "frozen", "crash", "profile", "scheduling assistant", "client"],
+      body: "Dear {{requested_for}},\n\nYour Outlook issue has been resolved. The necessary configuration has been applied and the application is now functioning correctly.\n\nShould you require any further assistance, please do not hesitate to contact the IT Service Desk.\n\nKind regards,\n{{agent_name}}"
     }
   ];
 
   // Assistant/templates/workNoteTemplates.js
-  function withReminder(template, reminderBody = "") {
+  function withReminder2(template, reminderBody = "") {
     return {
       ...template,
       reminderBody
@@ -9616,7 +10301,7 @@ ${body}`) : body;
       target: "work_notes",
       body: "WiFi certificate installed successfully on the user's device.\nNetwork connectivity has been validated end-to-end.\nDevice is now connected to the EP PRIVATE network as expected."
     },
-    withReminder(
+    withReminder2(
       {
         id: "appointment_proposed",
         category: "work_note",
@@ -9645,9 +10330,9 @@ ${body}`) : body;
       category: "work_note",
       label: "Escalation recommended",
       target: "work_notes",
-      body: "Initial troubleshooting did not resolve the reported issue.\nEscalation is recommended; the ticket has been reassigned to the appropriate support team for further analysis and follow-up with the requester."
+      body: "Initial troubleshooting did not resolve the reported issue.\nEscalation is recommended; the ticket has been reassigned to the appropriate support team for further analysis.\nPriority: {{short_description}}.\nFurther diagnostics and follow-up will be handled by the receiving team."
     },
-    withReminder(
+    withReminder2(
       {
         id: "out_of_office",
         category: "work_note",
@@ -9657,7 +10342,7 @@ ${body}`) : body;
       },
       "Requester remains out of office until {{due_date}}.\nReminder planned after this date."
     ),
-    withReminder(
+    withReminder2(
       {
         id: "user_not_present",
         category: "work_note",
@@ -9667,7 +10352,7 @@ ${body}`) : body;
       },
       "Requester not present on site.\nFollow-up call attempt unsuccessful.\nReminder sent by email."
     ),
-    withReminder(
+    withReminder2(
       {
         id: "ivote_ipad_support",
         category: "work_note",
@@ -9706,7 +10391,15 @@ ${body}`) : body;
       keywords: ["outlook", "signature", "email", "calendar", "messagerie"],
       body: 'Outlook assistance has been provided for the request "{{short_description}}".\nThe request was reviewed, the necessary configuration was applied, and the change has been validated end-to-end.\n{{requested_for}} has been informed of the outcome and confirmed that the issue is no longer reproducible.'
     },
-    withReminder(
+    {
+      id: "worknote_outlook_profile_recreated",
+      category: "work_note",
+      label: "Outlook Profile Recreated",
+      target: "work_notes",
+      keywords: ["outlook", "profile", "scheduling", "freeze", "frozen", "crash", "scheduling assistant"],
+      body: "Created a new Outlook profile via Control Panel \u2192 Mail \u2192 Show Profiles \u2192 Add.\nConfigured the new Outlook profile and validated end-to-end functionality.\nIssue resolved successfully."
+    },
+    withReminder2(
       {
         id: "worknote_user_contacted",
         category: "work_note",
@@ -9717,7 +10410,7 @@ ${body}`) : body;
       },
       "Follow-up sent to {{requested_for}}.\nAwaiting their reply before continuing with the request."
     ),
-    withReminder(
+    withReminder2(
       {
         id: "worknote_waiting_for_user",
         category: "work_note",
@@ -9728,7 +10421,7 @@ ${body}`) : body;
       },
       "Reminder sent to {{requested_for}}.\nThe ticket remains on hold pending their response."
     ),
-    withReminder(
+    withReminder2(
       {
         id: "worknote_no_answer_multiple_attempts",
         category: "work_note",
@@ -9877,6 +10570,221 @@ ${body}`) : body;
 
   // Assistant/templates/customTemplates.json
   var customTemplates_default = [
+    {
+      id: "generic_email_followup",
+      title: "Generic Email Follow-up",
+      type: "email",
+      category: "generic",
+      priority: 0,
+      enabled: true,
+      record_type: "generic",
+      keywords: {
+        short_desc: "",
+        description: ""
+      },
+      exclusions: [],
+      subject: "Follow-up on your request - {{ticket_number}}",
+      body: "Dear {{user_name}},\n\nI am following up on your request {{ticket_number}} ({{short_description}}).\n\nCould you please provide an update on the current status? If you have any questions or need further assistance, do not hesitate to reach out.\n\nKind regards,\n{{assigned_to}}",
+      work_note: "",
+      close_note: "",
+      event_title: "",
+      event_desc: "",
+      pdf_block: "",
+      placeholders: [
+        "user_name",
+        "ticket_number",
+        "short_description",
+        "assigned_to"
+      ],
+      notes: "Fallback template used when no other matches.",
+      lastModified: "2026-04-30T00:00:00.000Z"
+    },
+    {
+      id: "generic_ticket_closure_no_response",
+      title: "Ticket Closure \u2013 No Response",
+      type: "email",
+      category: "generic",
+      priority: 10,
+      enabled: true,
+      record_type: "generic",
+      keywords: {
+        short_desc: "no response",
+        description: "no response"
+      },
+      exclusions: [],
+      subject: "Closing ticket {{ticket_number}} \u2013 no response received",
+      body: "Dear {{user_name}},\n\nDespite our attempts to contact you regarding ticket {{ticket_number}} ({{short_description}}), we have not received a response.\n\nWe will proceed to close this ticket. If you still require assistance, please open a new request.\n\nKind regards,\n{{assigned_to}}",
+      work_note: "",
+      close_note: "Ticket closed due to no response from the user after multiple contact attempts.",
+      event_title: "",
+      event_desc: "",
+      pdf_block: "",
+      placeholders: [
+        "user_name",
+        "ticket_number",
+        "short_description",
+        "assigned_to"
+      ],
+      notes: "",
+      lastModified: "2026-04-30T00:00:00.000Z"
+    },
+    {
+      id: "smartphone_delivery_schedule",
+      title: "Smartphone Delivery \u2013 Schedule Appointment",
+      type: "email",
+      category: "delivery",
+      priority: 80,
+      enabled: true,
+      record_type: "RITM",
+      keywords: {
+        short_desc: "smartphone",
+        description: "delivery"
+      },
+      exclusions: [
+        "return",
+        "broken",
+        "repair"
+      ],
+      subject: "Appointment \u2013 Smartphone delivery {{ticket_number}}",
+      body: "Dear {{user_name}},\n\nYour corporate smartphone is ready for collection.\n\nTicket: {{ticket_number}}\nDevice / PI: {{configuration_item}}\nLocation: {{location}}\n\nPlease confirm your availability so we can schedule the handover at the IT Welcome Desk.\n\nKind regards,\n{{assigned_to}}",
+      work_note: "",
+      close_note: "",
+      event_title: "Smartphone delivery \u2013 {{ticket_number}}",
+      event_desc: "Handover of corporate smartphone for {{requested_for}}. Ticket: {{ticket_number}}. Device: {{configuration_item}}.",
+      pdf_block: "",
+      placeholders: [
+        "user_name",
+        "ticket_number",
+        "configuration_item",
+        "location",
+        "requested_for",
+        "assigned_to"
+      ],
+      notes: "Triggered by 'smartphone' in short_desc.",
+      lastModified: "2026-04-30T00:00:00.000Z"
+    },
+    {
+      id: "equipment_return_request",
+      title: "Equipment Return \u2013 Initial Request",
+      type: "email",
+      category: "return",
+      priority: 80,
+      enabled: true,
+      record_type: "RITM",
+      keywords: {
+        short_desc: "return",
+        description: "equipment"
+      },
+      exclusions: [
+        "delivery",
+        "new device"
+      ],
+      subject: "Equipment return \u2013 {{ticket_number}}",
+      body: "Dear {{user_name}},\n\nWe are contacting you regarding the return of IT equipment linked to ticket {{ticket_number}}.\n\nAsset: {{asset_tag}}\nItem: {{configuration_item}}\n\nPlease let us know your availability so we can arrange the collection. You may drop the equipment at the IT Welcome Desk at your earliest convenience.\n\nKind regards,\n{{assigned_to}}",
+      work_note: "",
+      close_note: "",
+      event_title: "Equipment return \u2013 {{ticket_number}}",
+      event_desc: "Collection of IT equipment from {{requested_for}}. Asset: {{asset_tag}}. Ticket: {{ticket_number}}.",
+      pdf_block: "",
+      placeholders: [
+        "user_name",
+        "ticket_number",
+        "asset_tag",
+        "configuration_item",
+        "requested_for",
+        "assigned_to"
+      ],
+      notes: "Use asset_tag over configuration_item when available.",
+      lastModified: "2026-04-30T00:00:00.000Z"
+    },
+    {
+      id: "equipment_return_reminder",
+      title: "Equipment Return \u2013 Reminder",
+      type: "email",
+      category: "return",
+      priority: 70,
+      enabled: true,
+      record_type: "RITM",
+      keywords: {
+        short_desc: "return reminder",
+        description: "equipment reminder"
+      },
+      exclusions: [],
+      subject: "Reminder: Equipment return pending \u2013 {{ticket_number}}",
+      body: "Dear {{user_name}},\n\nThis is a friendly reminder that we are still awaiting the return of IT equipment linked to ticket {{ticket_number}}.\n\nAsset: {{asset_tag}}\n\nPlease contact us as soon as possible to arrange the return.\n\nKind regards,\n{{assigned_to}}",
+      work_note: "",
+      close_note: "",
+      event_title: "",
+      event_desc: "",
+      pdf_block: "",
+      placeholders: [
+        "user_name",
+        "ticket_number",
+        "asset_tag",
+        "assigned_to"
+      ],
+      notes: "",
+      lastModified: "2026-04-30T00:00:00.000Z"
+    },
+    {
+      id: "quality_check_after_move",
+      title: "Quality Check After Move",
+      type: "email",
+      category: "quality",
+      priority: 70,
+      enabled: true,
+      record_type: "SCTASK",
+      keywords: {
+        short_desc: "move",
+        description: "quality check"
+      },
+      exclusions: [],
+      subject: "Quality check after move \u2013 {{ticket_number}}",
+      body: "Dear {{user_name}},\n\nFollowing the completion of your move, we would like to confirm that all IT equipment has been set up correctly at your new location.\n\nTicket: {{ticket_number}}\nLocation: {{location}}\n\nPlease let us know if everything is working as expected or if you require any adjustments.\n\nKind regards,\n{{assigned_to}}",
+      work_note: "",
+      close_note: "Quality check completed. User confirmed all equipment is operational at the new location.",
+      event_title: "",
+      event_desc: "",
+      pdf_block: "",
+      placeholders: [
+        "user_name",
+        "ticket_number",
+        "location",
+        "assigned_to"
+      ],
+      notes: "",
+      lastModified: "2026-04-30T00:00:00.000Z"
+    },
+    {
+      id: "mdm_installation_appointment",
+      title: "MDM Installation \u2013 Schedule Appointment",
+      type: "email",
+      category: "mdm",
+      priority: 85,
+      enabled: true,
+      record_type: "RITM",
+      keywords: {
+        short_desc: "mdm",
+        description: "mobile device management"
+      },
+      exclusions: [],
+      subject: "MDM installation appointment \u2013 {{ticket_number}}",
+      body: "Dear {{user_name}},\n\nWe need to schedule the installation of the Mobile Device Management (MDM) profile on your device.\n\nTicket: {{ticket_number}}\nDevice: {{configuration_item}}\n\nPlease share your availability so we can arrange a convenient time slot. The process typically takes 15\u201320 minutes.\n\nKind regards,\n{{assigned_to}}",
+      work_note: "",
+      close_note: "",
+      event_title: "MDM installation \u2013 {{ticket_number}}",
+      event_desc: "MDM profile installation for {{requested_for}}. Device: {{configuration_item}}. Ticket: {{ticket_number}}.",
+      pdf_block: "",
+      placeholders: [
+        "user_name",
+        "ticket_number",
+        "configuration_item",
+        "requested_for",
+        "assigned_to"
+      ],
+      notes: "Triggered by 'mdm' or 'mobile device management' in description.",
+      lastModified: "2026-04-30T00:00:00.000Z"
+    },
     {
       id: "worknote_user_contacted",
       title: "Work Note \u2013 User Contacted",
@@ -10339,62 +11247,63 @@ ${body}`) : body;
       ],
       notes: "",
       lastModified: "2026-04-30T00:00:00.000Z"
-    }
-  ];
-
-  // Assistant/templates/closeTicketTemplates.json
-  var closeTicketTemplates_default = [
-    {
-      id: "close_ticket_resolution_confirmed",
-      category: "close_ticket",
-      label: "Resolution Confirmed",
-      subject: "{{ticket_number}} - Please confirm the issue is resolved",
-      body: "Dear {{user_name}},\n\nThe issue reported in ticket {{ticket_number}} ({{short_description}}) appears to be resolved.\n\nCould you please confirm that everything is working as expected? Once confirmed, we will close the ticket.\n\nKind regards,\n{{agent_name}}",
-      preview: "Ask the user to confirm that the resolution is successful before closure.",
-      tags: ["resolved", "confirmation", "issue fixed"],
-      recommendedUsage: "Use when a solution has been applied but user confirmation is still required.",
-      confidenceScore: 92,
-      placeholders: ["user_name", "ticket_number", "short_description", "agent_name"],
-      signals: ["resolved", "solution applied", "working now", "fixed"]
     },
     {
-      id: "close_ticket_ready_to_close",
-      category: "close_ticket",
-      label: "Ready to Close",
-      subject: "{{ticket_number}} - Request completed",
-      body: "Dear {{user_name}},\n\nYour request {{ticket_number}} regarding {{short_description}} has been completed.\n\nUnless you need any additional assistance, the ticket will now be closed. Please reply if there is anything else we can help you with.\n\nKind regards,\n{{agent_name}}",
-      preview: "Confirm completion and advise that the ticket is ready to close.",
-      tags: ["completed", "ready to close", "request fulfilled"],
-      recommendedUsage: "Use after a request or task has been fully completed and no further action is expected.",
-      confidenceScore: 90,
-      placeholders: ["user_name", "ticket_number", "short_description", "agent_name"],
-      signals: ["completed", "fulfilled", "delivered", "pending closure", "ready to close"]
+      id: "equipment_return_mobile_devices_offboarding",
+      title: "Recover Mobile Devices / IT Material - Offboarding",
+      type: "email",
+      category: "return",
+      priority: 95,
+      enabled: true,
+      record_type: "RITM",
+      keywords: {
+        short_desc: "recover mobile devices",
+        description: "recover it material"
+      },
+      exclusions: [
+        "delivery",
+        "installation"
+      ],
+      subject: "IT Equipment Return Required Before {{follow_up_date}} - {{ticket_number}}",
+      body: "Dear {{requested_for}},\n\nYou are scheduled to leave on {{follow_up_date}}. Please return all IT equipment assigned under request {{ticket_number}} before this date.\n\nAssigned equipment:\n{{asset_tag}} - {{configuration_item}}\n\nReturn location:\nITEC Service Desk Brussels - ASP 01E035\n\nIf you cannot return the equipment in person, please contact us to arrange an alternative.\n\nPlease confirm once completed.\n\nKind regards,\n{{assigned_to}}",
+      work_note: "Reminder sent to {{requested_for}} for IT equipment return ({{ticket_number}}).\nAssets, location, and deadline ({{follow_up_date}}) communicated.\nAwaiting confirmation.",
+      close_note: "",
+      event_title: "",
+      event_desc: "",
+      pdf_block: "",
+      placeholders: [
+        "requested_for",
+        "follow_up_date",
+        "ticket_number",
+        "asset_tag",
+        "configuration_item"
+      ],
+      notes: "Offboarding return template for mobile devices / IT material.",
+      lastModified: "2026-05-04T07:31:03.367Z"
     },
     {
-      id: "close_ticket_no_response",
-      category: "close_ticket",
-      label: "No Response",
-      subject: "{{ticket_number}} - Follow-up before closure",
-      body: "Dear {{user_name}},\n\nWe have not yet received a reply regarding ticket {{ticket_number}} ({{short_description}}).\n\nIf we do not hear from you within {{closure_period}}, we will close the ticket. You can reply before then if you still need assistance.\n\nKind regards,\n{{agent_name}}",
-      preview: "Friendly final reminder before closing an inactive ticket.",
-      tags: ["no response", "reminder", "closure period"],
-      recommendedUsage: "Use after previous contact attempts when the user has not responded.",
-      confidenceScore: 88,
-      placeholders: ["user_name", "ticket_number", "short_description", "closure_period", "agent_name"],
-      signals: ["no response", "no reply", "unreachable", "awaiting user", "follow up"]
-    },
-    {
-      id: "close_ticket_closed",
-      category: "close_ticket",
-      label: "Ticket Closed",
-      subject: "{{ticket_number}} - Ticket closed",
-      body: "Dear {{user_name}},\n\nTicket {{ticket_number}} regarding {{short_description}} has now been closed.\n\nIf you need further assistance, please contact the Service Desk and we will be happy to help.\n\nKind regards,\n{{agent_name}}",
-      preview: "Notify the user that the ticket has been closed.",
-      tags: ["closed", "completed", "service desk"],
-      recommendedUsage: "Use after the ticket state has been changed to Closed.",
-      confidenceScore: 95,
-      placeholders: ["user_name", "ticket_number", "short_description", "agent_name"],
-      signals: ["closed", "closed complete", "closure complete"]
+      id: "test_bulk_1",
+      title: "Test Bulk Template",
+      type: "email",
+      category: "test",
+      priority: 100,
+      enabled: true,
+      record_type: "INC",
+      keywords: {
+        short_desc: "bulk test",
+        description: ""
+      },
+      exclusions: [],
+      subject: "Test Subject",
+      body: "Test Body",
+      work_note: "",
+      close_note: "",
+      event_title: "",
+      event_desc: "",
+      pdf_block: "",
+      placeholders: [],
+      notes: "Bulk import test",
+      lastModified: "2026-05-05T07:07:35.604Z"
     }
   ];
 
@@ -10402,23 +11311,23 @@ ${body}`) : body;
   var CATEGORY_META = [
     { id: "email", label: "Emails" },
     { id: "reminder", label: "Reminder" },
-    { id: "close_ticket", label: "Close Ticket", badge: "green" },
     { id: "close_note", label: "Close Note" },
     { id: "work_note", label: "Work Notes" },
     { id: "appointment", label: "Appointment" }
   ];
   var DEFAULT_GROUPS = {
-    email: emailTemplateCatalog_default,
+    email: EMAIL_TEMPLATES,
     reminder: [],
-    close_ticket: closeTicketTemplates_default,
     close_note: RESOLUTION_TEMPLATES,
     work_note: WORK_NOTE_TEMPLATES,
     appointment: APPOINTMENT_TEMPLATES
   };
-  var SUPPORTED_CATEGORIES = CATEGORY_META.map((category) => category.id);
+  var SUPPORTED_CATEGORIES = ["email", "reminder", "close_note", "work_note", "appointment"];
   function normalizeTemplateCategory(value) {
     const category = String(value || "").trim();
     if (SUPPORTED_CATEGORIES.includes(category)) return category;
+    if (category === "resolution") return "close_note";
+    if (category === "internal") return "work_note";
     if (category === "event") return "appointment";
     return "";
   }
@@ -10428,7 +11337,6 @@ ${body}`) : body;
     const contentByCategory = {
       email: template.body,
       reminder: template.body,
-      close_ticket: template.body,
       close_note: template.close_note || template.body,
       work_note: template.work_note || template.body,
       appointment: template.event_desc || template.body
@@ -10465,7 +11373,6 @@ ${body}`) : body;
     const output = {
       email: [],
       reminder: [],
-      close_ticket: [],
       close_note: [],
       work_note: [],
       appointment: []
@@ -10473,17 +11380,10 @@ ${body}`) : body;
     templates.forEach((template) => {
       if (!template || !template.id) return;
       const category = normalizeTemplateCategory(template.category);
-      if (category === "email") return;
       if (!output[category]) return;
       output[category].push({ ...deepClone(template), category });
     });
     return output;
-  }
-  function mergeTemplatesById(baseTemplates = [], customTemplates = []) {
-    const templates = /* @__PURE__ */ new Map();
-    baseTemplates.forEach((template) => templates.set(template.id, template));
-    customTemplates.forEach((template) => templates.set(template.id, template));
-    return Array.from(templates.values());
   }
   function buildReminderTemplate(template) {
     const reminderBody = buildReminderBody(template);
@@ -10532,16 +11432,19 @@ ${body}`) : body;
   function getTemplateGroups(settings) {
     const overrides = settings?.templateOverrides || {};
     const customTemplates = getCustomTemplatesByCategory(settings);
-    const baseEmailTemplates = emailTemplateCatalog_default.map((template) => deepClone(template));
+    const baseEmailTemplates = EMAIL_TEMPLATES.map((template) => applyTemplateOverride(template, overrides.email?.[template.id]));
     const reminderTemplates = baseEmailTemplates.map(
       (template) => applyTemplateOverride(buildReminderTemplate(template), overrides.reminder?.[`reminder_${template.id}`])
     );
     return Object.fromEntries(
       Object.entries(DEFAULT_GROUPS).map(([category, templates]) => {
-        const baseTemplates = category === "email" ? baseEmailTemplates : category === "reminder" ? reminderTemplates : templates.map((template) => applyTemplateOverride(template, overrides[category]?.[template.id]));
+        const baseTemplates = category === "reminder" ? reminderTemplates : templates.map((template) => applyTemplateOverride(template, overrides[category]?.[template.id]));
         return [
           category,
-          mergeTemplatesById(baseTemplates, customTemplates[category])
+          [
+            ...baseTemplates,
+            ...customTemplates[category]
+          ]
         ];
       })
     );
@@ -11355,13 +12258,14 @@ ${value}` : value;
                   title="${escapeHtml(phrase)}"
                 >
                   <span class="sn-assistant-worknotes__canned-label">${escapeHtml(phrase)}</span>
-                  <span
+                  <button
+                    type="button"
                     class="sn-assistant-worknotes__canned-remove"
                     data-action="work-notes-remove-canned-phrase"
                     data-phrase="${escapeHtml(phrase)}"
                     title="Remove phrase"
                     aria-label="Remove phrase"
-                  >\xD7</span>
+                  >\xD7</button>
                 </button>
               `).join("") : '<div class="sn-assistant-note sn-assistant-note--empty">No quick phrases yet. Select or write a note to build them.</div>'}
             </div>
@@ -11435,7 +12339,6 @@ ${value}` : value;
         }
       }
     }
-    root.dataset.snAssistantBound = root.dataset.snAssistantBound || "false";
     if (root.dataset.snAssistantBound !== "true") {
       root.dataset.snAssistantBound = "true";
       root.addEventListener("click", (event) => {
@@ -11489,7 +12392,6 @@ ${value}` : value;
       handleSelector: '[data-drag-handle="work-notes"]',
       state,
       positionKey: "workNotesPosition",
-      onPositionChange: () => repositionSecondarySurfaces(hostDocument, root),
       defaultPosition: (node) => {
         const ownerWindow = node.ownerDocument.defaultView || window;
         return {
@@ -11498,8 +12400,6 @@ ${value}` : value;
         };
       }
     });
-    sanitizeFloatingSurface(root);
-    repositionSecondarySurfaces(hostDocument, root);
     return root;
   }
   function removeWorkNotesPanel(hostDocument) {
@@ -11678,18 +12578,13 @@ ${value}` : value;
         const body = String(t?.body || "").trim().slice(0, 220) || "(No preview)";
         const rankLabel = idx === 0 ? "Best match" : `Option ${idx + 1}`;
         const toneClass = idx === 0 ? "is-green" : idx === 1 ? "is-amber" : "is-red";
-        const isMsg = String(t?.format || "").toLowerCase() === "msg";
         return `
-        <article class="sn-assistant-toptpl__card ${idx === 0 ? "is-best" : ""}">
+        <button type="button" class="sn-assistant-toptpl__card ${idx === 0 ? "is-best" : ""}" data-action="pick-template" data-template-id="${escapeHtml(t?.id || "")}">
           <span class="sn-assistant-toptpl__rank ${toneClass}">${escapeHtml(rankLabel)}</span>
           <strong class="sn-assistant-toptpl__title">${escapeHtml(title)}</strong>
-          ${isMsg ? '<span class="sn-assistant-toptpl__format">Outlook MSG</span>' : ""}
           <span class="sn-assistant-toptpl__subject">${escapeHtml(subject)}</span>
           <span class="sn-assistant-toptpl__body">${escapeHtml(body)}</span>
-          <button type="button" class="sn-assistant-button sn-assistant-button--primary sn-assistant-toptpl__use" data-action="pick-template" data-template-id="${escapeHtml(t?.id || "")}">
-            ${isMsg ? "Use MSG template" : "Use template"}
-          </button>
-        </article>
+        </button>
       `;
       }).join("");
       const modalMarkup = `
@@ -11698,7 +12593,6 @@ ${value}` : value;
         <div class="sn-assistant-modal__dialog" role="dialog" aria-modal="true" tabindex="-1">
           <div class="sn-assistant-modal__header">
             <div class="sn-assistant-modal__title">\u26A1 Top Email Templates</div>
-            <button type="button" class="sn-assistant-mini-button sn-assistant-mini-button--danger" data-action="toptpl-close" aria-label="Close Top Email Templates" title="Close">\xD7</button>
           </div>
           <div class="sn-assistant-modal__body">
             <div class="sn-assistant-toptpl__grid">
@@ -11719,28 +12613,19 @@ ${value}` : value;
       (hostDocument.body || hostDocument.documentElement).appendChild(root);
       const releaseFocusTrap = installModalFocusTrap(root, hostDocument);
       const backdrop = root.querySelector(".sn-assistant-modal__backdrop");
-      let settled = false;
+      const cancelBtn = root.querySelector('[data-action="toptpl-cancel"]');
       function cleanup(value = "") {
-        if (settled) return;
-        settled = true;
         releaseFocusTrap();
         root.remove();
         resolve(value);
       }
       root.addEventListener("click", (event) => {
         const btn = event.target.closest('[data-action="pick-template"]');
-        if (btn) {
-          cleanup(btn.getAttribute("data-template-id") || "");
-          return;
-        }
-        if (event.target.closest('[data-action="toptpl-close"], [data-action="toptpl-cancel"]')) cleanup("");
+        if (!btn) return;
+        cleanup(btn.getAttribute("data-template-id") || "");
       });
+      cancelBtn?.addEventListener("click", () => cleanup(""));
       backdrop?.addEventListener("click", () => cleanup(""));
-      root.addEventListener("keydown", (event) => {
-        if (event.key !== "Escape") return;
-        event.preventDefault();
-        cleanup("");
-      });
     });
   }
   function showGroupPickerModal(hostDocument, groups = []) {
@@ -12267,7 +13152,7 @@ ${value}` : value;
           />
         </div>
       </div>
-      ${category === "email" || category === "close_ticket" || category === "reminder" || category === "close_note" || category === "appointment" ? `
+      ${category === "email" || category === "reminder" || category === "close_note" || category === "appointment" ? `
             <div class="sn-assistant-field">
               <span class="sn-assistant-field__label">Subject</span>
               <textarea
@@ -12303,7 +13188,7 @@ ${value}` : value;
             <div class="sn-assistant-template-help__label">Target field</div>
             <div class="sn-assistant-template-help__text">Use <code>comments</code> for emails, <code>work_notes</code> for internal notes, and <code>close_notes</code> for user-facing close notes.</div>
           </div>
-          ${category === "email" || category === "close_ticket" || category === "reminder" || category === "close_note" || category === "appointment" ? `
+          ${category === "email" || category === "reminder" || category === "close_note" || category === "appointment" ? `
                 <div class="sn-assistant-template-help__block">
                   <div class="sn-assistant-template-help__label">Subject</div>
                   <div class="sn-assistant-template-help__text">Email subject line. You can keep placeholders like <code>{{ticket_number}}</code>.</div>
@@ -12784,14 +13669,14 @@ ${value}` : value;
             <div class="sn-assistant-row">
               <div class="sn-assistant-panel__heading" style="font-size:14px;">Existing templates</div>
               <div class="sn-assistant-row">
-                ${activeCategory === "email" ? '<span class="sn-assistant-note sn-assistant-note--info">Email templates are managed from <code>Assistant/templates/email/</code>.</span>' : `<button type="button" class="sn-assistant-button sn-assistant-button--secondary sn-assistant-button--compact" data-action="new-custom-template" data-category="${escapeHtml(activeCategory)}">New template</button>`}
+                <button type="button" class="sn-assistant-button sn-assistant-button--secondary sn-assistant-button--compact" data-action="new-custom-template" data-category="${escapeHtml(activeCategory)}">New template</button>
                 <button
                   type="button"
                   class="sn-assistant-button sn-assistant-button--secondary sn-assistant-button--compact"
                   data-action="duplicate-template"
                   data-category="${escapeHtml(activeCategory)}"
                   data-template-id="${escapeHtml(selectedTemplateId || "")}"
-                  ${selectedTemplateId && activeCategory !== "email" ? "" : "disabled"}
+                  ${selectedTemplateId ? "" : "disabled"}
                 >
                   Duplicate selected
                 </button>
@@ -13069,7 +13954,7 @@ Extension: +32 2 123 456"
       root.setAttribute(ROOT_ATTRIBUTE, ROOT_VALUE);
       (hostDocument.body || hostDocument.documentElement).appendChild(root);
     }
-    root.className = "sn-assistant-floating sn-assistant-user-info-root";
+    root.className = "sn-assistant-floating sn-assistant-user-tickets-root";
     const data = state.ui.userInfoData || {};
     const loading = Boolean(state.ui.userInfoLoading);
     const error2 = String(state.ui.userInfoError || "").trim();
@@ -13102,7 +13987,7 @@ Extension: +32 2 123 456"
       </div>
     `;
     const markup = `
-    <div class="sn-assistant-panel sn-assistant-panel--find-ci sn-assistant-panel--user-info">
+    <div class="sn-assistant-panel sn-assistant-panel--find-ci">
       <div class="sn-assistant-panel__header" data-drag-handle="user-info">
         <div class="sn-assistant-panel__title">
           <span class="sn-assistant-panel__eyebrow">User Info</span>
@@ -13143,14 +14028,11 @@ Extension: +32 2 123 456"
       handleSelector: '[data-drag-handle="user-info"]',
       state,
       positionKey: "userInfoPosition",
-      onPositionChange: () => repositionSecondarySurfaces(hostDocument, root),
       defaultPosition: (node) => {
         const ownerWindow = node.ownerDocument.defaultView || window;
         return { left: Math.max(16, (ownerWindow.innerWidth - 460) / 2), top: Math.max(80, (ownerWindow.innerHeight - 560) / 2) };
       }
     });
-    sanitizeFloatingSurface(root);
-    repositionSecondarySurfaces(hostDocument, root);
     return root;
   }
   function removeUserInfoPanel(hostDocument) {
@@ -13225,7 +14107,6 @@ Extension: +32 2 123 456"
       root.setAttribute(ROOT_ATTRIBUTE, ROOT_VALUE);
       (hostDocument.body || hostDocument.documentElement).appendChild(root);
     }
-    forceVisibleSurface(root);
     root.className = "sn-assistant-floating sn-assistant-user-tickets-root";
     const userName = context?.user?.fullName || context?.requestedFor || context?.caller || "Unknown user";
     const isLoading = Boolean(state.ui.userTicketsLoading);
@@ -13358,7 +14239,6 @@ Extension: +32 2 123 456"
       handleSelector: '[data-drag-handle="user-tickets"]',
       state,
       positionKey: "userTicketsPosition",
-      onPositionChange: () => repositionSecondarySurfaces(hostDocument, root),
       defaultPosition: (node) => {
         const ownerWindow = node.ownerDocument.defaultView || window;
         const w = Math.min(600, ownerWindow.innerWidth - 32);
@@ -13367,8 +14247,6 @@ Extension: +32 2 123 456"
         return { left, top };
       }
     });
-    sanitizeFloatingSurface(root);
-    repositionSecondarySurfaces(hostDocument, root);
     return root;
   }
   function removeUserTicketsPanel(hostDocument) {
@@ -13603,7 +14481,6 @@ Extension: +32 2 123 456"
       handleSelector: '[data-drag-handle="find-ci"]',
       state,
       positionKey: "findCiPosition",
-      onPositionChange: () => repositionSecondarySurfaces(hostDocument, root),
       defaultPosition: (node) => {
         const ownerWindow = node.ownerDocument.defaultView || window;
         const left = Math.max(16, (ownerWindow.innerWidth - 420) / 2);
@@ -13611,8 +14488,6 @@ Extension: +32 2 123 456"
         return { left, top };
       }
     });
-    sanitizeFloatingSurface(root);
-    repositionSecondarySurfaces(hostDocument, root);
     return root;
   }
   function removeFindCiPanel(hostDocument) {
@@ -13895,6 +14770,96 @@ Extension: +32 2 123 456"
     });
   }
 
+  // Assistant/ui/onboarding.js
+  var ONBOARDING_TOTAL_STEPS = 3;
+  var STEPS = [
+    {
+      icon: `<svg width="48" height="48" viewBox="0 0 48 48" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="24" cy="24" r="20"/><path d="M16 24c0-4.4 3.6-8 8-8s8 3.6 8 8-3.6 8-8 8"/><circle cx="24" cy="24" r="3"/><path d="M24 17v-4M24 35v-4M17 24h-4M35 24h-4"/></svg>`,
+      title: "Bienvenido al Asistente SN",
+      body: "Tu asistente integrado para ServiceNow. Genera emails, work notes y notas de resoluci\xF3n autom\xE1ticamente desde cualquier ticket.",
+      cta: "Siguiente",
+      skip: "Saltar configuraci\xF3n"
+    },
+    {
+      icon: `<svg width="48" height="48" viewBox="0 0 48 48" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 8h24a4 4 0 0 1 4 4v6H8v-6a4 4 0 0 1 4-4z"/><path d="M8 18v18a4 4 0 0 0 4 4h24a4 4 0 0 0 4-4V18"/><path d="M20 28h8M20 34h5"/><circle cx="32" cy="34" r="6"/><path d="M30 34l1.5 1.5L35 31"/></svg>`,
+      title: "\xBFQu\xE9 puedes hacer?",
+      body: null,
+      bullets: [
+        "\u{1F4E7}  Genera borradores de email en 1 clic con tus plantillas",
+        "\u{1F4DD}  A\xF1ade work notes predefinidas a cualquier ticket",
+        "\u2705  Rellena notas de resoluci\xF3n autom\xE1ticamente al cerrar",
+        "\u{1F50D}  Busca el CI del usuario sin salir del ticket"
+      ],
+      cta: "Siguiente",
+      skip: "Saltar configuraci\xF3n"
+    },
+    {
+      icon: `<svg width="48" height="48" viewBox="0 0 48 48" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="24" cy="24" r="20"/><path d="M24 14v10l6 6"/><path d="M14 24h2M32 24h2M24 14v2M24 34v2"/><circle cx="24" cy="24" r="3" fill="currentColor"/></svg>`,
+      title: "Config\xFAralo en 2 minutos",
+      body: "Antes de empezar necesitas configurar tu nombre, email y las plantillas que m\xE1s uses. Solo tienes que hacerlo una vez.",
+      cta: "Abrir configuraci\xF3n \u2192",
+      skip: "Configurar m\xE1s tarde"
+    }
+  ];
+  function renderStep(step, stepIndex) {
+    const s = STEPS[stepIndex];
+    const bulletsHtml = Array.isArray(s.bullets) ? `<ul class="sn-ob__bullets">${s.bullets.map((b) => `<li>${escapeHtml(b)}</li>`).join("")}</ul>` : "";
+    const bodyHtml = s.body ? `<p class="sn-ob__body">${escapeHtml(s.body)}</p>` : "";
+    const dotsHtml = Array.from(
+      { length: ONBOARDING_TOTAL_STEPS },
+      (_, i) => `<span class="sn-ob__dot${i === stepIndex ? " sn-ob__dot--active" : ""}" aria-hidden="true"></span>`
+    ).join("");
+    return `
+    <div class="sn-ob__card" role="dialog" aria-modal="true" aria-label="${escapeHtml(s.title)}">
+      <div class="sn-ob__icon" aria-hidden="true">${s.icon}</div>
+      <h2 class="sn-ob__title">${escapeHtml(s.title)}</h2>
+      ${bodyHtml}
+      ${bulletsHtml}
+      <div class="sn-ob__actions">
+        <button type="button" class="sn-ob__btn sn-ob__btn--primary" data-action="ob-next">
+          ${escapeHtml(s.cta)}
+        </button>
+        <button type="button" class="sn-ob__btn sn-ob__btn--ghost" data-action="ob-skip">
+          ${escapeHtml(s.skip)}
+        </button>
+      </div>
+      <div class="sn-ob__dots" aria-hidden="true">${dotsHtml}</div>
+    </div>
+  `;
+  }
+  function bindOnboarding(root, handlers) {
+    if (root.dataset.snObBound === "true") return;
+    root.dataset.snObBound = "true";
+    root.addEventListener("click", (event) => {
+      const btn = event.target.closest("[data-action]");
+      if (!btn) return;
+      const { action } = btn.dataset;
+      if (action === "ob-next") handlers.onOnboardingNext?.();
+      if (action === "ob-skip") handlers.onOnboardingSkip?.();
+    });
+  }
+  function ensureOnboarding({ hostDocument, state, handlers }) {
+    let root = hostDocument.getElementById(UI_IDS.onboarding);
+    if (!root) {
+      root = hostDocument.createElement("div");
+      root.id = UI_IDS.onboarding;
+      root.setAttribute(ROOT_ATTRIBUTE, ROOT_VALUE);
+      (hostDocument.body || hostDocument.documentElement).appendChild(root);
+    }
+    const step = Math.max(0, Math.min(state.ui.onboardingStep - 1, ONBOARDING_TOTAL_STEPS - 1));
+    const markup = renderStep(step, step);
+    if (root.__snObMarkup !== markup) {
+      root.innerHTML = `<div class="sn-ob__backdrop">${markup}</div>`;
+      root.__snObMarkup = markup;
+    }
+    bindOnboarding(root, handlers);
+    return root;
+  }
+  function removeOnboarding(hostDocument) {
+    const root = hostDocument?.getElementById(UI_IDS.onboarding);
+    if (root) root.remove();
+  }
+
   // Assistant/application/runtime/ui-surfaces.js
   function removeUiFromDocument(documentRef) {
     removeLauncher(documentRef);
@@ -13905,6 +14870,7 @@ Extension: +32 2 123 456"
     removeUserTicketsPanel(documentRef);
     removeFindCiPanel(documentRef);
     removePdfSelection(documentRef);
+    removeOnboarding(documentRef);
     purgeToasts(documentRef);
   }
   function removeUiFromOtherDocuments(hostDocument) {
@@ -14109,10 +15075,12 @@ Extension: +32 2 123 456"
 
   // Assistant/application/templates/selection.js
   function isDraftCapableCategory(category = "") {
-    return ["email", "close_ticket", "appointment"].includes(cleanText(category));
+    return ["email", "appointment"].includes(cleanText(category));
   }
   function getSafeCategory(requestedCategory = "", groups = {}) {
     const category = cleanText(requestedCategory);
+    if (category === "resolution") return "close_note";
+    if (category === "internal") return "work_note";
     return groups[category] ? category : "";
   }
   function mergeResolvedUser(currentUser = {}, resolvedUser = {}) {
@@ -14133,9 +15101,7 @@ Extension: +32 2 123 456"
     const categories = getCategories();
     const fallbackCategory = categories.find((category) => groups[category.id]?.length)?.id || categories[0]?.id || "email";
     const normalizedRequestedCategory = getSafeCategory(requestedCategory, groups);
-    const closeTicketSelection = selectCloseTicketTemplate(groups.close_ticket || [], state.context || {});
-    const shouldPreferCloseTicket = normalizedRequestedCategory === "email" && closeTicketSelection.recommended;
-    const activeCategory = shouldPreferCloseTicket ? "close_ticket" : groups[normalizedRequestedCategory]?.length ? normalizedRequestedCategory : fallbackCategory;
+    const activeCategory = groups[normalizedRequestedCategory]?.length ? normalizedRequestedCategory : fallbackCategory;
     const ticketContext = detectContext(state.context || {});
     let selectedTemplate = null;
     let selectedTemplateId = "";
@@ -14155,9 +15121,6 @@ Extension: +32 2 123 456"
       const selection = selectCloseNoteTemplate(groups.close_note || [], state.context || {}, ticketContext);
       selectedTemplate = selection.template;
       selectedTemplateId = selection.templateId;
-    } else if (activeCategory === "close_ticket") {
-      selectedTemplate = closeTicketSelection.template;
-      selectedTemplateId = closeTicketSelection.templateId;
     } else if (activeCategory === "appointment") {
       const templates2 = groups.appointment || [];
       selectedTemplate = templates2[0] || null;
@@ -14208,8 +15171,7 @@ Extension: +32 2 123 456"
     logger,
     rootWindow,
     hydrateUser = false,
-    categoryOverride,
-    templateOverride = null
+    categoryOverride
   }) {
     const baseContext = state.context || getCurrentContext(rootWindow);
     if (!baseContext?.supported) {
@@ -14242,10 +15204,8 @@ Extension: +32 2 123 456"
         configurationItemValue: context.configurationItemValue || context.configurationItem
       };
     }
-    const baseSelection = resolveTemplateSelection(state, settings, categoryOverride);
-    const selectedTemplate = templateOverride || baseSelection.selectedTemplate;
-    const selection = templateOverride ? { ...baseSelection, selectedTemplate, selectedTemplateId: templateOverride.id } : baseSelection;
-    const renderedTemplate = selectedTemplate ? renderTemplate(selectedTemplate, { context, settings }) : null;
+    const selection = resolveTemplateSelection(state, settings, categoryOverride);
+    const renderedTemplate = selection.selectedTemplate ? renderTemplate(selection.selectedTemplate, { context, settings }) : null;
     const emailSuggestions = selection.activeCategory === "email" && selection.emailSelection?.ambiguous ? (selection.emailSelection.candidates || []).slice(0, 3).map((candidate) => {
       const template = selection.templates.find((item) => item.id === candidate.templateId);
       if (!template) return null;
@@ -14354,7 +15314,6 @@ Extension: +32 2 123 456"
     logger,
     rootWindow,
     categoryOverride = "email",
-    templateOverride = null,
     cacheDraftContent,
     resetDraftContentCache,
     confirmValidationIssues,
@@ -14367,8 +15326,7 @@ Extension: +32 2 123 456"
       logger,
       rootWindow,
       hydrateUser: true,
-      categoryOverride,
-      templateOverride
+      categoryOverride
     });
     if (!renderedTemplate || !isDraftCapableCategory(renderedTemplate.category)) {
       throw new Error("Draft is only available for email-like templates");
@@ -15205,34 +16163,6 @@ Extension: +32 2 123 456"
   .sn-assistant-panel {
     width: calc(100vw - 24px);
     max-height: calc(100vh - 32px);
-  }
-}
-
-.sn-assistant-worknotes-panel,
-.sn-assistant-panel--find-ci,
-.sn-assistant-user-tickets-root,
-.sn-assistant-user-info-root,
-.sn-ep-links__panel,
-.sn-assistant-modal__dialog {
-  max-width: calc(100vw - 20px);
-  max-height: calc(100vh - 20px);
-  overflow: auto;
-}
-
-@media (max-width: 700px) {
-  .sn-assistant-worknotes-panel,
-  .sn-assistant-panel--find-ci,
-  .sn-assistant-user-tickets-root,
-  .sn-assistant-user-info-root,
-  .sn-ep-links__panel {
-    width: calc(100vw - 20px);
-    left: 10px !important;
-    right: 10px !important;
-  }
-
-  .sn-assistant-panel__body,
-  .sn-assistant-modal__body {
-    max-height: calc(100vh - 120px);
   }
 }
 
@@ -16453,7 +17383,7 @@ Extension: +32 2 123 456"
 /* \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
    TOAST NOTIFICATION
    \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500 */
-.sn-assistant-clipboard-toast {
+.sn-assistant-toast {
   position: fixed;
   bottom: 16px;
   right: 16px;
@@ -16472,7 +17402,7 @@ Extension: +32 2 123 456"
   z-index: 9999;
 }
 
-.sn-assistant-clipboard-toast__content {
+.sn-assistant-toast__content {
   display: flex;
   align-items: center;
   gap: 10px;
@@ -16486,11 +17416,11 @@ Extension: +32 2 123 456"
   line-height: 1;
 }
 
-.sn-assistant-clipboard-toast__message {
+.sn-assistant-toast__message {
   flex: 1 1 auto;
 }
 
-.sn-assistant-clipboard-toast__message code {
+.sn-assistant-toast__message code {
   background: var(--sn-assistant-surface);
   padding: 2px 6px;
   border-radius: 4px;
@@ -16499,7 +17429,7 @@ Extension: +32 2 123 456"
   word-break: break-all;
 }
 
-.sn-assistant-clipboard-toast--dismissing {
+.sn-assistant-toast--dismissing {
   animation: slideOutToast 0.3s cubic-bezier(0.16, 1, 0.3, 1) forwards;
 }
 
@@ -17606,7 +18536,7 @@ Extension: +32 2 123 456"
 /* \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
    EDGE PANEL  (Samsung Edge Panel style)
    \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500 */
-.sn-ep {
+:root {
   --ep-green:        #1A9E72;
   --ep-green-bg:     #E6F5EF;
   --ep-green-border: rgba(26, 158, 114, 0.26);
@@ -17785,7 +18715,6 @@ Extension: +32 2 123 456"
 }
 
 .sn-ep__tab {
-  position: relative;
   flex-shrink: 0;
   width: 30px;
   min-height: 82px;
@@ -18080,11 +19009,9 @@ Extension: +32 2 123 456"
     0 0 0 5px rgba(37, 99, 235, 0.35);
 }
 
-/* Show close button as disabled while pinned so the user knows it exists but is locked. */
+/* When pinned the close button unpins+closes \u2014 keep it clickable, just dim it slightly. */
 .sn-ep[data-ep-pinned="true"] .sn-ep__icon-btn--header {
-  opacity: 0.35;
-  cursor: not-allowed;
-  pointer-events: none;
+  opacity: 0.6;
 }
 
 /* Header Settings Button */
@@ -18347,6 +19274,39 @@ Extension: +32 2 123 456"
 
 .sn-ep__action:hover {
   background: var(--ep-neutral-bg);
+}
+
+.sn-ep__generate-section-label {
+  padding: 4px 10px 2px;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--ep-muted, #94a3b8);
+  background: transparent;
+  border-top: 1px solid var(--ep-border);
+}
+
+.sn-ep__generate-section-label:first-child {
+  border-top: none;
+}
+
+.sn-ep__generate-divider {
+  height: 0;
+  border-top: 1px solid var(--ep-border);
+  margin: 2px 0;
+}
+
+.sn-ep__generate-item--template {
+  font-size: 11.5px;
+  font-weight: 500;
+  max-width: 100%;
+}
+
+.sn-ep__generate-item--template span:last-child {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .sn-ep[style*="--btn-opacity"] .sn-ep__action--draft { background: rgba(37, 99, 235, calc(0.12 * var(--btn-opacity, 1))); }
@@ -18914,6 +19874,10 @@ Extension: +32 2 123 456"
   animation: shake 0.3s ease-in-out infinite;
 }
 
+.sn-ep__tab {
+  position: relative; /* needed for .sn-ep__sla-dot absolute positioning */
+}
+
 .sn-ep__sla-badge {
   display: inline-flex;
   align-items: center;
@@ -18941,9 +19905,6 @@ Extension: +32 2 123 456"
 }
 
 .sn-assistant-worknotes__canned-chip {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
   font-size: 10px;
   padding: 2px 7px;
   background: var(--sn-assistant-accent-soft);
@@ -18954,6 +19915,12 @@ Extension: +32 2 123 456"
 .sn-assistant-worknotes__canned-chip:hover {
   background: var(--sn-assistant-accent);
   color: #fff;
+}
+
+.sn-assistant-worknotes__canned-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
 }
 
 .sn-assistant-worknotes__canned-label {
@@ -19036,40 +20003,13 @@ Extension: +32 2 123 456"
 .sn-assistant-panel--user-tickets {
   width: 520px;
   max-width: calc(100vw - 24px);
-  overflow-x: hidden;
-  scrollbar-width: none;
-  -ms-overflow-style: none;
 }
-
-.sn-assistant-toptpl__format {
-  align-self: flex-start;
-  padding: 2px 6px;
-  border-radius: 999px;
-  background: rgba(37, 99, 235, 0.10);
-  color: var(--sn-assistant-accent-strong);
-  font-size: 9px;
-  font-weight: 800;
-  letter-spacing: .04em;
-  text-transform: uppercase;
-}
-
-.sn-assistant-toptpl__use {
-  width: 100%;
-  justify-content: center;
-  margin-top: auto;
-}
-
-.sn-assistant-panel--user-tickets::-webkit-scrollbar { display: none; }
 
 .sn-assistant-tickets-table-wrapper {
   overflow-x: auto;
   overflow-y: auto;
   max-height: min(55vh, 440px);
-  scrollbar-width: none;
-  -ms-overflow-style: none;
 }
-
-.sn-assistant-tickets-table-wrapper::-webkit-scrollbar { display: none; }
 
 .sn-assistant-tickets-table {
   width: 100%;
@@ -19599,100 +20539,150 @@ Extension: +32 2 123 456"
   /* keep tab visible for non-bc positions */
 }
 
-.sn-assistant-tab--close-ticket { gap: 4px; }
-.sn-assistant-tab--close-ticket.is-active {
-  color: #166534;
-  border-color: rgba(22, 163, 74, 0.35);
-  background: rgba(22, 163, 74, 0.10);
+/* \u2500\u2500\u2500 Onboarding welcome modal \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500 */
+#sn-assistant-onboarding {
+  position: fixed;
+  inset: 0;
+  z-index: 2147483640;
+  pointer-events: auto;
 }
-.sn-assistant-category-badge,
-.sn-assistant-best-match {
-  display: inline-flex;
+
+.sn-ob__backdrop {
+  position: absolute;
+  inset: 0;
+  background: rgba(15, 23, 42, 0.55);
+  backdrop-filter: blur(3px);
+  display: flex;
   align-items: center;
-  border-radius: 999px;
-  background: #15803d;
-  color: #fff;
-  padding: 1px 5px;
-  font-size: 8px;
-  font-weight: 800;
-  letter-spacing: .04em;
-  text-transform: uppercase;
+  justify-content: center;
+  padding: 16px;
 }
-.sn-assistant-template-guidance {
-  display: grid;
-  gap: 5px;
-  padding: 8px;
-  border: 1px solid rgba(22, 163, 74, 0.22);
+
+.sn-ob__card {
+  background: #fff;
+  border-radius: 20px;
+  box-shadow: 0 24px 64px rgba(15, 23, 42, 0.22);
+  padding: 40px 36px 32px;
+  max-width: 420px;
+  width: 100%;
+  text-align: center;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0;
+  animation: sn-ob-in 0.25s ease;
+}
+
+@keyframes sn-ob-in {
+  from { opacity: 0; transform: translateY(12px) scale(0.97); }
+  to   { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+.sn-ob__icon {
+  color: #0d5a6d;
+  margin-bottom: 20px;
+  opacity: 0.9;
+}
+
+.sn-ob__title {
+  font-size: 20px;
+  font-weight: 700;
+  color: #0f172a;
+  margin: 0 0 12px;
+  line-height: 1.3;
+}
+
+.sn-ob__body {
+  font-size: 14px;
+  color: #475569;
+  margin: 0 0 24px;
+  line-height: 1.6;
+}
+
+.sn-ob__bullets {
+  list-style: none;
+  padding: 0;
+  margin: 0 0 24px;
+  text-align: left;
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.sn-ob__bullets li {
+  font-size: 13.5px;
+  color: #334155;
+  padding: 8px 12px;
+  background: #f8fafc;
   border-radius: 8px;
-  background: rgba(22, 163, 74, 0.06);
-  color: var(--sn-assistant-muted);
-  font-size: 10px;
+  border: 1px solid #e2e8f0;
   line-height: 1.4;
 }
-.sn-assistant-template-guidance__top,
-.sn-assistant-template-tags { display: flex; align-items: center; gap: 4px; flex-wrap: wrap; }
-.sn-assistant-confidence { color: #166534; font-weight: 700; }
-.sn-assistant-template-tags span {
-  padding: 1px 5px;
-  border-radius: 999px;
-  background: var(--sn-assistant-panel);
-  border: 1px solid var(--sn-assistant-border);
+
+.sn-ob__actions {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  width: 100%;
+  margin-bottom: 20px;
 }
 
-/* User Info remains scrollable when required, without nested or visible bars. */
-.sn-assistant-user-info-root { overflow: visible; }
-.sn-assistant-panel--user-info {
-  overflow-x: hidden;
-  scrollbar-width: none;
-  -ms-overflow-style: none;
-}
-.sn-assistant-panel--user-info::-webkit-scrollbar { display: none; }
-.sn-assistant-panel--user-info .sn-assistant-panel__body,
-.sn-assistant-panel--user-info .sn-assistant-ci-list {
-  overflow-x: hidden;
-  scrollbar-width: none;
-  -ms-overflow-style: none;
-}
-.sn-assistant-panel--user-info .sn-assistant-ci-list::-webkit-scrollbar { display: none; }
-.sn-assistant-panel--user-info .sn-assistant-ci-item__meta {
-  overflow-wrap: anywhere;
-  word-break: break-word;
+.sn-ob__btn {
+  padding: 11px 20px;
+  border-radius: 10px;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  border: none;
+  transition: background 0.15s, transform 0.1s, box-shadow 0.15s;
+  width: 100%;
 }
 
-/* Final narrow-viewport guardrails for all ServiceNow-injected surfaces. */
-@media (max-width: 768px) {
-  .sn-assistant-panel,
-  .sn-assistant-panel--user-tickets,
-  .sn-assistant-panel--find-ci,
-  .sn-assistant-worknotes-panel,
-  .sn-assistant-user-info-panel,
-  .sn-assistant-ep-links-panel {
-    left: 4px !important;
-    right: 4px !important;
-    width: auto !important;
-    max-width: none !important;
-    max-height: calc(100dvh - 8px);
-  }
-  .sn-assistant-panel__footer,
-  .sn-assistant-user-info__actions,
-  .sn-assistant-ci-item__actions { flex-wrap: wrap; }
-  .sn-assistant-tickets-table-wrapper { max-width: 100%; overscroll-behavior-x: contain; }
+.sn-ob__btn:active {
+  transform: scale(0.98);
 }
 
-@media (max-width: 400px) {
-  .sn-assistant-modal { padding: 4px; }
-  .sn-assistant-ci-item { align-items: flex-start; flex-wrap: wrap; }
-  .sn-assistant-ci-item__info { flex-basis: calc(100% - 34px); }
-  .sn-ep[data-ep-mode="expanded"] {
-    width: calc(100vw - 8px) !important;
-    max-width: calc(100vw - 8px);
-  }
-  #sn-assistant-toasts {
-    left: 8px !important;
-    right: 8px !important;
-    width: auto !important;
-    max-width: none !important;
-  }
+.sn-ob__btn--primary {
+  background: #0d5a6d;
+  color: #fff;
+  box-shadow: 0 2px 8px rgba(13, 90, 109, 0.3);
+}
+
+.sn-ob__btn--primary:hover {
+  background: #0a4a5a;
+  box-shadow: 0 4px 12px rgba(13, 90, 109, 0.4);
+}
+
+.sn-ob__btn--ghost {
+  background: transparent;
+  color: #64748b;
+  border: 1px solid #e2e8f0;
+}
+
+.sn-ob__btn--ghost:hover {
+  background: #f8fafc;
+  color: #475569;
+}
+
+.sn-ob__dots {
+  display: flex;
+  gap: 6px;
+  justify-content: center;
+}
+
+.sn-ob__dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: #cbd5e1;
+  transition: background 0.2s, width 0.2s;
+}
+
+.sn-ob__dot--active {
+  background: #0d5a6d;
+  width: 18px;
+  border-radius: 3px;
 }
 `;
 
@@ -20210,7 +21200,7 @@ Are you sure you want to download this calendar event?`
     if (!assetPath) return [];
     const candidates = [];
     const runtimeRepoBase = "https://raw.githubusercontent.com/antoleod/bot/main/";
-    const configBase = cleanText(rootWindow?.__SN_ASSISTANT_PDF_BASE_URL__);
+    const configBase = cleanText(rootWindow?.__SN_SMART_EMAIL__?.CONFIG?.PDF_BASE_URL) || cleanText(rootWindow?.__SN_ASSISTANT_PDF_BASE_URL__) || cleanText(rootWindow?.__SN_SMART_EMAIL__?.CONFIG?.PDF_ASSET_BASE_URL);
     const pushFromBase = (baseUrl) => {
       try {
         const normalizedBaseUrl = normalizePdfAssetBaseUrl(baseUrl);
@@ -20224,7 +21214,7 @@ Are you sure you want to download this calendar event?`
     }
     pushFromBase(runtimeRepoBase);
     try {
-      const bundleBase = cleanText(rootWindow?.__SN_ASSISTANT_BUNDLE_BASE_URL__);
+      const bundleBase = cleanText(rootWindow?.__SN_ASSISTANT_BUNDLE_BASE_URL__ || rootWindow?.__SN_SMART_EMAIL__?.CONFIG?.BUNDLE_BASE_URL);
       if (bundleBase) {
         pushFromBase(bundleBase);
         pushFromBase(new URL("./dist/", bundleBase).href);
@@ -20235,7 +21225,7 @@ Are you sure you want to download this calendar event?`
     try {
       const scripts = Array.from(rootWindow?.document?.scripts || []);
       const scriptSources = scripts.map((script) => cleanText(script.src)).filter(Boolean);
-      const bundleSource = scriptSources.find((src) => /emailsbots\.bundle\.js/i.test(src));
+      const bundleSource = scriptSources.find((src) => /emailsbots\.bundle\.js|smart-email\.js/i.test(src));
       const currentScriptSource = cleanText(rootWindow?.document?.currentScript?.src);
       const selectedSource = bundleSource || currentScriptSource || scriptSources[scriptSources.length - 1] || "";
       if (selectedSource) {
@@ -37235,6 +38225,9 @@ Verification completed with ${requestedFor}. Ticket moved to Resolved.`;
   function clearHeaderCounts(state) {
     state.ui.headerCounts = { inc: 0, task: 0, loading: false, ready: false, error: false, recordKey: "", fetchedAt: 0, lastNotifiedInc: 0, lastNotifiedTask: 0 };
   }
+  function setOnboardingStep(state, step) {
+    state.ui.onboardingStep = typeof step === "number" ? step : 0;
+  }
 
   // Assistant/handlers/userTickets.js
   function createUserTicketsHandlers({
@@ -38113,7 +39106,7 @@ ${assignedTo}`
             return;
           }
           store.dispatch(setSelectedTemplate2, { category: "email", templateId: selected.id });
-          const opened = await runDraftFlow2({ categoryOverride: "email", templateOverride: selected });
+          const opened = await runDraftFlow2({ categoryOverride: "email" });
           if (opened) {
             showToast(state.host.document, { message: `Draft opened \xB7 ${selected.label || selected.id}`, tone: "info" });
           }
@@ -38570,6 +39563,35 @@ ${text2}` : text2;
         store.dispatch(setWorkNotesRecentPhrases, next);
         saveRecentWorkNotePhrases(rootWindow, next);
         scheduleRecovery("work-notes-quick-phrase-remove", 0);
+      },
+      // Quick-write: applies a template and writes directly to the SN work notes
+      // field without opening the full work notes panel.
+      onQuickWriteWorkNote(templateId) {
+        runAction("workNotes", async () => {
+          const currentContext = state.context || getCurrentContext(rootWindow);
+          if (!currentContext?.table && !currentContext?.recordNumber && !currentContext?.ticketNumber) {
+            throw new Error("No ticket context detected");
+          }
+          const settings = getEffectiveSettings();
+          const model = buildWorkNoteModel(currentContext, settings, state);
+          const template = model.templates.find((t) => t.id === cleanText(templateId));
+          if (!template) throw new Error("Template not found");
+          const rendered = renderTemplate(template, { context: currentContext, settings });
+          const text2 = cleanText(rendered?.body || "");
+          if (!text2) throw new Error("Template rendered empty");
+          const result = writeWorkNoteToField(text2, currentContext, { append: true });
+          if (!result.ok) throw new Error("Work notes could not be written");
+          noteWorkNoteTemplateUsage(state, rootWindow, template.id);
+          pushRecentWorkNote(rootWindow, template.id, template.label || "");
+          logger.info("work-notes:quick-write", {
+            templateId: template.id,
+            ticketNumber: currentContext?.ticketNumber || currentContext?.recordNumber || "unknown"
+          });
+          showToast(state.host.document, {
+            message: `Work note written: ${template.label || template.id}`,
+            tone: "success"
+          });
+        });
       }
     };
   }
@@ -38580,15 +39602,15 @@ ${text2}` : text2;
   }
   function getDefaultCustomTemplate(category) {
     const rawCategory = cleanText(category);
-    const safeCategory = ["email", "reminder", "close_ticket", "close_note", "work_note", "appointment"].includes(rawCategory) ? rawCategory : "email";
-    if (safeCategory === "reminder" || safeCategory === "close_ticket") {
+    const safeCategory = ["email", "reminder", "close_note", "work_note", "appointment"].includes(rawCategory) ? rawCategory : rawCategory === "resolution" ? "close_note" : rawCategory === "internal" ? "work_note" : "email";
+    if (safeCategory === "reminder") {
       return {
         id: createCustomTemplateId(safeCategory),
         category: safeCategory,
-        label: safeCategory === "close_ticket" ? "New close ticket template" : "New reminder template",
+        label: "New reminder template",
         target: "comments",
-        subject: safeCategory === "close_ticket" ? "{{ticket_number}} - Ticket update" : "Reminder: {{ticket_number}}",
-        body: safeCategory === "close_ticket" ? "Dear {{user_name}},\n\nYour ticket {{ticket_number}} regarding {{short_description}} is ready to close.\n\nKind regards,\n{{agent_name}}" : "Dear {{user_name}},\n\nReminder regarding ticket {{ticket_number}}.\n\nWe are following up on the previous message and kindly ask you to confirm your availability or share the missing details.\n\nKind regards,\n{{agent_name}}",
+        subject: "Reminder: {{ticket_number}}",
+        body: "Dear {{user_name}},\n\nReminder regarding ticket {{ticket_number}}.\n\nWe are following up on the previous message and kindly ask you to confirm your availability or share the missing details.\n\nKind regards,\n{{agent_name}}",
         isCustom: true
       };
     }
@@ -38636,7 +39658,7 @@ ${text2}` : text2;
   }
   function duplicateTemplateAsCustom(category, templateId, settings) {
     const rawCategory = cleanText(category);
-    const safeCategory = ["email", "reminder", "close_ticket", "close_note", "work_note", "appointment"].includes(rawCategory) ? rawCategory : "email";
+    const safeCategory = ["email", "reminder", "close_note", "work_note", "appointment"].includes(rawCategory) ? rawCategory : rawCategory === "resolution" ? "close_note" : rawCategory === "internal" ? "work_note" : "email";
     const sourceTemplate = getTemplate(safeCategory, templateId, settings);
     if (!sourceTemplate) {
       return getDefaultCustomTemplate(safeCategory);
@@ -38900,10 +39922,6 @@ ${text2}` : text2;
         scheduleRecovery("settings-template-restore", 0);
       },
       onNewCustomTemplate(category) {
-        if ((category || state.ui.templateManagerCategory || "email") === "email") {
-          showToast(state.host.document, { message: "Add email templates in Assistant/templates/email/ and rebuild.", tone: "info" });
-          return;
-        }
         const draft = cloneSettings(ensureSettingsDraft(state));
         const template = getDefaultCustomTemplate(category || state.ui.templateManagerCategory || "email");
         upsertCustomTemplate(draft, template);
@@ -38923,10 +39941,6 @@ ${text2}` : text2;
       onDuplicateTemplate(category, templateId) {
         const draft = cloneSettings(ensureSettingsDraft(state));
         const sourceCategory = category || state.ui.templateManagerCategory || "email";
-        if (sourceCategory === "email") {
-          showToast(state.host.document, { message: "External email templates cannot be duplicated in Settings.", tone: "info" });
-          return;
-        }
         const sourceTemplateId = templateId || state.ui.selectedTemplates?.[sourceCategory] || "";
         const template = duplicateTemplateAsCustom(sourceCategory, sourceTemplateId, draft);
         upsertCustomTemplate(draft, template);
@@ -39257,9 +40271,6 @@ ${text2}` : text2;
       ownerWindow.addEventListener("click", onOutside, true);
     }, 0);
     (hostDocument.body || hostDocument.documentElement).appendChild(panel);
-    sanitizeFloatingSurface(panel);
-    const anchor = hostDocument.getElementById("sn-assistant-launcher")?.querySelector(".sn-ep");
-    if (anchor) repositionSecondarySurfaces(hostDocument, anchor);
   }
   function openEpLinks({ hostDocument, context, settings, logger, showToast: showToast2 }) {
     const linkCtx = buildEpLinkContext(context);
@@ -39616,6 +40627,28 @@ ${text2}` : text2;
     };
   }
 
+  // Assistant/handlers/onboarding.js
+  function createOnboardingHandlers({ store, state, rootWindow, scheduleRecovery }) {
+    return {
+      onOnboardingNext() {
+        const next = (state.ui.onboardingStep || 1) + 1;
+        if (next > ONBOARDING_TOTAL_STEPS) {
+          markOnboardingSeen(rootWindow);
+          store.dispatch(setOnboardingStep, 0);
+          scheduleRecovery("onboarding-done", 0);
+        } else {
+          store.dispatch(setOnboardingStep, next);
+          scheduleRecovery("onboarding-step", 0);
+        }
+      },
+      onOnboardingSkip() {
+        markOnboardingSeen(rootWindow);
+        store.dispatch(setOnboardingStep, 0);
+        scheduleRecovery("onboarding-skip", 0);
+      }
+    };
+  }
+
   // Assistant/core/bootstrap.js
   function getAutoHideDelayMs(settings) {
     const value = cleanText(settings?.autoHideAssistantDelay || "off").toLowerCase();
@@ -39724,7 +40757,7 @@ ${text2}` : text2;
       return sanitizeSettings(state.ui.settingsDraft || state.settings);
     }
     function isAssistantSuppressed() {
-      return Boolean(state.ui.workNotesOpen || state.ui.settingsOpen);
+      return Boolean(state.ui.settingsOpen);
     }
     function clearAutoHideTimer() {
       if (state.lifecycle.autoHideTimer) {
@@ -40098,7 +41131,8 @@ ${text2}` : text2;
       createEmailHandlers(handlerDeps),
       createWorkNotesHandlers(handlerDeps),
       createAssignHandlers(handlerDeps),
-      createHeaderCountsHandlers(handlerDeps)
+      createHeaderCountsHandlers(handlerDeps),
+      createOnboardingHandlers(handlerDeps)
     );
     try {
       const gForm = getBestGForm(rootWindow)?.gForm;
@@ -40197,11 +41231,23 @@ ${text2}` : text2;
             logger.info("first-run settings required");
             state.flags.missingSettingsLogged = true;
           }
-          openSettings(state, true);
           removeLauncher(hostDocument);
           removePanel(hostDocument);
           removePdfSelection(hostDocument);
-          const shouldRefreshMissingSettings = !hostDocument.getElementById(UI_IDS.settings) || contextDidChange || reason.startsWith("settings-") || reason === "initial-start" || reason === "dom-mutation";
+          const onboardingPending = !hasSeenOnboarding(rootWindow);
+          const onboardingActive = onboardingPending && state.ui.onboardingStep > 0;
+          const onboardingJustFinished = !onboardingPending && reason.startsWith("onboarding-");
+          if (onboardingPending && !onboardingActive) {
+            store.dispatch(setOnboardingStep, 1);
+          }
+          if (state.ui.onboardingStep > 0) {
+            removeSettingsModal(hostDocument);
+            ensureOnboarding({ hostDocument, state, handlers });
+            return;
+          }
+          removeOnboarding(hostDocument);
+          openSettings(state, true);
+          const shouldRefreshMissingSettings = !hostDocument.getElementById(UI_IDS.settings) || contextDidChange || onboardingJustFinished || reason.startsWith("settings-") || reason === "initial-start" || reason === "dom-mutation";
           if (shouldRefreshMissingSettings) {
             const draftSettings = getDraftSettings();
             const templateGroups = getTemplateGroups(draftSettings);
@@ -40218,6 +41264,7 @@ ${text2}` : text2;
           }
           return;
         }
+        removeOnboarding(hostDocument);
         state.flags.missingSettingsLogged = false;
         state.ui.settingsMandatory = false;
         const passiveReason = ["heartbeat", "window-focus", "visibility-change"].includes(reason);
@@ -40226,11 +41273,14 @@ ${text2}` : text2;
         const settingsMissing = !hostDocument.getElementById(UI_IDS.settings);
         const workNotesMissing = !hostDocument.getElementById(UI_IDS.workNotes);
         if (!assistantSuppressed && (launcherMissing || contextDidChange || isLauncherRefreshReason(reason))) {
+          const workNoteModel = buildWorkNoteModel(nextContext || {}, getEffectiveSettings(), state);
+          const topWorkNoteTemplates = workNoteModel.templates.slice(0, 5).map((t) => ({ id: t.id, label: t.label || t.id }));
           ensureLauncher({
             hostDocument,
             state,
             context: nextContext,
-            handlers
+            handlers,
+            topWorkNoteTemplates
           });
         } else if (assistantSuppressed) {
           removeLauncher(hostDocument);
@@ -40358,7 +41408,8 @@ ${text2}` : text2;
       if (restoredPinState.pinned) {
         state.ui.edgePanelPinned = true;
         state.ui.assistantHidden = false;
-        state.ui.edgePanelMode = restoredPinState.mode || (restoredPinState.lastOpenState ? "expanded" : "icons");
+        const restoredMode = restoredPinState.mode === "tab" ? "icons" : restoredPinState.mode || (restoredPinState.lastOpenState ? "expanded" : "icons");
+        state.ui.edgePanelMode = restoredMode;
       }
       state.lifecycle.focusHandler = () => scheduleRecovery("window-focus", 0);
       state.lifecycle.activityHandler = () => registerAssistantActivity("assistant-activity");
