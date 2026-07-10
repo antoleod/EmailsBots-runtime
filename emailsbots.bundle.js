@@ -6014,7 +6014,6 @@
     customLinks: [],
     buttonColors: {},
     buttonOpacity: 1,
-    emailSignature: "",
     cannedPhrases: []
   });
   var OFFICE_PRESETS = {
@@ -6168,9 +6167,6 @@
       return true;
     }).slice(0, 20);
   }
-  function sanitizeEmailSignature(rawValue) {
-    return cleanText(rawValue).slice(0, 500);
-  }
   function sanitizeCannedPhrases(rawValue) {
     const phrases = Array.isArray(rawValue) ? rawValue : [];
     const seen = /* @__PURE__ */ new Set();
@@ -6230,7 +6226,6 @@
       customLinks: sanitizeCustomLinks(merged.customLinks),
       buttonColors: sanitizeButtonColors(merged.buttonColors),
       buttonOpacity: Math.min(1, Math.max(0, Number(merged.buttonOpacity) || defaults.buttonOpacity)),
-      emailSignature: sanitizeEmailSignature(merged.emailSignature),
       cannedPhrases: sanitizeCannedPhrases(merged.cannedPhrases)
     };
   }
@@ -9907,6 +9902,915 @@ ${configurationItemLine}`,
     return getTemplatesForCategory(category, settings)[0]?.id || "";
   }
 
+  // Assistant/core/email/signature-data.generated.js
+  var SIGNATURE_HTML = `<html xmlns:v="urn:schemas-microsoft-com:vml"
+xmlns:o="urn:schemas-microsoft-com:office:office"
+xmlns:w="urn:schemas-microsoft-com:office:word"
+xmlns:m="http://schemas.microsoft.com/office/2004/12/omml"
+xmlns="http://www.w3.org/TR/REC-html40">
+
+<head>
+<meta http-equiv=Content-Type content="text/html; charset=windows-1252">
+<meta name=ProgId content=Word.Document>
+<meta name=Generator content="Microsoft Word 15">
+<meta name=Originator content="Microsoft Word 15">
+<link rel=File-List href="data:application/xml;base64,PHhtbCB4bWxuczpvPSJ1cm46c2NoZW1hcy1taWNyb3NvZnQtY29tOm9mZmljZTpvZmZpY2UiPgogPG86TWFpbkZpbGUgSFJlZj0iLi4vbWFpbi5odG0iLz4KIDxvOkZpbGUgSFJlZj0idGhlbWVkYXRhLnRobXgiLz4KIDxvOkZpbGUgSFJlZj0iY29sb3JzY2hlbWVtYXBwaW5nLnhtbCIvPgogPG86RmlsZSBIUmVmPSJmaWxlbGlzdC54bWwiLz4KPC94bWw+">
+<link rel=Edit-Time-Data href="main_files/editdata.mso">
+<!--[if !mso]>
+<style>
+v\\:* {behavior:url(#default#VML);}
+o\\:* {behavior:url(#default#VML);}
+w\\:* {behavior:url(#default#VML);}
+.shape {behavior:url(#default#VML);}
+</style>
+<![endif]--><!--[if gte mso 9]><xml>
+ <o:DocumentProperties>
+  <o:Template>NormalEmail.dotm</o:Template>
+  <o:Revision>0</o:Revision>
+  <o:TotalTime>0</o:TotalTime>
+  <o:Pages>1</o:Pages>
+  <o:Words>85</o:Words>
+  <o:Characters>485</o:Characters>
+  <o:Company>European Parliament</o:Company>
+  <o:Lines>4</o:Lines>
+  <o:Paragraphs>1</o:Paragraphs>
+  <o:CharactersWithSpaces>569</o:CharactersWithSpaces>
+  <o:Version>16.00</o:Version>
+ </o:DocumentProperties>
+ <o:OfficeDocumentSettings>
+  <o:AllowPNG/>
+ </o:OfficeDocumentSettings>
+</xml><![endif]-->
+<link rel=themeData href="data:application/vnd.ms-officetheme;base64,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">
+<link rel=colorSchemeMapping href="data:application/xml;base64,PD94bWwgdmVyc2lvbj0iMS4wIiBlbmNvZGluZz0iVVRGLTgiIHN0YW5kYWxvbmU9InllcyI/Pgo8YTpjbHJNYXAgeG1sbnM6YT0iaHR0cDovL3NjaGVtYXMub3BlbnhtbGZvcm1hdHMub3JnL2RyYXdpbmdtbC8yMDA2L21haW4iIGJnMT0ibHQxIiB0eDE9ImRrMSIgYmcyPSJsdDIiIHR4Mj0iZGsyIiBhY2NlbnQxPSJhY2NlbnQxIiBhY2NlbnQyPSJhY2NlbnQyIiBhY2NlbnQzPSJhY2NlbnQzIiBhY2NlbnQ0PSJhY2NlbnQ0IiBhY2NlbnQ1PSJhY2NlbnQ1IiBhY2NlbnQ2PSJhY2NlbnQ2IiBobGluaz0iaGxpbmsiIGZvbEhsaW5rPSJmb2xIbGluayIvPg==">
+<!--[if gte mso 9]><xml>
+ <w:WordDocument>
+  <w:View>Normal</w:View>
+  <w:Zoom>0</w:Zoom>
+  <w:TrackMoves/>
+  <w:TrackFormatting/>
+  <w:PunctuationKerning/>
+  <w:ValidateAgainstSchemas/>
+  <w:SaveIfXMLInvalid>false</w:SaveIfXMLInvalid>
+  <w:IgnoreMixedContent>false</w:IgnoreMixedContent>
+  <w:AlwaysShowPlaceholderText>false</w:AlwaysShowPlaceholderText>
+  <w:DoNotPromoteQF/>
+  <w:LidThemeOther>EN-GB</w:LidThemeOther>
+  <w:LidThemeAsian>X-NONE</w:LidThemeAsian>
+  <w:LidThemeComplexScript>X-NONE</w:LidThemeComplexScript>
+  <w:DoNotShadeFormData/>
+  <w:Compatibility>
+   <w:BreakWrappedTables/>
+   <w:SnapToGridInCell/>
+   <w:WrapTextWithPunct/>
+   <w:UseAsianBreakRules/>
+   <w:DontGrowAutofit/>
+   <w:SplitPgBreakAndParaMark/>
+   <w:EnableOpenTypeKerning/>
+   <w:DontFlipMirrorIndents/>
+   <w:OverrideTableStyleHps/>
+   <w:UseFELayout/>
+  </w:Compatibility>
+  <m:mathPr>
+   <m:mathFont m:val="Cambria Math"/>
+   <m:brkBin m:val="before"/>
+   <m:brkBinSub m:val="&#45;-"/>
+   <m:smallFrac m:val="off"/>
+   <m:dispDef/>
+   <m:lMargin m:val="0"/>
+   <m:rMargin m:val="0"/>
+   <m:defJc m:val="centerGroup"/>
+   <m:wrapIndent m:val="1440"/>
+   <m:intLim m:val="subSup"/>
+   <m:naryLim m:val="undOvr"/>
+  </m:mathPr></w:WordDocument>
+</xml><![endif]--><!--[if gte mso 9]><xml>
+ <w:LatentStyles DefLockedState="false" DefUnhideWhenUsed="false"
+  DefSemiHidden="false" DefQFormat="false" DefPriority="99"
+  LatentStyleCount="376">
+  <w:LsdException Locked="false" Priority="0" QFormat="true" Name="Normal"/>
+  <w:LsdException Locked="false" Priority="9" QFormat="true" Name="heading 1"/>
+  <w:LsdException Locked="false" Priority="9" SemiHidden="true"
+   UnhideWhenUsed="true" QFormat="true" Name="heading 2"/>
+  <w:LsdException Locked="false" Priority="9" SemiHidden="true"
+   UnhideWhenUsed="true" QFormat="true" Name="heading 3"/>
+  <w:LsdException Locked="false" Priority="9" SemiHidden="true"
+   UnhideWhenUsed="true" QFormat="true" Name="heading 4"/>
+  <w:LsdException Locked="false" Priority="9" SemiHidden="true"
+   UnhideWhenUsed="true" QFormat="true" Name="heading 5"/>
+  <w:LsdException Locked="false" Priority="9" SemiHidden="true"
+   UnhideWhenUsed="true" QFormat="true" Name="heading 6"/>
+  <w:LsdException Locked="false" Priority="9" SemiHidden="true"
+   UnhideWhenUsed="true" QFormat="true" Name="heading 7"/>
+  <w:LsdException Locked="false" Priority="9" SemiHidden="true"
+   UnhideWhenUsed="true" QFormat="true" Name="heading 8"/>
+  <w:LsdException Locked="false" Priority="9" SemiHidden="true"
+   UnhideWhenUsed="true" QFormat="true" Name="heading 9"/>
+  <w:LsdException Locked="false" SemiHidden="true" UnhideWhenUsed="true"
+   Name="index 1"/>
+  <w:LsdException Locked="false" SemiHidden="true" UnhideWhenUsed="true"
+   Name="index 2"/>
+  <w:LsdException Locked="false" SemiHidden="true" UnhideWhenUsed="true"
+   Name="index 3"/>
+  <w:LsdException Locked="false" SemiHidden="true" UnhideWhenUsed="true"
+   Name="index 4"/>
+  <w:LsdException Locked="false" SemiHidden="true" UnhideWhenUsed="true"
+   Name="index 5"/>
+  <w:LsdException Locked="false" SemiHidden="true" UnhideWhenUsed="true"
+   Name="index 6"/>
+  <w:LsdException Locked="false" SemiHidden="true" UnhideWhenUsed="true"
+   Name="index 7"/>
+  <w:LsdException Locked="false" SemiHidden="true" UnhideWhenUsed="true"
+   Name="index 8"/>
+  <w:LsdException Locked="false" SemiHidden="true" UnhideWhenUsed="true"
+   Name="index 9"/>
+  <w:LsdException Locked="false" Priority="39" SemiHidden="true"
+   UnhideWhenUsed="true" Name="toc 1"/>
+  <w:LsdException Locked="false" Priority="39" SemiHidden="true"
+   UnhideWhenUsed="true" Name="toc 2"/>
+  <w:LsdException Locked="false" Priority="39" SemiHidden="true"
+   UnhideWhenUsed="true" Name="toc 3"/>
+  <w:LsdException Locked="false" Priority="39" SemiHidden="true"
+   UnhideWhenUsed="true" Name="toc 4"/>
+  <w:LsdException Locked="false" Priority="39" SemiHidden="true"
+   UnhideWhenUsed="true" Name="toc 5"/>
+  <w:LsdException Locked="false" Priority="39" SemiHidden="true"
+   UnhideWhenUsed="true" Name="toc 6"/>
+  <w:LsdException Locked="false" Priority="39" SemiHidden="true"
+   UnhideWhenUsed="true" Name="toc 7"/>
+  <w:LsdException Locked="false" Priority="39" SemiHidden="true"
+   UnhideWhenUsed="true" Name="toc 8"/>
+  <w:LsdException Locked="false" Priority="39" SemiHidden="true"
+   UnhideWhenUsed="true" Name="toc 9"/>
+  <w:LsdException Locked="false" SemiHidden="true" UnhideWhenUsed="true"
+   Name="Normal Indent"/>
+  <w:LsdException Locked="false" SemiHidden="true" UnhideWhenUsed="true"
+   Name="footnote text"/>
+  <w:LsdException Locked="false" SemiHidden="true" UnhideWhenUsed="true"
+   Name="annotation text"/>
+  <w:LsdException Locked="false" SemiHidden="true" UnhideWhenUsed="true"
+   Name="header"/>
+  <w:LsdException Locked="false" SemiHidden="true" UnhideWhenUsed="true"
+   Name="footer"/>
+  <w:LsdException Locked="false" SemiHidden="true" UnhideWhenUsed="true"
+   Name="index heading"/>
+  <w:LsdException Locked="false" Priority="35" SemiHidden="true"
+   UnhideWhenUsed="true" QFormat="true" Name="caption"/>
+  <w:LsdException Locked="false" SemiHidden="true" UnhideWhenUsed="true"
+   Name="table of figures"/>
+  <w:LsdException Locked="false" SemiHidden="true" UnhideWhenUsed="true"
+   Name="envelope address"/>
+  <w:LsdException Locked="false" SemiHidden="true" UnhideWhenUsed="true"
+   Name="envelope return"/>
+  <w:LsdException Locked="false" SemiHidden="true" UnhideWhenUsed="true"
+   Name="footnote reference"/>
+  <w:LsdException Locked="false" SemiHidden="true" UnhideWhenUsed="true"
+   Name="annotation reference"/>
+  <w:LsdException Locked="false" SemiHidden="true" UnhideWhenUsed="true"
+   Name="line number"/>
+  <w:LsdException Locked="false" SemiHidden="true" UnhideWhenUsed="true"
+   Name="page number"/>
+  <w:LsdException Locked="false" SemiHidden="true" UnhideWhenUsed="true"
+   Name="endnote reference"/>
+  <w:LsdException Locked="false" SemiHidden="true" UnhideWhenUsed="true"
+   Name="endnote text"/>
+  <w:LsdException Locked="false" SemiHidden="true" UnhideWhenUsed="true"
+   Name="table of authorities"/>
+  <w:LsdException Locked="false" SemiHidden="true" UnhideWhenUsed="true"
+   Name="macro"/>
+  <w:LsdException Locked="false" SemiHidden="true" UnhideWhenUsed="true"
+   Name="toa heading"/>
+  <w:LsdException Locked="false" SemiHidden="true" UnhideWhenUsed="true"
+   Name="List"/>
+  <w:LsdException Locked="false" SemiHidden="true" UnhideWhenUsed="true"
+   Name="List Bullet"/>
+  <w:LsdException Locked="false" SemiHidden="true" UnhideWhenUsed="true"
+   Name="List Number"/>
+  <w:LsdException Locked="false" SemiHidden="true" UnhideWhenUsed="true"
+   Name="List 2"/>
+  <w:LsdException Locked="false" SemiHidden="true" UnhideWhenUsed="true"
+   Name="List 3"/>
+  <w:LsdException Locked="false" SemiHidden="true" UnhideWhenUsed="true"
+   Name="List 4"/>
+  <w:LsdException Locked="false" SemiHidden="true" UnhideWhenUsed="true"
+   Name="List 5"/>
+  <w:LsdException Locked="false" SemiHidden="true" UnhideWhenUsed="true"
+   Name="List Bullet 2"/>
+  <w:LsdException Locked="false" SemiHidden="true" UnhideWhenUsed="true"
+   Name="List Bullet 3"/>
+  <w:LsdException Locked="false" SemiHidden="true" UnhideWhenUsed="true"
+   Name="List Bullet 4"/>
+  <w:LsdException Locked="false" SemiHidden="true" UnhideWhenUsed="true"
+   Name="List Bullet 5"/>
+  <w:LsdException Locked="false" SemiHidden="true" UnhideWhenUsed="true"
+   Name="List Number 2"/>
+  <w:LsdException Locked="false" SemiHidden="true" UnhideWhenUsed="true"
+   Name="List Number 3"/>
+  <w:LsdException Locked="false" SemiHidden="true" UnhideWhenUsed="true"
+   Name="List Number 4"/>
+  <w:LsdException Locked="false" SemiHidden="true" UnhideWhenUsed="true"
+   Name="List Number 5"/>
+  <w:LsdException Locked="false" Priority="10" QFormat="true" Name="Title"/>
+  <w:LsdException Locked="false" SemiHidden="true" UnhideWhenUsed="true"
+   Name="Closing"/>
+  <w:LsdException Locked="false" SemiHidden="true" UnhideWhenUsed="true"
+   Name="Signature"/>
+  <w:LsdException Locked="false" Priority="1" SemiHidden="true"
+   UnhideWhenUsed="true" Name="Default Paragraph Font"/>
+  <w:LsdException Locked="false" SemiHidden="true" UnhideWhenUsed="true"
+   Name="Body Text"/>
+  <w:LsdException Locked="false" SemiHidden="true" UnhideWhenUsed="true"
+   Name="Body Text Indent"/>
+  <w:LsdException Locked="false" SemiHidden="true" UnhideWhenUsed="true"
+   Name="List Continue"/>
+  <w:LsdException Locked="false" SemiHidden="true" UnhideWhenUsed="true"
+   Name="List Continue 2"/>
+  <w:LsdException Locked="false" SemiHidden="true" UnhideWhenUsed="true"
+   Name="List Continue 3"/>
+  <w:LsdException Locked="false" SemiHidden="true" UnhideWhenUsed="true"
+   Name="List Continue 4"/>
+  <w:LsdException Locked="false" SemiHidden="true" UnhideWhenUsed="true"
+   Name="List Continue 5"/>
+  <w:LsdException Locked="false" SemiHidden="true" UnhideWhenUsed="true"
+   Name="Message Header"/>
+  <w:LsdException Locked="false" Priority="11" QFormat="true" Name="Subtitle"/>
+  <w:LsdException Locked="false" SemiHidden="true" UnhideWhenUsed="true"
+   Name="Salutation"/>
+  <w:LsdException Locked="false" SemiHidden="true" UnhideWhenUsed="true"
+   Name="Date"/>
+  <w:LsdException Locked="false" SemiHidden="true" UnhideWhenUsed="true"
+   Name="Body Text First Indent"/>
+  <w:LsdException Locked="false" SemiHidden="true" UnhideWhenUsed="true"
+   Name="Body Text First Indent 2"/>
+  <w:LsdException Locked="false" SemiHidden="true" UnhideWhenUsed="true"
+   Name="Note Heading"/>
+  <w:LsdException Locked="false" SemiHidden="true" UnhideWhenUsed="true"
+   Name="Body Text 2"/>
+  <w:LsdException Locked="false" SemiHidden="true" UnhideWhenUsed="true"
+   Name="Body Text 3"/>
+  <w:LsdException Locked="false" SemiHidden="true" UnhideWhenUsed="true"
+   Name="Body Text Indent 2"/>
+  <w:LsdException Locked="false" SemiHidden="true" UnhideWhenUsed="true"
+   Name="Body Text Indent 3"/>
+  <w:LsdException Locked="false" SemiHidden="true" UnhideWhenUsed="true"
+   Name="Block Text"/>
+  <w:LsdException Locked="false" SemiHidden="true" UnhideWhenUsed="true"
+   Name="Hyperlink"/>
+  <w:LsdException Locked="false" SemiHidden="true" UnhideWhenUsed="true"
+   Name="FollowedHyperlink"/>
+  <w:LsdException Locked="false" Priority="22" QFormat="true" Name="Strong"/>
+  <w:LsdException Locked="false" Priority="20" QFormat="true" Name="Emphasis"/>
+  <w:LsdException Locked="false" SemiHidden="true" UnhideWhenUsed="true"
+   Name="Document Map"/>
+  <w:LsdException Locked="false" SemiHidden="true" UnhideWhenUsed="true"
+   Name="Plain Text"/>
+  <w:LsdException Locked="false" SemiHidden="true" UnhideWhenUsed="true"
+   Name="E-mail Signature"/>
+  <w:LsdException Locked="false" SemiHidden="true" UnhideWhenUsed="true"
+   Name="HTML Top of Form"/>
+  <w:LsdException Locked="false" SemiHidden="true" UnhideWhenUsed="true"
+   Name="HTML Bottom of Form"/>
+  <w:LsdException Locked="false" SemiHidden="true" UnhideWhenUsed="true"
+   Name="Normal (Web)"/>
+  <w:LsdException Locked="false" SemiHidden="true" UnhideWhenUsed="true"
+   Name="HTML Acronym"/>
+  <w:LsdException Locked="false" SemiHidden="true" UnhideWhenUsed="true"
+   Name="HTML Address"/>
+  <w:LsdException Locked="false" SemiHidden="true" UnhideWhenUsed="true"
+   Name="HTML Cite"/>
+  <w:LsdException Locked="false" SemiHidden="true" UnhideWhenUsed="true"
+   Name="HTML Code"/>
+  <w:LsdException Locked="false" SemiHidden="true" UnhideWhenUsed="true"
+   Name="HTML Definition"/>
+  <w:LsdException Locked="false" SemiHidden="true" UnhideWhenUsed="true"
+   Name="HTML Keyboard"/>
+  <w:LsdException Locked="false" SemiHidden="true" UnhideWhenUsed="true"
+   Name="HTML Preformatted"/>
+  <w:LsdException Locked="false" SemiHidden="true" UnhideWhenUsed="true"
+   Name="HTML Sample"/>
+  <w:LsdException Locked="false" SemiHidden="true" UnhideWhenUsed="true"
+   Name="HTML Typewriter"/>
+  <w:LsdException Locked="false" SemiHidden="true" UnhideWhenUsed="true"
+   Name="HTML Variable"/>
+  <w:LsdException Locked="false" SemiHidden="true" UnhideWhenUsed="true"
+   Name="Normal Table"/>
+  <w:LsdException Locked="false" SemiHidden="true" UnhideWhenUsed="true"
+   Name="annotation subject"/>
+  <w:LsdException Locked="false" SemiHidden="true" UnhideWhenUsed="true"
+   Name="No List"/>
+  <w:LsdException Locked="false" SemiHidden="true" UnhideWhenUsed="true"
+   Name="Outline List 1"/>
+  <w:LsdException Locked="false" SemiHidden="true" UnhideWhenUsed="true"
+   Name="Outline List 2"/>
+  <w:LsdException Locked="false" SemiHidden="true" UnhideWhenUsed="true"
+   Name="Outline List 3"/>
+  <w:LsdException Locked="false" SemiHidden="true" UnhideWhenUsed="true"
+   Name="Table Simple 1"/>
+  <w:LsdException Locked="false" SemiHidden="true" UnhideWhenUsed="true"
+   Name="Table Simple 2"/>
+  <w:LsdException Locked="false" SemiHidden="true" UnhideWhenUsed="true"
+   Name="Table Simple 3"/>
+  <w:LsdException Locked="false" SemiHidden="true" UnhideWhenUsed="true"
+   Name="Table Classic 1"/>
+  <w:LsdException Locked="false" SemiHidden="true" UnhideWhenUsed="true"
+   Name="Table Classic 2"/>
+  <w:LsdException Locked="false" SemiHidden="true" UnhideWhenUsed="true"
+   Name="Table Classic 3"/>
+  <w:LsdException Locked="false" SemiHidden="true" UnhideWhenUsed="true"
+   Name="Table Classic 4"/>
+  <w:LsdException Locked="false" SemiHidden="true" UnhideWhenUsed="true"
+   Name="Table Colorful 1"/>
+  <w:LsdException Locked="false" SemiHidden="true" UnhideWhenUsed="true"
+   Name="Table Colorful 2"/>
+  <w:LsdException Locked="false" SemiHidden="true" UnhideWhenUsed="true"
+   Name="Table Colorful 3"/>
+  <w:LsdException Locked="false" SemiHidden="true" UnhideWhenUsed="true"
+   Name="Table Columns 1"/>
+  <w:LsdException Locked="false" SemiHidden="true" UnhideWhenUsed="true"
+   Name="Table Columns 2"/>
+  <w:LsdException Locked="false" SemiHidden="true" UnhideWhenUsed="true"
+   Name="Table Columns 3"/>
+  <w:LsdException Locked="false" SemiHidden="true" UnhideWhenUsed="true"
+   Name="Table Columns 4"/>
+  <w:LsdException Locked="false" SemiHidden="true" UnhideWhenUsed="true"
+   Name="Table Columns 5"/>
+  <w:LsdException Locked="false" SemiHidden="true" UnhideWhenUsed="true"
+   Name="Table Grid 1"/>
+  <w:LsdException Locked="false" SemiHidden="true" UnhideWhenUsed="true"
+   Name="Table Grid 2"/>
+  <w:LsdException Locked="false" SemiHidden="true" UnhideWhenUsed="true"
+   Name="Table Grid 3"/>
+  <w:LsdException Locked="false" SemiHidden="true" UnhideWhenUsed="true"
+   Name="Table Grid 4"/>
+  <w:LsdException Locked="false" SemiHidden="true" UnhideWhenUsed="true"
+   Name="Table Grid 5"/>
+  <w:LsdException Locked="false" SemiHidden="true" UnhideWhenUsed="true"
+   Name="Table Grid 6"/>
+  <w:LsdException Locked="false" SemiHidden="true" UnhideWhenUsed="true"
+   Name="Table Grid 7"/>
+  <w:LsdException Locked="false" SemiHidden="true" UnhideWhenUsed="true"
+   Name="Table Grid 8"/>
+  <w:LsdException Locked="false" SemiHidden="true" UnhideWhenUsed="true"
+   Name="Table List 1"/>
+  <w:LsdException Locked="false" SemiHidden="true" UnhideWhenUsed="true"
+   Name="Table List 2"/>
+  <w:LsdException Locked="false" SemiHidden="true" UnhideWhenUsed="true"
+   Name="Table List 3"/>
+  <w:LsdException Locked="false" SemiHidden="true" UnhideWhenUsed="true"
+   Name="Table List 4"/>
+  <w:LsdException Locked="false" SemiHidden="true" UnhideWhenUsed="true"
+   Name="Table List 5"/>
+  <w:LsdException Locked="false" SemiHidden="true" UnhideWhenUsed="true"
+   Name="Table List 6"/>
+  <w:LsdException Locked="false" SemiHidden="true" UnhideWhenUsed="true"
+   Name="Table List 7"/>
+  <w:LsdException Locked="false" SemiHidden="true" UnhideWhenUsed="true"
+   Name="Table List 8"/>
+  <w:LsdException Locked="false" SemiHidden="true" UnhideWhenUsed="true"
+   Name="Table 3D effects 1"/>
+  <w:LsdException Locked="false" SemiHidden="true" UnhideWhenUsed="true"
+   Name="Table 3D effects 2"/>
+  <w:LsdException Locked="false" SemiHidden="true" UnhideWhenUsed="true"
+   Name="Table 3D effects 3"/>
+  <w:LsdException Locked="false" SemiHidden="true" UnhideWhenUsed="true"
+   Name="Table Contemporary"/>
+  <w:LsdException Locked="false" SemiHidden="true" UnhideWhenUsed="true"
+   Name="Table Elegant"/>
+  <w:LsdException Locked="false" SemiHidden="true" UnhideWhenUsed="true"
+   Name="Table Professional"/>
+  <w:LsdException Locked="false" SemiHidden="true" UnhideWhenUsed="true"
+   Name="Table Subtle 1"/>
+  <w:LsdException Locked="false" SemiHidden="true" UnhideWhenUsed="true"
+   Name="Table Subtle 2"/>
+  <w:LsdException Locked="false" SemiHidden="true" UnhideWhenUsed="true"
+   Name="Table Web 1"/>
+  <w:LsdException Locked="false" SemiHidden="true" UnhideWhenUsed="true"
+   Name="Table Web 2"/>
+  <w:LsdException Locked="false" SemiHidden="true" UnhideWhenUsed="true"
+   Name="Table Web 3"/>
+  <w:LsdException Locked="false" SemiHidden="true" UnhideWhenUsed="true"
+   Name="Balloon Text"/>
+  <w:LsdException Locked="false" Priority="39" Name="Table Grid"/>
+  <w:LsdException Locked="false" SemiHidden="true" UnhideWhenUsed="true"
+   Name="Table Theme"/>
+  <w:LsdException Locked="false" SemiHidden="true" Name="Placeholder Text"/>
+  <w:LsdException Locked="false" Priority="1" QFormat="true" Name="No Spacing"/>
+  <w:LsdException Locked="false" Priority="60" Name="Light Shading"/>
+  <w:LsdException Locked="false" Priority="61" Name="Light List"/>
+  <w:LsdException Locked="false" Priority="62" Name="Light Grid"/>
+  <w:LsdException Locked="false" Priority="63" Name="Medium Shading 1"/>
+  <w:LsdException Locked="false" Priority="64" Name="Medium Shading 2"/>
+  <w:LsdException Locked="false" Priority="65" Name="Medium List 1"/>
+  <w:LsdException Locked="false" Priority="66" Name="Medium List 2"/>
+  <w:LsdException Locked="false" Priority="67" Name="Medium Grid 1"/>
+  <w:LsdException Locked="false" Priority="68" Name="Medium Grid 2"/>
+  <w:LsdException Locked="false" Priority="69" Name="Medium Grid 3"/>
+  <w:LsdException Locked="false" Priority="70" Name="Dark List"/>
+  <w:LsdException Locked="false" Priority="71" Name="Colorful Shading"/>
+  <w:LsdException Locked="false" Priority="72" Name="Colorful List"/>
+  <w:LsdException Locked="false" Priority="73" Name="Colorful Grid"/>
+  <w:LsdException Locked="false" Priority="60" Name="Light Shading Accent 1"/>
+  <w:LsdException Locked="false" Priority="61" Name="Light List Accent 1"/>
+  <w:LsdException Locked="false" Priority="62" Name="Light Grid Accent 1"/>
+  <w:LsdException Locked="false" Priority="63" Name="Medium Shading 1 Accent 1"/>
+  <w:LsdException Locked="false" Priority="64" Name="Medium Shading 2 Accent 1"/>
+  <w:LsdException Locked="false" Priority="65" Name="Medium List 1 Accent 1"/>
+  <w:LsdException Locked="false" SemiHidden="true" Name="Revision"/>
+  <w:LsdException Locked="false" Priority="34" QFormat="true"
+   Name="List Paragraph"/>
+  <w:LsdException Locked="false" Priority="29" QFormat="true" Name="Quote"/>
+  <w:LsdException Locked="false" Priority="30" QFormat="true"
+   Name="Intense Quote"/>
+  <w:LsdException Locked="false" Priority="66" Name="Medium List 2 Accent 1"/>
+  <w:LsdException Locked="false" Priority="67" Name="Medium Grid 1 Accent 1"/>
+  <w:LsdException Locked="false" Priority="68" Name="Medium Grid 2 Accent 1"/>
+  <w:LsdException Locked="false" Priority="69" Name="Medium Grid 3 Accent 1"/>
+  <w:LsdException Locked="false" Priority="70" Name="Dark List Accent 1"/>
+  <w:LsdException Locked="false" Priority="71" Name="Colorful Shading Accent 1"/>
+  <w:LsdException Locked="false" Priority="72" Name="Colorful List Accent 1"/>
+  <w:LsdException Locked="false" Priority="73" Name="Colorful Grid Accent 1"/>
+  <w:LsdException Locked="false" Priority="60" Name="Light Shading Accent 2"/>
+  <w:LsdException Locked="false" Priority="61" Name="Light List Accent 2"/>
+  <w:LsdException Locked="false" Priority="62" Name="Light Grid Accent 2"/>
+  <w:LsdException Locked="false" Priority="63" Name="Medium Shading 1 Accent 2"/>
+  <w:LsdException Locked="false" Priority="64" Name="Medium Shading 2 Accent 2"/>
+  <w:LsdException Locked="false" Priority="65" Name="Medium List 1 Accent 2"/>
+  <w:LsdException Locked="false" Priority="66" Name="Medium List 2 Accent 2"/>
+  <w:LsdException Locked="false" Priority="67" Name="Medium Grid 1 Accent 2"/>
+  <w:LsdException Locked="false" Priority="68" Name="Medium Grid 2 Accent 2"/>
+  <w:LsdException Locked="false" Priority="69" Name="Medium Grid 3 Accent 2"/>
+  <w:LsdException Locked="false" Priority="70" Name="Dark List Accent 2"/>
+  <w:LsdException Locked="false" Priority="71" Name="Colorful Shading Accent 2"/>
+  <w:LsdException Locked="false" Priority="72" Name="Colorful List Accent 2"/>
+  <w:LsdException Locked="false" Priority="73" Name="Colorful Grid Accent 2"/>
+  <w:LsdException Locked="false" Priority="60" Name="Light Shading Accent 3"/>
+  <w:LsdException Locked="false" Priority="61" Name="Light List Accent 3"/>
+  <w:LsdException Locked="false" Priority="62" Name="Light Grid Accent 3"/>
+  <w:LsdException Locked="false" Priority="63" Name="Medium Shading 1 Accent 3"/>
+  <w:LsdException Locked="false" Priority="64" Name="Medium Shading 2 Accent 3"/>
+  <w:LsdException Locked="false" Priority="65" Name="Medium List 1 Accent 3"/>
+  <w:LsdException Locked="false" Priority="66" Name="Medium List 2 Accent 3"/>
+  <w:LsdException Locked="false" Priority="67" Name="Medium Grid 1 Accent 3"/>
+  <w:LsdException Locked="false" Priority="68" Name="Medium Grid 2 Accent 3"/>
+  <w:LsdException Locked="false" Priority="69" Name="Medium Grid 3 Accent 3"/>
+  <w:LsdException Locked="false" Priority="70" Name="Dark List Accent 3"/>
+  <w:LsdException Locked="false" Priority="71" Name="Colorful Shading Accent 3"/>
+  <w:LsdException Locked="false" Priority="72" Name="Colorful List Accent 3"/>
+  <w:LsdException Locked="false" Priority="73" Name="Colorful Grid Accent 3"/>
+  <w:LsdException Locked="false" Priority="60" Name="Light Shading Accent 4"/>
+  <w:LsdException Locked="false" Priority="61" Name="Light List Accent 4"/>
+  <w:LsdException Locked="false" Priority="62" Name="Light Grid Accent 4"/>
+  <w:LsdException Locked="false" Priority="63" Name="Medium Shading 1 Accent 4"/>
+  <w:LsdException Locked="false" Priority="64" Name="Medium Shading 2 Accent 4"/>
+  <w:LsdException Locked="false" Priority="65" Name="Medium List 1 Accent 4"/>
+  <w:LsdException Locked="false" Priority="66" Name="Medium List 2 Accent 4"/>
+  <w:LsdException Locked="false" Priority="67" Name="Medium Grid 1 Accent 4"/>
+  <w:LsdException Locked="false" Priority="68" Name="Medium Grid 2 Accent 4"/>
+  <w:LsdException Locked="false" Priority="69" Name="Medium Grid 3 Accent 4"/>
+  <w:LsdException Locked="false" Priority="70" Name="Dark List Accent 4"/>
+  <w:LsdException Locked="false" Priority="71" Name="Colorful Shading Accent 4"/>
+  <w:LsdException Locked="false" Priority="72" Name="Colorful List Accent 4"/>
+  <w:LsdException Locked="false" Priority="73" Name="Colorful Grid Accent 4"/>
+  <w:LsdException Locked="false" Priority="60" Name="Light Shading Accent 5"/>
+  <w:LsdException Locked="false" Priority="61" Name="Light List Accent 5"/>
+  <w:LsdException Locked="false" Priority="62" Name="Light Grid Accent 5"/>
+  <w:LsdException Locked="false" Priority="63" Name="Medium Shading 1 Accent 5"/>
+  <w:LsdException Locked="false" Priority="64" Name="Medium Shading 2 Accent 5"/>
+  <w:LsdException Locked="false" Priority="65" Name="Medium List 1 Accent 5"/>
+  <w:LsdException Locked="false" Priority="66" Name="Medium List 2 Accent 5"/>
+  <w:LsdException Locked="false" Priority="67" Name="Medium Grid 1 Accent 5"/>
+  <w:LsdException Locked="false" Priority="68" Name="Medium Grid 2 Accent 5"/>
+  <w:LsdException Locked="false" Priority="69" Name="Medium Grid 3 Accent 5"/>
+  <w:LsdException Locked="false" Priority="70" Name="Dark List Accent 5"/>
+  <w:LsdException Locked="false" Priority="71" Name="Colorful Shading Accent 5"/>
+  <w:LsdException Locked="false" Priority="72" Name="Colorful List Accent 5"/>
+  <w:LsdException Locked="false" Priority="73" Name="Colorful Grid Accent 5"/>
+  <w:LsdException Locked="false" Priority="60" Name="Light Shading Accent 6"/>
+  <w:LsdException Locked="false" Priority="61" Name="Light List Accent 6"/>
+  <w:LsdException Locked="false" Priority="62" Name="Light Grid Accent 6"/>
+  <w:LsdException Locked="false" Priority="63" Name="Medium Shading 1 Accent 6"/>
+  <w:LsdException Locked="false" Priority="64" Name="Medium Shading 2 Accent 6"/>
+  <w:LsdException Locked="false" Priority="65" Name="Medium List 1 Accent 6"/>
+  <w:LsdException Locked="false" Priority="66" Name="Medium List 2 Accent 6"/>
+  <w:LsdException Locked="false" Priority="67" Name="Medium Grid 1 Accent 6"/>
+  <w:LsdException Locked="false" Priority="68" Name="Medium Grid 2 Accent 6"/>
+  <w:LsdException Locked="false" Priority="69" Name="Medium Grid 3 Accent 6"/>
+  <w:LsdException Locked="false" Priority="70" Name="Dark List Accent 6"/>
+  <w:LsdException Locked="false" Priority="71" Name="Colorful Shading Accent 6"/>
+  <w:LsdException Locked="false" Priority="72" Name="Colorful List Accent 6"/>
+  <w:LsdException Locked="false" Priority="73" Name="Colorful Grid Accent 6"/>
+  <w:LsdException Locked="false" Priority="19" QFormat="true"
+   Name="Subtle Emphasis"/>
+  <w:LsdException Locked="false" Priority="21" QFormat="true"
+   Name="Intense Emphasis"/>
+  <w:LsdException Locked="false" Priority="31" QFormat="true"
+   Name="Subtle Reference"/>
+  <w:LsdException Locked="false" Priority="32" QFormat="true"
+   Name="Intense Reference"/>
+  <w:LsdException Locked="false" Priority="33" QFormat="true" Name="Book Title"/>
+  <w:LsdException Locked="false" Priority="37" SemiHidden="true"
+   UnhideWhenUsed="true" Name="Bibliography"/>
+  <w:LsdException Locked="false" Priority="39" SemiHidden="true"
+   UnhideWhenUsed="true" QFormat="true" Name="TOC Heading"/>
+  <w:LsdException Locked="false" Priority="41" Name="Plain Table 1"/>
+  <w:LsdException Locked="false" Priority="42" Name="Plain Table 2"/>
+  <w:LsdException Locked="false" Priority="43" Name="Plain Table 3"/>
+  <w:LsdException Locked="false" Priority="44" Name="Plain Table 4"/>
+  <w:LsdException Locked="false" Priority="45" Name="Plain Table 5"/>
+  <w:LsdException Locked="false" Priority="40" Name="Grid Table Light"/>
+  <w:LsdException Locked="false" Priority="46" Name="Grid Table 1 Light"/>
+  <w:LsdException Locked="false" Priority="47" Name="Grid Table 2"/>
+  <w:LsdException Locked="false" Priority="48" Name="Grid Table 3"/>
+  <w:LsdException Locked="false" Priority="49" Name="Grid Table 4"/>
+  <w:LsdException Locked="false" Priority="50" Name="Grid Table 5 Dark"/>
+  <w:LsdException Locked="false" Priority="51" Name="Grid Table 6 Colorful"/>
+  <w:LsdException Locked="false" Priority="52" Name="Grid Table 7 Colorful"/>
+  <w:LsdException Locked="false" Priority="46"
+   Name="Grid Table 1 Light Accent 1"/>
+  <w:LsdException Locked="false" Priority="47" Name="Grid Table 2 Accent 1"/>
+  <w:LsdException Locked="false" Priority="48" Name="Grid Table 3 Accent 1"/>
+  <w:LsdException Locked="false" Priority="49" Name="Grid Table 4 Accent 1"/>
+  <w:LsdException Locked="false" Priority="50" Name="Grid Table 5 Dark Accent 1"/>
+  <w:LsdException Locked="false" Priority="51"
+   Name="Grid Table 6 Colorful Accent 1"/>
+  <w:LsdException Locked="false" Priority="52"
+   Name="Grid Table 7 Colorful Accent 1"/>
+  <w:LsdException Locked="false" Priority="46"
+   Name="Grid Table 1 Light Accent 2"/>
+  <w:LsdException Locked="false" Priority="47" Name="Grid Table 2 Accent 2"/>
+  <w:LsdException Locked="false" Priority="48" Name="Grid Table 3 Accent 2"/>
+  <w:LsdException Locked="false" Priority="49" Name="Grid Table 4 Accent 2"/>
+  <w:LsdException Locked="false" Priority="50" Name="Grid Table 5 Dark Accent 2"/>
+  <w:LsdException Locked="false" Priority="51"
+   Name="Grid Table 6 Colorful Accent 2"/>
+  <w:LsdException Locked="false" Priority="52"
+   Name="Grid Table 7 Colorful Accent 2"/>
+  <w:LsdException Locked="false" Priority="46"
+   Name="Grid Table 1 Light Accent 3"/>
+  <w:LsdException Locked="false" Priority="47" Name="Grid Table 2 Accent 3"/>
+  <w:LsdException Locked="false" Priority="48" Name="Grid Table 3 Accent 3"/>
+  <w:LsdException Locked="false" Priority="49" Name="Grid Table 4 Accent 3"/>
+  <w:LsdException Locked="false" Priority="50" Name="Grid Table 5 Dark Accent 3"/>
+  <w:LsdException Locked="false" Priority="51"
+   Name="Grid Table 6 Colorful Accent 3"/>
+  <w:LsdException Locked="false" Priority="52"
+   Name="Grid Table 7 Colorful Accent 3"/>
+  <w:LsdException Locked="false" Priority="46"
+   Name="Grid Table 1 Light Accent 4"/>
+  <w:LsdException Locked="false" Priority="47" Name="Grid Table 2 Accent 4"/>
+  <w:LsdException Locked="false" Priority="48" Name="Grid Table 3 Accent 4"/>
+  <w:LsdException Locked="false" Priority="49" Name="Grid Table 4 Accent 4"/>
+  <w:LsdException Locked="false" Priority="50" Name="Grid Table 5 Dark Accent 4"/>
+  <w:LsdException Locked="false" Priority="51"
+   Name="Grid Table 6 Colorful Accent 4"/>
+  <w:LsdException Locked="false" Priority="52"
+   Name="Grid Table 7 Colorful Accent 4"/>
+  <w:LsdException Locked="false" Priority="46"
+   Name="Grid Table 1 Light Accent 5"/>
+  <w:LsdException Locked="false" Priority="47" Name="Grid Table 2 Accent 5"/>
+  <w:LsdException Locked="false" Priority="48" Name="Grid Table 3 Accent 5"/>
+  <w:LsdException Locked="false" Priority="49" Name="Grid Table 4 Accent 5"/>
+  <w:LsdException Locked="false" Priority="50" Name="Grid Table 5 Dark Accent 5"/>
+  <w:LsdException Locked="false" Priority="51"
+   Name="Grid Table 6 Colorful Accent 5"/>
+  <w:LsdException Locked="false" Priority="52"
+   Name="Grid Table 7 Colorful Accent 5"/>
+  <w:LsdException Locked="false" Priority="46"
+   Name="Grid Table 1 Light Accent 6"/>
+  <w:LsdException Locked="false" Priority="47" Name="Grid Table 2 Accent 6"/>
+  <w:LsdException Locked="false" Priority="48" Name="Grid Table 3 Accent 6"/>
+  <w:LsdException Locked="false" Priority="49" Name="Grid Table 4 Accent 6"/>
+  <w:LsdException Locked="false" Priority="50" Name="Grid Table 5 Dark Accent 6"/>
+  <w:LsdException Locked="false" Priority="51"
+   Name="Grid Table 6 Colorful Accent 6"/>
+  <w:LsdException Locked="false" Priority="52"
+   Name="Grid Table 7 Colorful Accent 6"/>
+  <w:LsdException Locked="false" Priority="46" Name="List Table 1 Light"/>
+  <w:LsdException Locked="false" Priority="47" Name="List Table 2"/>
+  <w:LsdException Locked="false" Priority="48" Name="List Table 3"/>
+  <w:LsdException Locked="false" Priority="49" Name="List Table 4"/>
+  <w:LsdException Locked="false" Priority="50" Name="List Table 5 Dark"/>
+  <w:LsdException Locked="false" Priority="51" Name="List Table 6 Colorful"/>
+  <w:LsdException Locked="false" Priority="52" Name="List Table 7 Colorful"/>
+  <w:LsdException Locked="false" Priority="46"
+   Name="List Table 1 Light Accent 1"/>
+  <w:LsdException Locked="false" Priority="47" Name="List Table 2 Accent 1"/>
+  <w:LsdException Locked="false" Priority="48" Name="List Table 3 Accent 1"/>
+  <w:LsdException Locked="false" Priority="49" Name="List Table 4 Accent 1"/>
+  <w:LsdException Locked="false" Priority="50" Name="List Table 5 Dark Accent 1"/>
+  <w:LsdException Locked="false" Priority="51"
+   Name="List Table 6 Colorful Accent 1"/>
+  <w:LsdException Locked="false" Priority="52"
+   Name="List Table 7 Colorful Accent 1"/>
+  <w:LsdException Locked="false" Priority="46"
+   Name="List Table 1 Light Accent 2"/>
+  <w:LsdException Locked="false" Priority="47" Name="List Table 2 Accent 2"/>
+  <w:LsdException Locked="false" Priority="48" Name="List Table 3 Accent 2"/>
+  <w:LsdException Locked="false" Priority="49" Name="List Table 4 Accent 2"/>
+  <w:LsdException Locked="false" Priority="50" Name="List Table 5 Dark Accent 2"/>
+  <w:LsdException Locked="false" Priority="51"
+   Name="List Table 6 Colorful Accent 2"/>
+  <w:LsdException Locked="false" Priority="52"
+   Name="List Table 7 Colorful Accent 2"/>
+  <w:LsdException Locked="false" Priority="46"
+   Name="List Table 1 Light Accent 3"/>
+  <w:LsdException Locked="false" Priority="47" Name="List Table 2 Accent 3"/>
+  <w:LsdException Locked="false" Priority="48" Name="List Table 3 Accent 3"/>
+  <w:LsdException Locked="false" Priority="49" Name="List Table 4 Accent 3"/>
+  <w:LsdException Locked="false" Priority="50" Name="List Table 5 Dark Accent 3"/>
+  <w:LsdException Locked="false" Priority="51"
+   Name="List Table 6 Colorful Accent 3"/>
+  <w:LsdException Locked="false" Priority="52"
+   Name="List Table 7 Colorful Accent 3"/>
+  <w:LsdException Locked="false" Priority="46"
+   Name="List Table 1 Light Accent 4"/>
+  <w:LsdException Locked="false" Priority="47" Name="List Table 2 Accent 4"/>
+  <w:LsdException Locked="false" Priority="48" Name="List Table 3 Accent 4"/>
+  <w:LsdException Locked="false" Priority="49" Name="List Table 4 Accent 4"/>
+  <w:LsdException Locked="false" Priority="50" Name="List Table 5 Dark Accent 4"/>
+  <w:LsdException Locked="false" Priority="51"
+   Name="List Table 6 Colorful Accent 4"/>
+  <w:LsdException Locked="false" Priority="52"
+   Name="List Table 7 Colorful Accent 4"/>
+  <w:LsdException Locked="false" Priority="46"
+   Name="List Table 1 Light Accent 5"/>
+  <w:LsdException Locked="false" Priority="47" Name="List Table 2 Accent 5"/>
+  <w:LsdException Locked="false" Priority="48" Name="List Table 3 Accent 5"/>
+  <w:LsdException Locked="false" Priority="49" Name="List Table 4 Accent 5"/>
+  <w:LsdException Locked="false" Priority="50" Name="List Table 5 Dark Accent 5"/>
+  <w:LsdException Locked="false" Priority="51"
+   Name="List Table 6 Colorful Accent 5"/>
+  <w:LsdException Locked="false" Priority="52"
+   Name="List Table 7 Colorful Accent 5"/>
+  <w:LsdException Locked="false" Priority="46"
+   Name="List Table 1 Light Accent 6"/>
+  <w:LsdException Locked="false" Priority="47" Name="List Table 2 Accent 6"/>
+  <w:LsdException Locked="false" Priority="48" Name="List Table 3 Accent 6"/>
+  <w:LsdException Locked="false" Priority="49" Name="List Table 4 Accent 6"/>
+  <w:LsdException Locked="false" Priority="50" Name="List Table 5 Dark Accent 6"/>
+  <w:LsdException Locked="false" Priority="51"
+   Name="List Table 6 Colorful Accent 6"/>
+  <w:LsdException Locked="false" Priority="52"
+   Name="List Table 7 Colorful Accent 6"/>
+  <w:LsdException Locked="false" SemiHidden="true" UnhideWhenUsed="true"
+   Name="Mention"/>
+  <w:LsdException Locked="false" SemiHidden="true" UnhideWhenUsed="true"
+   Name="Smart Hyperlink"/>
+  <w:LsdException Locked="false" SemiHidden="true" UnhideWhenUsed="true"
+   Name="Hashtag"/>
+  <w:LsdException Locked="false" SemiHidden="true" UnhideWhenUsed="true"
+   Name="Unresolved Mention"/>
+  <w:LsdException Locked="false" SemiHidden="true" UnhideWhenUsed="true"
+   Name="Smart Link"/>
+ </w:LatentStyles>
+</xml><![endif]-->
+<style>
+<!--
+ /* Font Definitions */
+ @font-face
+	{font-family:"Cambria Math";
+	panose-1:2 4 5 3 5 4 6 3 2 4;
+	mso-font-charset:0;
+	mso-generic-font-family:roman;
+	mso-font-pitch:variable;
+	mso-font-signature:-536869121 1107305727 33554432 0 415 0;}
+@font-face
+	{font-family:Aptos;
+	mso-font-charset:0;
+	mso-generic-font-family:swiss;
+	mso-font-pitch:variable;
+	mso-font-signature:536871559 3 0 0 415 0;}
+@font-face
+	{font-family:EuropeaNarrow;
+	panose-1:0 0 0 0 0 0 0 0 0 0;
+	mso-font-charset:0;
+	mso-generic-font-family:modern;
+	mso-font-format:other;
+	mso-font-pitch:variable;
+	mso-font-signature:-1610611969 1342301307 0 0 415 0;}
+ /* Style Definitions */
+ p.MsoNormal, li.MsoNormal, div.MsoNormal
+	{mso-style-unhide:no;
+	mso-style-qformat:yes;
+	mso-style-parent:"";
+	margin:0cm;
+	mso-pagination:widow-orphan;
+	font-size:12.0pt;
+	font-family:"Aptos",sans-serif;
+	mso-ascii-font-family:Aptos;
+	mso-ascii-theme-font:minor-latin;
+	mso-fareast-font-family:"Times New Roman";
+	mso-fareast-theme-font:minor-fareast;
+	mso-hansi-font-family:Aptos;
+	mso-hansi-theme-font:minor-latin;
+	mso-bidi-font-family:"Times New Roman";
+	mso-bidi-theme-font:minor-bidi;
+	mso-font-kerning:1.0pt;
+	mso-ligatures:standardcontextual;}
+a:link, span.MsoHyperlink
+	{mso-style-noshow:yes;
+	mso-style-priority:99;
+	color:blue;
+	text-decoration:underline;
+	text-underline:single;}
+a:visited, span.MsoHyperlinkFollowed
+	{mso-style-noshow:yes;
+	mso-style-priority:99;
+	color:#96607D;
+	mso-themecolor:followedhyperlink;
+	text-decoration:underline;
+	text-underline:single;}
+.MsoChpDefault
+	{mso-style-type:export-only;
+	mso-default-props:yes;
+	font-size:12.0pt;
+	mso-ansi-font-size:12.0pt;
+	mso-bidi-font-size:12.0pt;
+	mso-ascii-font-family:Aptos;
+	mso-ascii-theme-font:minor-latin;
+	mso-fareast-font-family:"Times New Roman";
+	mso-fareast-theme-font:minor-fareast;
+	mso-hansi-font-family:Aptos;
+	mso-hansi-theme-font:minor-latin;
+	mso-bidi-font-family:"Times New Roman";
+	mso-bidi-theme-font:minor-bidi;
+	mso-font-kerning:1.0pt;
+	mso-ligatures:standardcontextual;}
+@page WordSection1
+	{size:612.0pt 792.0pt;
+	margin:72.0pt 72.0pt 72.0pt 72.0pt;
+	mso-header-margin:36.0pt;
+	mso-footer-margin:36.0pt;
+	mso-paper-source:0;}
+div.WordSection1
+	{page:WordSection1;}
+-->
+</style>
+<!--[if gte mso 10]>
+<style>
+ /* Style Definitions */
+ table.MsoNormalTable
+	{mso-style-name:"Table Normal";
+	mso-tstyle-rowband-size:0;
+	mso-tstyle-colband-size:0;
+	mso-style-noshow:yes;
+	mso-style-priority:99;
+	mso-style-parent:"";
+	mso-padding-alt:0cm 5.4pt 0cm 5.4pt;
+	mso-para-margin:0cm;
+	mso-pagination:widow-orphan;
+	font-size:12.0pt;
+	font-family:"Aptos",sans-serif;
+	mso-ascii-font-family:Aptos;
+	mso-ascii-theme-font:minor-latin;
+	mso-hansi-font-family:Aptos;
+	mso-hansi-theme-font:minor-latin;
+	mso-font-kerning:1.0pt;
+	mso-ligatures:standardcontextual;}
+</style>
+<![endif]-->
+</head>
+
+<body lang=EN-GB link=blue vlink="#96607D" style='tab-interval:36.0pt;
+word-wrap:break-word'>
+
+<div class=WordSection1>
+
+<table class=MsoNormalTable border=0 cellspacing=4 cellpadding=0 width=715
+ style='width:536.25pt;mso-cellspacing:1.5pt;margin-left:2.25pt;mso-yfti-tbllook:
+ 1184;mso-padding-alt:0cm 5.4pt 0cm 5.4pt'>
+ <tr style='mso-yfti-irow:0;mso-yfti-firstrow:yes;mso-yfti-lastrow:yes'>
+  <td width=115 valign=top style='width:86.25pt;padding:.75pt 7.5pt .75pt .75pt'>
+  <p class=MsoNormal><span lang=EN style='font-size:9.0pt;font-family:"Arial",sans-serif;
+  mso-fareast-font-family:"Times New Roman";color:#838B8B;mso-ansi-language:
+  EN;mso-no-proof:yes'><img id="_x0000_i1028" src="data:image/png;base64,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"
+  alt="European Parliament logo"></span><span lang=EN style='font-size:9.0pt;
+  font-family:"Arial",sans-serif;mso-fareast-font-family:"Times New Roman";
+  color:#838B8B;mso-font-kerning:0pt;mso-ligatures:none;mso-ansi-language:EN'><o:p></o:p></span></p>
+  </td>
+  <td width=600 style='width:450.0pt;padding:.75pt .75pt .75pt .75pt'>
+  <div>
+  <p class=MsoNormal><b><span lang=EN style='font-family:EuropeaNarrow;
+  mso-fareast-font-family:"Times New Roman";mso-bidi-font-family:Arial;
+  color:#0C4DA5;mso-ansi-language:EN'>Juan carlos&nbsp;DIOSES <o:p></o:p></span></b></p>
+  </div>
+  <div>
+  <p class=MsoNormal style='line-height:11.0pt'><span lang=EN style='font-size:
+  9.0pt;font-family:"Arial",sans-serif;mso-fareast-font-family:"Times New Roman";
+  color:#838B8B;mso-ansi-language:EN'>IT support External Consultant <o:p></o:p></span></p>
+  </div>
+  <div>
+  <p class=MsoNormal style='line-height:14.0pt'><b><span lang=EN
+  style='font-size:11.0pt;font-family:EuropeaNarrow;mso-fareast-font-family:
+  "Times New Roman";mso-bidi-font-family:Arial;color:#7A868E;mso-ansi-language:
+  EN'><br>
+  European Parliament<o:p></o:p></span></b></p>
+  </div>
+  <div>
+  <p class=MsoNormal style='line-height:11.0pt'><span lang=EN style='font-size:
+  9.0pt;font-family:"Arial",sans-serif;mso-fareast-font-family:"Times New Roman";
+  color:#838B8B;mso-ansi-language:EN'>Directorate-General for Information
+  Technologies and Cybersecurity<o:p></o:p></span></p>
+  </div>
+  <div>
+  <p class=MsoNormal style='line-height:11.0pt'><span lang=EN style='font-size:
+  9.0pt;font-family:"Arial",sans-serif;mso-fareast-font-family:"Times New Roman";
+  color:#838B8B;mso-ansi-language:EN'>Directorate for Customers and Digital
+  Workplace<o:p></o:p></span></p>
+  </div>
+  <div>
+  <p class=MsoNormal style='line-height:11.0pt'><span lang=EN style='font-size:
+  9.0pt;font-family:"Arial",sans-serif;mso-fareast-font-family:"Times New Roman";
+  color:#838B8B;mso-ansi-language:EN'>Members' Digital Experience Unit<o:p></o:p></span></p>
+  </div>
+  <div>
+  <p class=MsoNormal style='line-height:11.0pt'><span lang=EN style='font-size:
+  9.0pt;font-family:"Arial",sans-serif;mso-fareast-font-family:"Times New Roman";
+  color:#838B8B;mso-ansi-language:EN'>Digital Workplace Support<o:p></o:p></span></p>
+  </div>
+  <table class=MsoNormalTable border=0 cellspacing=0 cellpadding=0
+   style='border-collapse:collapse;mso-yfti-tbllook:1184;mso-padding-alt:0cm 5.4pt 0cm 5.4pt'>
+   <tr style='mso-yfti-irow:0;mso-yfti-firstrow:yes;mso-yfti-lastrow:yes'>
+    <td style='padding:.75pt 12.0pt .75pt .75pt'>
+    <p class=MsoNormal><span style='font-size:9.0pt;font-family:"Arial",sans-serif;
+    mso-fareast-font-family:"Times New Roman";color:#838B8B'>BRU - Remard
+    02J006<o:p></o:p></span></p>
+    </td>
+    <td style='border:none;border-left:solid #838B8B 1.0pt;mso-border-left-alt:
+    solid #838B8B .75pt;padding:.75pt .75pt .75pt 12.0pt'>
+    <p class=MsoNormal><span style='font-size:9.0pt;font-family:"Arial",sans-serif;
+    mso-fareast-font-family:"Times New Roman";color:#838B8B'>Tel +32 228 43913<o:p></o:p></span></p>
+    </td>
+   </tr>
+  </table>
+  <div>
+  <p class=MsoNormal style='line-height:12.0pt'><span lang=EN style='font-size:
+  9.0pt;font-family:"Arial",sans-serif;mso-fareast-font-family:"Times New Roman";
+  color:#838B8B;mso-ansi-language:EN'><a
+  href="mailto:juan.dioses@ext.europarl.europa.eu">juan.dioses@ext.europarl.europa.eu</a><o:p></o:p></span></p>
+  </div>
+  <div>
+  <p class=MsoNormal style='line-height:12.0pt'><span lang=EN style='font-size:
+  9.0pt;font-family:"Arial",sans-serif;mso-fareast-font-family:"Times New Roman";
+  color:#838B8B;mso-ansi-language:EN'><a href="www.europarl.europa.eu">www.europarl.europa.eu</a><o:p></o:p></span></p>
+  </div>
+  <table class=MsoNormalTable border=0 cellspacing=4 cellpadding=0
+   style='mso-cellspacing:1.5pt;mso-yfti-tbllook:1184;mso-padding-alt:0cm 5.4pt 0cm 5.4pt'>
+   <tr style='mso-yfti-irow:0;mso-yfti-firstrow:yes;mso-yfti-lastrow:yes'>
+    <td style='padding:.75pt .75pt .75pt .75pt'></td>
+   </tr>
+  </table>
+  </td>
+ </tr>
+</table>
+
+<p class=MsoNormal><o:p>&nbsp;</o:p></p>
+
+<p class=MsoNormal><o:p>&nbsp;</o:p></p>
+
+</div>
+
+</body>
+
+</html>
+`;
+  var SIGNATURE_FILE = "Assistant/templates/email/signature/main.htm";
+  var SIGNATURE_ASSETS = { "LOGO_EP.png": "data:image/png;base64,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", "main_files/colorschememapping.xml": "data:application/xml;base64,PD94bWwgdmVyc2lvbj0iMS4wIiBlbmNvZGluZz0iVVRGLTgiIHN0YW5kYWxvbmU9InllcyI/Pgo8YTpjbHJNYXAgeG1sbnM6YT0iaHR0cDovL3NjaGVtYXMub3BlbnhtbGZvcm1hdHMub3JnL2RyYXdpbmdtbC8yMDA2L21haW4iIGJnMT0ibHQxIiB0eDE9ImRrMSIgYmcyPSJsdDIiIHR4Mj0iZGsyIiBhY2NlbnQxPSJhY2NlbnQxIiBhY2NlbnQyPSJhY2NlbnQyIiBhY2NlbnQzPSJhY2NlbnQzIiBhY2NlbnQ0PSJhY2NlbnQ0IiBhY2NlbnQ1PSJhY2NlbnQ1IiBhY2NlbnQ2PSJhY2NlbnQ2IiBobGluaz0iaGxpbmsiIGZvbEhsaW5rPSJmb2xIbGluayIvPg==", "main_files/filelist.xml": "data:application/xml;base64,PHhtbCB4bWxuczpvPSJ1cm46c2NoZW1hcy1taWNyb3NvZnQtY29tOm9mZmljZTpvZmZpY2UiPgogPG86TWFpbkZpbGUgSFJlZj0iLi4vbWFpbi5odG0iLz4KIDxvOkZpbGUgSFJlZj0idGhlbWVkYXRhLnRobXgiLz4KIDxvOkZpbGUgSFJlZj0iY29sb3JzY2hlbWVtYXBwaW5nLnhtbCIvPgogPG86RmlsZSBIUmVmPSJmaWxlbGlzdC54bWwiLz4KPC94bWw+", "main_files/themedata.thmx": "data:application/vnd.ms-officetheme;base64,UEsDBBQABgAIAAAAIQDp3g+//wAAABwCAAATAAAAW0NvbnRlbnRfVHlwZXNdLnhtbKyRy07DMBBF90j8g+UtSpyyQAgl6YLHjseifMDImSQWydiyp1X790zSVEKoIBZsLNkz954743K9Hwe1w5icp0qv8kIrJOsbR12l3zdP2a1WiYEaGDxhpQ+Y9Lq+vCg3h4BJiZpSpXvmcGdMsj2OkHIfkKTS+jgCyzV2JoD9gA7NdVHcGOuJkTjjyUPX5QO2sB1YPe7l+Zgk4pC0uj82TqxKQwiDs8CS1Oyo+UbJFkIuyrkn9S6kK4mhzVnCVPkZsOheZTXRNajeIPILjBLDsAyJX89nIBkt5r87nons29ZZbLzdjrKOfDZezE7B/xRg9T/oE9PMf1t/AgAA//8DAFBLAwQUAAYACAAAACEApdan58AAAAA2AQAACwAAAF9yZWxzLy5yZWxzhI/PasMwDIfvhb2D0X1R0sMYJXYvpZBDL6N9AOEof2giG9sb69tPxwYKuwiEpO/3qT3+rov54ZTnIBaaqgbD4kM/y2jhdj2/f4LJhaSnJQhbeHCGo3vbtV+8UNGjPM0xG6VItjCVEg+I2U+8Uq5CZNHJENJKRds0YiR/p5FxX9cfmJ4Z4DZM0/UWUtc3YK6PqMn/s8MwzJ5PwX+vLOVFBG43lExp5GKhqC/jU72QqGWq1B7Qtbj51v0BAAD//wMAUEsDBBQABgAIAAAAIQBreZYWgwAAAIoAAAAcAAAAdGhlbWUvdGhlbWUvdGhlbWVNYW5hZ2VyLnhtbAzMTQrDIBBA4X2hd5DZN2O7KEVissuuu/YAQ5waQceg0p/b1+XjgzfO3xTVm0sNWSycBw2KZc0uiLfwfCynG6jaSBzFLGzhxxXm6XgYybSNE99JyHNRfSPVkIWttd0g1rUr1SHvLN1euSRqPYtHV+jT9yniResrJgoCOP0BAAD//wMAUEsDBBQABgAIAAAAIQAcPD0OjQcAAM0gAAAWAAAAdGhlbWUvdGhlbWUvdGhlbWUxLnhtbOxZX4sbyRF/D+Q7DPMua2YkjaTF8qG/3rN3bWPJPu6xV2rNtLdnephu7VocB8H3lJdA4BLyEshbHkK4gzu4Iy/5MAab5PIhUt0zGnVLLe8fDDFhd180rV9V/6aquqpUff+z1wl1LnDOCUt7rn/Pcx2cztmCpFHPfTGb1DquwwVKF4iyFPfcNebuZw9+/av76EjEOMEOyKf8CPXcWIjsqF7nc1hG/B7LcArfLVmeIAGPeVRf5OgS9Ca0HnheWE8QSV0nRQmofbpckjl2ZlKl+2CjfEzhMRVcLsxpPpWqsSGhsItzXyL4mg9p7lwg2nNhnwW7nOHXwnUo4gK+6Lme+nPrD+7X0VEpRMUBWU1uov5KuVJgcR6oPfPorNrUGwedpl/pVwAq9nHjjvyv9CkAms/hTQsuuk6/FXqdoMRqoOKjRXe37TdMvKa/scfZ74aDoGnoV6BCf3MP702641HLwCtQgW/t4fteMOg2DLwCFfhwD98c99vB2MArUExJer6PDtudTliiK8iS0WMrvBuGXntUwrcoiIYquuQWS5aKQ7GWoFcsnwBAAikSJHXEOsNLNIco7meCcWdEeEbR2nUylDIOy17g+xB6TS+o/pXF0RFGmrTkBUz43pLk4/B5TjLRcx+BVleDvPv557dvfnz75qe333zz9s13zgmJYlGoMuSOURrpcr/89ff/+fNvnH//8Jdfvv2DHc91/Pu///b9P/75IfVw1LamePfH79//+P27P/3uX3/71qK9n6MzHT4jCebOE3zpPGcJvKAyhckfn+U3k5jFiOgS/TTiKEVyF4v+sYgN9JM1osiCG2DTji9zSDU24MPVK4PwNM5Xglg0Po4TA3jKGB2w3GqFx3IvzcyzVRrZN89XOu45Qhe2vYcoNbw8XmWQY4lN5TDGBs1nFKUCRTjFwpHfsXOMLW/3JSGGXU/JPGecLYXzJXEGiFhNMiNnRjRthY5JAn5Z2wiCvw3bnL50Boza3nqEL0wknA1ELeRnmBpmfIhWAiU2lTOUUN3gJ0jENpLTdT7XcWMuwNMRpswZLzDnNpmnObyv5vTHCLKb1e2ndJ2YyFyQc5vOE8SYjhyx82GMksyGnZI01rGf83MIUeQ8Y8IGP2XmCZHP4AeUHnT3S4INd1+dDV5AltMpbQNEfrPKLb58iJkRv9M1XSJsSzX9PDFSbD8n1ugYrCIjtE8wpugSLTB2XnxuYTBgmWHzLelHMWSVY2wLrEfIjFX5nGIOvZJsbvbz5AnhRshOccQO8Dld7ySeNUoTlB/S/AS8rtt8fJbDYbRQeErn5zrwCYEeEOLFapSnHHRowX1Q67MYGQVMPnN7vK5zw3/XOWNwLl8ZNK5xLkEG31gGErsu80HbzBA1NtgGzAwR58SWbkHEcP9WRBZXJbayyi3NQ7t1A3RHRtOTkPSKDuh/0/lYAvHj9Dx2xUbCumG3cyihHO/0OIdwu53NkOUL8uk3NiO0Sp9hqCX7Weuur7nra9z/+77m0Hm+62YO9Rx33YwLXcZdN1MOWD5ON7NtYKC3kUOGYtijRj/JwcnPklA6FWuKT7ga/nD4TbOYwKKUU1NPXE0Csxg+yjIHGxi4KEdKxsmZ+IKIeBqjDCZEviuVRLxUHXEnYxwGR2rZqlvi6So5ZYti4KkmTF5RWTkS23WvBaOnYh2GVaJAh+1yUfJTU1Xgq9hGati6ISBlb0JC28wk0bCQaG8WryAhZ2cfh0XXwqIj1W9ctWcKoFZ5BX50O/BTvee2mpIQTMr5HBr0hfRT4eqNd5UzP6anDxnTiAAYLhZvAqP5ytNdyfXg68m3K0LtGp42SCinFGFlklCWUQ0ej+GncBmdcvU6NG7q6+7WpQY9aQq1H8T3lka78yEWt/U1yO3mBprqmYKmzmXPDRstCJk5ynruEgbH8DHJIHa4/N2FaAS3L3ORFwf+Npkly7kYIR4XBldJp3BPQgTOHUqSnitfv3IDTVUOUdz8ABLCJ0uuC2nlUyMHTjedjJdLPBe627UVaeniETJ8kSus3yrx24OlJFuBu6fx4tI5o6v8OYIQa7V9acAF4XB/4BfWXBC4EKsS2Tb+dgpTmfz1GykVQ8U6olmMyoqiJ/MCrupJRUc9VTbQnsp3BoNqJikL4VkkC6xuVKOaVqWr4HCw6l4tJC2nJc1tzTSyiqya9ixm7LApAzu2vF2R11htTAw5Ta/wRereTbndTa7b6ROqKgEGr+x3u9KvUdtuZlCTjPfTsMzZ5apZOzYveAW16xQJLeuHG7U7dqtqhHU7WLxV5Qe53aiFpeWmr1SWVjfn+uU2O3sFyWMEXe6KCq5cCdPdHEFXNlU9SZE24Ii8FuXRgE/OKic99yuv1W8Og9aw5nVa41qz0fRqnVa/Ueu3Wg1/3PK90SD4GgqLiBO/VdzaT+ASg67Lu3u1vnd/n2zuae7NWVJn6n6+roir+3s/OHx/7xBIOl8FY78Z9INhbTjyw1ozGIW1TrvRrw2DcBT0IaWHk/7XrnOhwP5gNJpMWkEtHAKu6fVbtf6gMayFnfEgmPjj5sgDcJk5X0P/DTbd2AI+Kl4P/gsAAP//AwBQSwMEFAAGAAgAAAAhAA3RkJ+2AAAAGwEAACcAAAB0aGVtZS90aGVtZS9fcmVscy90aGVtZU1hbmFnZXIueG1sLnJlbHOEj00KwjAUhPeCdwhvb9O6EJEm3YjQrdQDhOQ1DTY/JFHs7Q2uLAguh2G+mWm7l53JE2My3jFoqhoIOumVcZrBbbjsjkBSFk6J2TtksGCCjm837RVnkUsoTSYkUiguMZhyDidKk5zQilT5gK44o49W5CKjpkHIu9BI93V9oPGbAXzFJL1iEHvVABmWUJr/s/04GolnLx8WXf5RQXPZhQUoosbM4CObqkwEylu6usTfAAAA//8DAFBLAQItABQABgAIAAAAIQDp3g+//wAAABwCAAATAAAAAAAAAAAAAAAAAAAAAABbQ29udGVudF9UeXBlc10ueG1sUEsBAi0AFAAGAAgAAAAhAKXWp+fAAAAANgEAAAsAAAAAAAAAAAAAAAAAMAEAAF9yZWxzLy5yZWxzUEsBAi0AFAAGAAgAAAAhAGt5lhaDAAAAigAAABwAAAAAAAAAAAAAAAAAGQIAAHRoZW1lL3RoZW1lL3RoZW1lTWFuYWdlci54bWxQSwECLQAUAAYACAAAACEAHDw9Do0HAADNIAAAFgAAAAAAAAAAAAAAAADWAgAAdGhlbWUvdGhlbWUvdGhlbWUxLnhtbFBLAQItABQABgAIAAAAIQAN0ZCftgAAABsBAAAnAAAAAAAAAAAAAAAAAJcKAAB0aGVtZS90aGVtZS9fcmVscy90aGVtZU1hbmFnZXIueG1sLnJlbHNQSwUGAAAAAAUABQBdAQAAkgsAAAAA" };
+
+  // Assistant/core/email/signature.js
+  var cachedSignature = null;
+  function cleanText2(value = "") {
+    return String(value || "").trim();
+  }
+  function escapeHtml2(value = "") {
+    return String(value || "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#039;");
+  }
+  function textBodyToHtml(body = "") {
+    const text2 = String(body || "").replace(/\r\n/g, "\n");
+    const paragraphs = text2.split(/\n{2,}/).map((paragraph) => paragraph.split("\n").map(escapeHtml2).join("<br>")).filter((paragraph) => paragraph.trim());
+    return paragraphs.map((paragraph) => `<p>${paragraph}</p>`).join("");
+  }
+  function loadSignature() {
+    if (cachedSignature) return cachedSignature;
+    cachedSignature = {
+      html: cleanText2(SIGNATURE_HTML),
+      file: cleanText2(SIGNATURE_FILE),
+      assets: SIGNATURE_ASSETS && typeof SIGNATURE_ASSETS === "object" ? SIGNATURE_ASSETS : {},
+      exists: Boolean(cleanText2(SIGNATURE_HTML))
+    };
+    return cachedSignature;
+  }
+  function appendSignature(htmlBody = "") {
+    const body = cleanText2(htmlBody);
+    const signature = loadSignature();
+    if (!signature.exists) return body;
+    if (!body) return signature.html;
+    return `${body}<br>${signature.html}`;
+  }
+  function buildEmailHtmlBody(body = "") {
+    return appendSignature(textBodyToHtml(body));
+  }
+
   // Assistant/templates/renderer.js
   function getValidTicket2(context = {}) {
     const candidates = [
@@ -10379,13 +11283,10 @@ ${configurationItemLine}`,
     const rawBody = finalizeTemplateText(cleanupRenderedText(replacePlaceholders(template.body, placeholders)), {
       paragraphSpacing: template.paragraphSpacing
     });
-    const signature = cleanText(settings?.emailSignature);
     const isOutbound = ["email", "reminder", "appointment"].includes(String(template.category || "").trim());
-    let body = isOutbound && signature ? `${rawBody}
-
---
-${signature}` : rawBody;
+    let body = rawBody;
     body = body.replace(/\bundefined\b/gi, "").replace(/\bnull\b/gi, "").replace(/on your \./gi, "on your request.").replace(/about the \./gi, "about the reported issue.").replace(/\s{2,}/g, " ").trim();
+    const htmlBody = isOutbound ? buildEmailHtmlBody(body) : "";
     const clipboardText = template.category === "email" ? finalizeTemplateText(`Subject: ${subject}
 
 ${body}`) : body;
@@ -10393,6 +11294,7 @@ ${body}`) : body;
       ...template,
       subject,
       body,
+      htmlBody,
       clipboardText,
       recipient: settings?.toggles?.autoFillUserEmail !== false ? resolveRequestedForEmail(context) : "",
       target: cleanText(template.target)
@@ -10868,6 +11770,8 @@ ${value}` : value;
     const recipient = cleanText(renderedTemplate.recipient);
     const subject = cleanText(renderedTemplate.subject);
     const body = cleanText(renderedTemplate.body);
+    const htmlBody = cleanText(renderedTemplate.htmlBody) || buildEmailHtmlBody(body);
+    renderedTemplate.htmlBody = htmlBody;
     const mailto = `mailto:${encodeURIComponent(recipient || "")}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
     try {
       const hookResult = window.__SN_ASSISTANT_TEST_HOOKS__?.onOpenDraft?.(mailto, renderedTemplate);
@@ -10966,11 +11870,11 @@ ${value}` : value;
   }
 
   // Assistant/ui/workNotes.js
-  function cleanText2(value) {
+  function cleanText3(value) {
     return String(value || "").trim();
   }
   function normalizeSearchText(value) {
-    return cleanText2(value).toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+    return cleanText3(value).toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
   }
   function matchesSearch(template, searchTerm) {
     const needle = normalizeSearchText(searchTerm);
@@ -11045,14 +11949,14 @@ ${value}` : value;
     const templates = sortTemplatesForContext(groups.work_note || [], usageMap, context);
     const recommendation = selectWorkNoteTemplate(templates, context, context);
     const recommendedTemplateId = recommendation.templateId || templates[0]?.id || "";
-    let selectedTemplateId = cleanText2(state?.ui?.workNotesTemplateId) || recommendedTemplateId;
+    let selectedTemplateId = cleanText3(state?.ui?.workNotesTemplateId) || recommendedTemplateId;
     if (!templates.some((template) => template.id === selectedTemplateId)) {
       selectedTemplateId = recommendedTemplateId;
     }
     const selectedTemplate = templates.find((template) => template.id === selectedTemplateId) || recommendation.template || templates[0] || null;
     const renderedTemplate = selectedTemplate ? renderTemplate(selectedTemplate, { context, settings }) : null;
     const smartText = smartWorkNoteText(context, settings);
-    const draftText = cleanText2(state?.ui?.workNotesText) || renderedTemplate?.body || smartText;
+    const draftText = cleanText3(state?.ui?.workNotesText) || renderedTemplate?.body || smartText;
     return {
       templates: uniqueTemplates(templates, recommendedTemplateId),
       usageMap,
@@ -11066,7 +11970,7 @@ ${value}` : value;
     };
   }
   function noteWorkNoteTemplateUsage(state, rootWindow, templateId) {
-    const id = cleanText2(templateId);
+    const id = cleanText3(templateId);
     if (!id) return;
     const currentUsage = state?.ui?.workNoteTemplateUsage || loadWorkNoteTemplateUsage(rootWindow);
     const nextUsage = {
@@ -11101,8 +12005,8 @@ ${value}` : value;
   function renderWorkNotesPanelMarkup({ state, context, settings } = {}) {
     const model = buildWorkNoteModel(context, settings, state);
     const selectedTemplate = model.templates.find((template) => template.id === model.selectedTemplateId);
-    const previewText = cleanText2(state.ui.workNotesText) || model.draftText;
-    const searchText = cleanText2(state.ui.workNotesSearch);
+    const previewText = cleanText3(state.ui.workNotesText) || model.draftText;
+    const searchText = cleanText3(state.ui.workNotesSearch);
     const filteredTemplates = model.templates.filter((template) => matchesSearch(template, searchText));
     const selectedLabel = selectedTemplate?.label || "Smart suggestion";
     const recommendedTemplate = model.templates.find((template) => template.id === model.recommendedTemplateId) || model.recommendation.template || null;
@@ -11111,11 +12015,11 @@ ${value}` : value;
       ...model.templates.filter((template) => template.id !== model.recommendedTemplateId)
     ];
     const shortTitle = context.ticketNumber || context.recordNumber || context.tableLabel || "Work Notes";
-    const userName = cleanText2(context?.user?.fullName || context?.requestedFor || context?.caller || "");
+    const userName = cleanText3(context?.user?.fullName || context?.requestedFor || context?.caller || "");
     const subHeading = userName ? `${selectedLabel} - ${userName.split(" ")[0]}` : selectedLabel;
     const { usageMap } = model;
     const recentTemplates = !searchText ? model.templates.filter((template) => template.id !== model.recommendedTemplateId && getUsageScore(usageMap, template.id) > 0).slice(0, 3) : [];
-    const recentPhrases = Array.isArray(state?.ui?.workNotesRecentPhrases) ? state.ui.workNotesRecentPhrases.map(cleanText2).filter(Boolean) : [];
+    const recentPhrases = Array.isArray(state?.ui?.workNotesRecentPhrases) ? state.ui.workNotesRecentPhrases.map(cleanText3).filter(Boolean) : [];
     const cannedPhrases = [...new Set(recentPhrases)].slice(0, 5);
     const charCount = previewText.length;
     const templateSectionLabel = searchText ? `${displayTemplates.length} result${displayTemplates.length !== 1 ? "s" : ""}` : recentTemplates.length ? "All templates" : "Templates";
@@ -13705,18 +14609,6 @@ ${value}` : value;
             <div class="sn-assistant-field" style="grid-column: 1 / -1;">
               <span class="sn-assistant-field__label">Draft button label</span>
               <input class="sn-assistant-input" name="draftButtonLabel" value="${escapeHtml(draftSettings.draftButtonLabel || "Prepare Draft")}" placeholder="Prepare Draft" />
-            </div>
-            <div class="sn-assistant-field" style="grid-column: 1 / -1;">
-              <span class="sn-assistant-field__label">Email signature</span>
-              <textarea
-                class="sn-assistant-textarea"
-                name="emailSignature"
-                placeholder="e.g. Best regards,
-IT Service Desk
-Extension: +32 2 123 456"
-                style="min-height:60px;"
-              >${escapeHtml(draftSettings.emailSignature || "")}</textarea>
-              <span class="sn-assistant-field__hint">Appended automatically after outgoing emails.</span>
             </div>
             <div class="sn-assistant-field" style="grid-column: 1 / -1;">
               <span class="sn-assistant-field__label">Appearance</span>
@@ -21785,7 +22677,7 @@ Are you sure you want to download this calendar event?`
   var escapeRegExp = function(str) {
     return str.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
   };
-  var cleanText3 = function(text2) {
+  var cleanText4 = function(text2) {
     return text2.replace(/\t|\u0085|\u2028|\u2029/g, "    ").replace(/[\b\v]/g, "");
   };
   var escapedNewlineChars = ["\\n", "\\f", "\\r", "\\u000B"];
@@ -21838,7 +22730,7 @@ Are you sure you want to download this calendar event?`
   };
   var breakTextIntoLines = function(text2, wordBreaks, maxWidth, computeWidthOfText) {
     var regex = buildWordBreakRegex(wordBreaks);
-    var words = cleanText3(text2).match(regex);
+    var words = cleanText4(text2).match(regex);
     var currLine = "";
     var currWidth = 0;
     var lines = [];
@@ -33105,7 +33997,7 @@ Are you sure you want to download this calendar event?`
   };
   var layoutMultilineText = function(text2, _a) {
     var alignment = _a.alignment, fontSize = _a.fontSize, font = _a.font, bounds = _a.bounds;
-    var lines = lineSplit(cleanText3(text2));
+    var lines = lineSplit(cleanText4(text2));
     if (fontSize === void 0 || fontSize === 0) {
       fontSize = computeFontSize(lines, font, bounds, true);
     }
@@ -33149,7 +34041,7 @@ Are you sure you want to download this calendar event?`
   };
   var layoutCombedText = function(text2, _a) {
     var fontSize = _a.fontSize, font = _a.font, bounds = _a.bounds, cellCount = _a.cellCount;
-    var line = mergeLines(cleanText3(text2));
+    var line = mergeLines(cleanText4(text2));
     if (line.length > cellCount) {
       throw new CombedTextLayoutError(line.length, cellCount);
     }
@@ -33197,7 +34089,7 @@ Are you sure you want to download this calendar event?`
   };
   var layoutSinglelineText = function(text2, _a) {
     var alignment = _a.alignment, fontSize = _a.fontSize, font = _a.font, bounds = _a.bounds;
-    var line = mergeLines(cleanText3(text2));
+    var line = mergeLines(cleanText4(text2));
     if (fontSize === void 0 || fontSize === 0) {
       fontSize = computeFontSize([line], font, bounds);
     }
@@ -36450,7 +37342,7 @@ Are you sure you want to download this calendar event?`
         var textWidth = function(t) {
           return newFont.widthOfTextAtSize(t, fontSize);
         };
-        var lines = options.maxWidth === void 0 ? lineSplit(cleanText3(text2)) : breakTextIntoLines(text2, wordBreaks, options.maxWidth, textWidth);
+        var lines = options.maxWidth === void 0 ? lineSplit(cleanText4(text2)) : breakTextIntoLines(text2, wordBreaks, options.maxWidth, textWidth);
         var encodedLines = new Array(lines.length);
         for (var idx = 0, len = lines.length; idx < len; idx++) {
           encodedLines[idx] = newFont.encodeText(lines[idx]);
