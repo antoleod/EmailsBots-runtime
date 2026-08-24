@@ -6889,7 +6889,7 @@ Asset tag: ${item.equipmentAssetTag}`;
   }
 
   // Assistant/version.js
-  var VERSION = "V2.7.3";
+  var VERSION = "V2.7.5";
 
   // Assistant/templates/intelligence.js
   var TYPE_KEYWORDS = [
@@ -11903,16 +11903,16 @@ ${value}` : value;
     return normalizeSearchText(value).replace(/[^a-z0-9à-ÿ_-]+/gi, " ").split(/\s+/).map(cleanText3).filter(Boolean);
   }
   function matchesWorkNoteSearch(template, searchTerm) {
-    const tokens = getSearchTokens(searchTerm);
-    if (!tokens.length) return true;
+    const tokens2 = getSearchTokens(searchTerm);
+    if (!tokens2.length) return true;
     const haystack = buildWorkNoteSearchText(template);
-    return tokens.every((token) => haystack.includes(token));
+    return tokens2.every((token) => haystack.includes(token));
   }
   function matchesSearchCorpus(haystack, searchTerm) {
-    const tokens = getSearchTokens(searchTerm);
-    if (!tokens.length) return true;
+    const tokens2 = getSearchTokens(searchTerm);
+    if (!tokens2.length) return true;
     const corpus = normalizeSearchText(haystack);
-    return tokens.every((token) => corpus.includes(token));
+    return tokens2.every((token) => corpus.includes(token));
   }
   function uniqueTemplates(templates, preferredId) {
     const ordered = [];
@@ -16250,6 +16250,222 @@ ${value}` : value;
     return selectSmartTemplateForCategory(state, settings, requestedCategory);
   }
 
+  // Assistant/application/templates/smartShortDescription.js
+  function normalize(value = "") {
+    return String(value || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/[\s_/:|()\[\],.;]+/g, " ").replace(/\s*-\s*/g, " ").replace(/\s{2,}/g, " ").trim();
+  }
+  function has(text2, pattern) {
+    return pattern.test(normalize(text2));
+  }
+  var RULES = [
+    {
+      id: "mdm-byod-removal",
+      pattern: /\b(personal device|byod)\b.*\b(mdm|intune|enrol(?:l)?ment|enrollment)\b.*\b(remove|removal|unenrol|unregister|delete)\b|\b(remove|removal|unenrol|unregister|delete)\b.*\b(byod|mdm|intune)\b/,
+      templates: ["personal_device_mdm_byd_removal", "personal_device_mdm_byod_removal"]
+    },
+    {
+      id: "mobile-return",
+      pattern: /\b(return|recover|retrieve|collect|collection|bring back|handover)\b.*\b(mobile|smartphone|iphone|ipad|tablet|phone)\b|\b(mobile|smartphone|iphone|ipad|tablet|phone)\b.*\b(return|recover|retrieve|collect|collection)\b/,
+      templates: ["recover_mobile_devices_before_due_date", "smartphone_return_schedule"]
+    },
+    {
+      id: "equipment-return",
+      pattern: /\b(return|recover|retrieve|collect|collection|bring back)\b.*\b(laptop|computer|pc|equipment|material|device|asset)\b|\b(laptop|computer|pc|equipment|material|device|asset)\b.*\b(return|recover|retrieve|collect|collection)\b/,
+      templates: ["recover_it_material_before_due_date", "equipment_return_request"]
+    },
+    {
+      id: "laptop-swap",
+      pattern: /\b(laptop|notebook|computer|pc)\b.*\b(swap|exchange|replacement appointment|appointment.*swap)\b|\b(swap|exchange)\b.*\b(laptop|notebook|computer|pc)\b/,
+      templates: ["laptop_swap_appointment", "appointment_confirmation"]
+    },
+    {
+      id: "smartphone-delivery",
+      pattern: /\b(delivery|deliver|handover|attribution|ready for collection)\b.*\b(smartphone|iphone|mobile|phone)\b|\b(smartphone|iphone|mobile|phone)\b.*\b(delivery|deliver|handover|attribution|ready for collection)\b/,
+      templates: ["smartphone_delivery_initial", "smartphone_delivery", "smartphone_delivery_schedule"]
+    },
+    {
+      id: "laptop-delivery",
+      pattern: /\b(delivery|deliver|handover|ready for collection)\b.*\b(laptop|notebook|computer|pc)\b|\b(laptop|notebook|computer|pc)\b.*\b(delivery|deliver|handover|ready for collection)\b/,
+      templates: ["laptop_delivery", "device_delivery_win11", "delivery_coordination"]
+    },
+    {
+      id: "move-quality",
+      pattern: /\b(quality check|post move|after move|workspace check)\b.*\b(move|relocation|workspace|office)\b|\b(move|relocation)\b.*\b(quality check|check|verify)\b/,
+      templates: ["quality_check_after_move", "quality_check_new_workspace"]
+    },
+    {
+      id: "loss-theft",
+      pattern: /\b(lost|loss|stolen|theft|missing device|missing laptop|missing phone)\b/,
+      templates: ["loss_or_theft_follow_up"]
+    },
+    {
+      id: "vpn",
+      pattern: /\b(vpn|remote access)\b.*\b(issue|problem|fail|failed|cannot|unable|disconnect|drops|connection)\b|\b(cannot|unable|failed|issue|problem)\b.*\bvpn\b/,
+      templates: ["vpn_connectivity_issue", "incident_connectivity_issue"]
+    },
+    {
+      id: "account-access",
+      pattern: /\b(password reset|account locked|unlock account|cannot login|unable to login|login issue|eu login|access denied|authentication issue)\b/,
+      templates: ["account_access_support"]
+    },
+    {
+      id: "outlook",
+      pattern: /\b(outlook|email|calendar|mailbox)\b.*\b(issue|problem|freeze|crash|sync|synchroni[sz]|not working|error)\b/,
+      templates: ["outlook_email_calendar_support", "incident_software_issue"]
+    },
+    {
+      id: "hardware",
+      pattern: /\b(screen|monitor|keyboard|mouse|dock|docking|webcam|printer|battery|audio|speaker)\b.*\b(issue|problem|broken|not working|not detected|flicker|flickering|error)\b/,
+      templates: ["incident_hardware_issue"]
+    }
+  ];
+  var STOP_WORDS = /* @__PURE__ */ new Set([
+    "the",
+    "and",
+    "for",
+    "with",
+    "from",
+    "your",
+    "this",
+    "that",
+    "ticket",
+    "request",
+    "support",
+    "issue",
+    "problem",
+    "follow",
+    "up",
+    "initial",
+    "reminder",
+    "generic",
+    "email",
+    "confirmation",
+    "coordination",
+    "schedule",
+    "scheduling",
+    "appointment",
+    "device"
+  ]);
+  function stem(token = "") {
+    let value = normalize(token).replace(/[^a-z0-9]+/g, "");
+    if (/^remov(?:e|al|ed|ing)$/.test(value)) return "remove";
+    if (/^enrol+l?(?:ment|ed|ing)?$/.test(value) || value === "enrollment") return "enrolment";
+    if (value.endsWith("ies") && value.length > 5) value = `${value.slice(0, -3)}y`;
+    else if (value.endsWith("s") && value.length > 5 && !value.endsWith("ss")) value = value.slice(0, -1);
+    return value;
+  }
+  function tokens(value = "") {
+    return Array.from(new Set(
+      normalize(value).split(/[^a-z0-9]+/).map(stem).filter((token) => token.length >= 3 && !STOP_WORDS.has(token))
+    ));
+  }
+  var CONFLICT_GROUPS = [
+    ["return", "recover", "retrieve", "collect"],
+    ["delivery", "deliver", "handover", "attribution"],
+    ["remove", "unenrol", "unregister"],
+    ["install", "enrolment", "enroll"],
+    ["lost", "stolen", "theft"],
+    ["swap", "exchange", "replacement"]
+  ];
+  function conflictPenalty(shortTokenSet, templateTokenSet) {
+    let penalty = 0;
+    for (const group of CONFLICT_GROUPS) {
+      const shortHas = group.some((token) => shortTokenSet.has(stem(token)));
+      const templateHas = group.some((token) => templateTokenSet.has(stem(token)));
+      if (templateHas && !shortHas) penalty += 80;
+    }
+    return penalty;
+  }
+  function findExistingTemplate(templates, ids) {
+    for (const id of ids) {
+      const template = templates.find((entry) => entry?.id === id && entry.enabled !== false);
+      if (template) return template;
+    }
+    return null;
+  }
+  function selectSmartShortDescriptionTemplate(templates = [], context = {}) {
+    const shortDescription = context.shortDescription || context.short_description || "";
+    const normalized = normalize(shortDescription);
+    if (!normalized || normalized.split(" ").length < 2) return null;
+    for (const rule of RULES) {
+      if (!has(normalized, rule.pattern)) continue;
+      const template = findExistingTemplate(templates, rule.templates);
+      if (template) {
+        return {
+          template,
+          templateId: template.id,
+          source: `smart-short-description:${rule.id}`,
+          confidence: 1,
+          score: 1e3
+        };
+      }
+    }
+    const shortTokens = new Set(tokens(normalized));
+    if (shortTokens.size < 2) return null;
+    const candidates = [];
+    for (const template of templates) {
+      if (!template?.id || template.enabled === false) continue;
+      if (/^(?:generic|incident)_.*follow/i.test(template.id)) continue;
+      const templateTokens = new Set(tokens(`${template.id} ${template.label || template.title || ""}`));
+      if (!templateTokens.size) continue;
+      const matches = [...templateTokens].filter((token) => shortTokens.has(token));
+      const coverage = matches.length / templateTokens.size;
+      const score = matches.length * 120 + Math.round(coverage * 100) - conflictPenalty(shortTokens, templateTokens);
+      if (matches.length < 2 || score < 220) continue;
+      candidates.push({ template, templateId: template.id, matches, coverage, score });
+    }
+    candidates.sort((a, b) => b.score - a.score || b.coverage - a.coverage || a.templateId.localeCompare(b.templateId));
+    const winner = candidates[0];
+    const runnerUp = candidates[1];
+    if (!winner) return null;
+    if (runnerUp && winner.score - runnerUp.score < 35) return null;
+    return {
+      ...winner,
+      source: "smart-short-description:fuzzy",
+      confidence: Math.min(0.99, 0.7 + winner.coverage * 0.25),
+      candidates
+    };
+  }
+  function applySmartShortDescriptionOverride(selection = {}, context = {}) {
+    if (!selection || selection.selectionMode === "manual") return selection;
+    if (!["email", "reminder"].includes(selection.activeCategory)) return selection;
+    const baseTemplates = selection.activeCategory === "reminder" ? (selection.templates || []).map((template) => ({
+      ...template,
+      id: template.baseTemplateId || String(template.id || "").replace(/^reminder_/, "")
+    })) : selection.templates || [];
+    const smart = selectSmartShortDescriptionTemplate(baseTemplates, context);
+    if (!smart) return selection;
+    if (selection.activeCategory === "reminder") {
+      const reminderId = `reminder_${smart.templateId}`;
+      const reminder = (selection.templates || []).find((template) => template.id === reminderId);
+      if (!reminder) return selection;
+      return {
+        ...selection,
+        selectedTemplateId: reminder.id,
+        selectedTemplate: reminder,
+        selectionSource: smart.source,
+        smartShortDescription: smart
+      };
+    }
+    const selectedTemplate = (selection.templates || []).find((template) => template.id === smart.templateId) || smart.template;
+    return {
+      ...selection,
+      selectedTemplateId: smart.templateId,
+      selectedTemplate,
+      selectionSource: smart.source,
+      emailSelection: {
+        ...selection.emailSelection || {},
+        template: selectedTemplate,
+        templateId: smart.templateId,
+        ambiguous: false,
+        smartShortDescription: true,
+        score: smart.score
+      },
+      smartShortDescription: smart
+    };
+  }
+  var SMART_SHORT_DESCRIPTION_RULES = RULES.map(({ id, templates }) => ({ id, templates: [...templates] }));
+
   // Assistant/application/email/renderedSelection.js
   function looksLikeTicket(value) {
     return TICKET_NUMBER_PATTERN.test(cleanText(value));
@@ -16356,7 +16572,8 @@ ${cleanText(renderedTemplate.body)}` : renderedTemplate.clipboardText;
       }
     }
     state.context = context;
-    const selection = resolveTemplateSelection(state, settings, categoryOverride);
+    let selection = resolveTemplateSelection(state, settings, categoryOverride);
+    selection = applySmartShortDescriptionOverride(selection, context);
     const diagnosticSource = cleanText(
       selection.selectionSource || (selection.emailSelection?.metadata ? "studio-metadata" : "intelligence")
     );
@@ -16367,7 +16584,8 @@ ${cleanText(renderedTemplate.body)}` : renderedTemplate.clipboardText;
       selectionMode: cleanText(selection.selectionMode || "auto"),
       selectionSource: diagnosticSource,
       shortDescription: cleanText(context.shortDescription),
-      hasDescription: Boolean(cleanText(context.description))
+      hasDescription: Boolean(cleanText(context.description)),
+      smartShortDescription: Boolean(selection.smartShortDescription)
     });
     const renderedTemplate = selection.selectedTemplate ? normalizeRenderedSubject(renderTemplate(selection.selectedTemplate, { context, settings }), context) : null;
     const emailSuggestions = selection.activeCategory === "email" && selection.emailSelection?.ambiguous ? (selection.emailSelection.candidates || []).slice(0, 3).map((candidate) => {
@@ -17857,6 +18075,12 @@ ${cleanText(renderedTemplate.body)}` : renderedTemplate.clipboardText;
 .sn-ep__action[data-action="configure-assign-group"] .sn-ep__icon { color: #4f46e5; background: rgba(79, 70, 229, 0.10); }\r
 `;
 
+  // Assistant/ui/styles/iconography-polish.css
+  var iconography_polish_default = '/* Visual polish for Edge Panel action icons. */\r\n\r\n.sn-ep__action .sn-ep__icon {\r\n  isolation: isolate;\r\n  display: inline-grid;\r\n  place-items: center;\r\n  flex: 0 0 auto;\r\n  width: 32px;\r\n  height: 32px;\r\n  border-radius: 10px;\r\n  overflow: hidden;\r\n  background: color-mix(in srgb, currentColor 8%, transparent);\r\n  border: 1px solid color-mix(in srgb, currentColor 14%, transparent);\r\n  box-shadow:\r\n    inset 0 1px 0 rgba(255, 255, 255, 0.42),\r\n    0 1px 2px rgba(15, 23, 42, 0.06);\r\n}\r\n\r\n.sn-ep__action .sn-ep__icon::after {\r\n  content: "";\r\n  position: absolute;\r\n  inset: 0;\r\n  z-index: -1;\r\n  border-radius: inherit;\r\n  background: linear-gradient(145deg, rgba(255,255,255,.28), transparent 58%);\r\n  opacity: .8;\r\n  pointer-events: none;\r\n}\r\n\r\n.sn-ep__action:hover .sn-ep__icon {\r\n  transform: translateY(-1px) scale(1.035);\r\n  background: color-mix(in srgb, currentColor 12%, transparent);\r\n  border-color: color-mix(in srgb, currentColor 24%, transparent);\r\n  box-shadow:\r\n    inset 0 1px 0 rgba(255,255,255,.5),\r\n    0 5px 12px color-mix(in srgb, currentColor 14%, transparent);\r\n}\r\n\r\n.sn-ep__action:active .sn-ep__icon {\r\n  transform: translateY(0) scale(.965);\r\n  box-shadow: inset 0 1px 2px rgba(15,23,42,.08);\r\n}\r\n\r\n.sn-ep__action:focus-visible { outline: none; }\r\n.sn-ep__action:focus-visible .sn-ep__icon {\r\n  box-shadow:\r\n    0 0 0 2px var(--ep-surface, #fff),\r\n    0 0 0 4px color-mix(in srgb, currentColor 42%, transparent),\r\n    inset 0 1px 0 rgba(255,255,255,.46);\r\n}\r\n\r\n.sn-ep__action[disabled] .sn-ep__icon,\r\n.sn-ep__action[aria-disabled="true"] .sn-ep__icon {\r\n  opacity: .46;\r\n  filter: saturate(.55);\r\n  transform: none;\r\n  box-shadow: none;\r\n}\r\n\r\n.sn-ep__action .sn-ep__icon::before { inset: 6px; }\r\n.sn-ep__action .sn-ep__icon svg { width: 18px; height: 18px; stroke-width: 1.9; }\r\n\r\n.sn-ep__action[data-action="quick-draft"] .sn-ep__icon,\r\n.sn-ep__action[data-action="generate-email-draft"] .sn-ep__icon,\r\n.sn-ep__action[data-action="generate-all-notes"] .sn-ep__icon,\r\n.sn-ep__action[data-action="generate-menu-toggle"] .sn-ep__icon,\r\n.sn-ep__action[data-action="quick-draft-top3"] .sn-ep__icon {\r\n  color: #2563eb;\r\n  background: rgba(37,99,235,.11);\r\n}\r\n\r\n.sn-ep__action[data-action="assign-to-my-group"] .sn-ep__icon,\r\n.sn-ep__action[data-action="configure-assign-group"] .sn-ep__icon {\r\n  color: #4f46e5;\r\n  background: rgba(79,70,229,.11);\r\n}\r\n\r\n.sn-ep__action[data-action="open-work-notes"] .sn-ep__icon,\r\n.sn-ep__action[data-action="generate-work-notes"] .sn-ep__icon,\r\n.sn-ep__action[data-action="open-ep-links"] .sn-ep__icon {\r\n  color: #0f766e;\r\n  background: rgba(15,118,110,.11);\r\n}\r\n\r\n.sn-ep__action[data-action="user-info"] .sn-ep__icon {\r\n  color: #475569;\r\n  background: rgba(71,85,105,.10);\r\n}\r\n.sn-ep__action[data-action="user-open-tickets"] .sn-ep__icon {\r\n  color: #0369a1;\r\n  background: rgba(3,105,161,.11);\r\n}\r\n.sn-ep__action[data-action="find-ci"] .sn-ep__icon {\r\n  color: #15803d;\r\n  background: rgba(21,128,61,.11);\r\n}\r\n.sn-ep__action[data-action="create-calendar-event"] .sn-ep__icon {\r\n  color: #0284c7;\r\n  background: rgba(2,132,199,.11);\r\n}\r\n.sn-ep__action[data-action="open-pdf"] .sn-ep__icon {\r\n  color: #7c3aed;\r\n  background: rgba(124,58,237,.11);\r\n}\r\n.sn-ep__action[data-action="open-reminder"] .sn-ep__icon {\r\n  color: #d97706;\r\n  background: rgba(217,119,6,.12);\r\n}\r\n.sn-ep__action[data-action="generate-close-notes"] .sn-ep__icon,\r\n.sn-ep__action[data-action="incident-resolution-notes"] .sn-ep__icon {\r\n  color: #b45309;\r\n  background: rgba(180,83,9,.11);\r\n}\r\n\r\n.sn-ep[data-ep-mode="icons"] .sn-ep__action {\r\n  min-height: 40px;\r\n  padding: 4px;\r\n  border-radius: 11px;\r\n}\r\n.sn-ep[data-ep-mode="icons"] .sn-ep__action:hover {\r\n  background: color-mix(in srgb, var(--ep-ink, #0f172a) 4%, transparent);\r\n}\r\n.sn-ep[data-ep-mode="icons"] .sn-ep__action .sn-ep__icon {\r\n  width: 34px;\r\n  height: 34px;\r\n  border-radius: 11px;\r\n}\r\n\r\n.sn-ep__action--mini-bolt,\r\n.sn-ep__action[data-action="quick-draft-top3"],\r\n.sn-ep__action[data-action="generate-menu-toggle"],\r\n.sn-ep__action[data-action="configure-assign-group"] {\r\n  border-radius: 10px;\r\n}\r\n.sn-ep__action--mini-bolt {\r\n  min-width: 34px;\r\n  min-height: 34px;\r\n  display: inline-grid;\r\n  place-items: center;\r\n  border: 1px solid color-mix(in srgb, var(--ep-ink, #0f172a) 9%, transparent);\r\n  background: color-mix(in srgb, var(--ep-ink, #0f172a) 3.5%, transparent);\r\n  box-shadow: inset 0 1px 0 rgba(255,255,255,.38);\r\n}\r\n.sn-ep__action--mini-bolt:hover {\r\n  background: color-mix(in srgb, var(--ep-ink, #0f172a) 7%, transparent);\r\n  border-color: color-mix(in srgb, var(--ep-ink, #0f172a) 16%, transparent);\r\n  transform: translateY(-1px);\r\n}\r\n\r\n[data-sn-assistant-theme="dark"] .sn-ep__action .sn-ep__icon,\r\n[data-sn-assistant-theme="noirGraphite"] .sn-ep__action .sn-ep__icon,\r\n[data-sn-assistant-theme="midnightSteel"] .sn-ep__action .sn-ep__icon,\r\n[data-sn-assistant-theme="obsidianGold"] .sn-ep__action .sn-ep__icon {\r\n  box-shadow: inset 0 1px 0 rgba(255,255,255,.12), 0 1px 3px rgba(0,0,0,.24);\r\n}\r\n[data-sn-assistant-theme="dark"] .sn-ep__action .sn-ep__icon::after,\r\n[data-sn-assistant-theme="noirGraphite"] .sn-ep__action .sn-ep__icon::after,\r\n[data-sn-assistant-theme="midnightSteel"] .sn-ep__action .sn-ep__icon::after,\r\n[data-sn-assistant-theme="obsidianGold"] .sn-ep__action .sn-ep__icon::after { opacity: .28; }\r\n\r\n@media (prefers-reduced-motion: reduce) {\r\n  .sn-ep__action,\r\n  .sn-ep__action .sn-ep__icon,\r\n  .sn-ep__action--mini-bolt {\r\n    transition: none !important;\r\n    transform: none !important;\r\n  }\r\n}\r\n';
+
+  // Assistant/ui/styles/iconography-icons-mode.css
+  var iconography_icons_mode_default = '/* Icon-only mode: one visual surface per action.\r\n   The compact rail previously rendered a rounded button around a second rounded\r\n   icon tile, and action rows displayed their secondary control beside the main\r\n   action. That read as duplicated UI. Flatten the primary surface and turn the\r\n   secondary action into a small corner affordance instead. */\r\n\r\n.sn-ep[data-ep-mode="icons"] .sn-ep__group-buttons {\r\n  gap: 6px;\r\n}\r\n\r\n.sn-ep[data-ep-mode="icons"] .sn-ep__action {\r\n  position: relative;\r\n  min-width: 42px;\r\n  width: 42px;\r\n  min-height: 42px;\r\n  padding: 4px;\r\n  margin: 0 auto;\r\n  border: 0 !important;\r\n  background: transparent !important;\r\n  box-shadow: none !important;\r\n}\r\n\r\n.sn-ep[data-ep-mode="icons"] .sn-ep__action:hover,\r\n.sn-ep[data-ep-mode="icons"] .sn-ep__action:focus-visible {\r\n  background: transparent !important;\r\n}\r\n\r\n.sn-ep[data-ep-mode="icons"] .sn-ep__action > .sn-ep__icon {\r\n  width: 36px;\r\n  height: 36px;\r\n  border-radius: 11px;\r\n  border-width: 1px;\r\n  box-shadow: 0 1px 2px rgba(15,23,42,.07), inset 0 1px 0 rgba(255,255,255,.34);\r\n}\r\n\r\n/* Remove the glossy second outline in the compact rail. */\r\n.sn-ep[data-ep-mode="icons"] .sn-ep__action > .sn-ep__icon::after {\r\n  display: none;\r\n}\r\n\r\n/* Rows such as Draft + Top3, Assign + group config and Work Notes + Smart\r\n   generator become one button with a small bottom-right secondary affordance. */\r\n.sn-ep[data-ep-mode="icons"] .sn-ep__action-row {\r\n  position: relative;\r\n  display: block;\r\n  width: 42px;\r\n  min-height: 42px;\r\n  margin: 0 auto;\r\n}\r\n\r\n.sn-ep[data-ep-mode="icons"] .sn-ep__action-row > .sn-ep__action:first-child {\r\n  width: 42px;\r\n  min-width: 42px;\r\n}\r\n\r\n.sn-ep[data-ep-mode="icons"] .sn-ep__action-row > .sn-ep__action--mini-bolt,\r\n.sn-ep[data-ep-mode="icons"] .sn-ep__action-row > [data-action="quick-draft-top3"],\r\n.sn-ep[data-ep-mode="icons"] .sn-ep__action-row > [data-action="generate-menu-toggle"],\r\n.sn-ep[data-ep-mode="icons"] .sn-ep__action-row > [data-action="configure-assign-group"] {\r\n  position: absolute;\r\n  right: -1px;\r\n  bottom: -1px;\r\n  z-index: 3;\r\n  width: 17px !important;\r\n  min-width: 17px !important;\r\n  height: 17px !important;\r\n  min-height: 17px !important;\r\n  padding: 0 !important;\r\n  border: 2px solid var(--ep-surface, #fff) !important;\r\n  border-radius: 6px !important;\r\n  background: var(--ep-surface, #fff) !important;\r\n  box-shadow: 0 1px 4px rgba(15,23,42,.18) !important;\r\n  overflow: visible;\r\n}\r\n\r\n.sn-ep[data-ep-mode="icons"] .sn-ep__action-row > .sn-ep__action--mini-bolt > .sn-ep__icon,\r\n.sn-ep[data-ep-mode="icons"] .sn-ep__action-row > [data-action="quick-draft-top3"] > .sn-ep__icon,\r\n.sn-ep[data-ep-mode="icons"] .sn-ep__action-row > [data-action="generate-menu-toggle"] > .sn-ep__icon,\r\n.sn-ep[data-ep-mode="icons"] .sn-ep__action-row > [data-action="configure-assign-group"] > .sn-ep__icon {\r\n  width: 13px !important;\r\n  height: 13px !important;\r\n  min-width: 13px !important;\r\n  min-height: 13px !important;\r\n  border: 0 !important;\r\n  border-radius: 4px !important;\r\n  background: transparent !important;\r\n  box-shadow: none !important;\r\n  transform: none !important;\r\n}\r\n\r\n.sn-ep[data-ep-mode="icons"] .sn-ep__action-row > .sn-ep__action--mini-bolt > .sn-ep__icon::before,\r\n.sn-ep[data-ep-mode="icons"] .sn-ep__action-row > [data-action="quick-draft-top3"] > .sn-ep__icon::before,\r\n.sn-ep[data-ep-mode="icons"] .sn-ep__action-row > [data-action="generate-menu-toggle"] > .sn-ep__icon::before,\r\n.sn-ep[data-ep-mode="icons"] .sn-ep__action-row > [data-action="configure-assign-group"] > .sn-ep__icon::before {\r\n  inset: 1px !important;\r\n}\r\n\r\n.sn-ep[data-ep-mode="icons"] .sn-ep__action-row > .sn-ep__action--mini-bolt > .sn-ep__icon svg,\r\n.sn-ep[data-ep-mode="icons"] .sn-ep__action-row > [data-action="quick-draft-top3"] > .sn-ep__icon svg,\r\n.sn-ep[data-ep-mode="icons"] .sn-ep__action-row > [data-action="generate-menu-toggle"] > .sn-ep__icon svg,\r\n.sn-ep[data-ep-mode="icons"] .sn-ep__action-row > [data-action="configure-assign-group"] > .sn-ep__icon svg {\r\n  width: 11px !important;\r\n  height: 11px !important;\r\n}\r\n\r\n.sn-ep[data-ep-mode="icons"] .sn-ep__action-row > .sn-ep__action--mini-bolt:hover,\r\n.sn-ep[data-ep-mode="icons"] .sn-ep__action-row > [data-action="quick-draft-top3"]:hover,\r\n.sn-ep[data-ep-mode="icons"] .sn-ep__action-row > [data-action="generate-menu-toggle"]:hover,\r\n.sn-ep[data-ep-mode="icons"] .sn-ep__action-row > [data-action="configure-assign-group"]:hover {\r\n  transform: scale(1.08);\r\n}\r\n\r\n[data-sn-assistant-theme="dark"] .sn-ep[data-ep-mode="icons"] .sn-ep__action-row > .sn-ep__action--mini-bolt,\r\n[data-sn-assistant-theme="noirGraphite"] .sn-ep[data-ep-mode="icons"] .sn-ep__action-row > .sn-ep__action--mini-bolt,\r\n[data-sn-assistant-theme="midnightSteel"] .sn-ep[data-ep-mode="icons"] .sn-ep__action-row > .sn-ep__action--mini-bolt,\r\n[data-sn-assistant-theme="obsidianGold"] .sn-ep[data-ep-mode="icons"] .sn-ep__action-row > .sn-ep__action--mini-bolt {\r\n  border-color: color-mix(in srgb, var(--ep-surface, #111827) 82%, white 18%) !important;\r\n  background: var(--ep-surface, #111827) !important;\r\n}\r\n';
+
   // Assistant/ui/styles/brand-icon.css
   var brand_icon_default = `/* \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\r
    EDGE TAB BRAND ICON\r
@@ -17985,6 +18209,8 @@ ${cleanText(renderedTemplate.body)}` : renderedTemplate.clipboardText;
     edgePanel_default,
     iconography_default,
     iconography_auxiliary_default,
+    iconography_polish_default,
+    iconography_icons_mode_default,
     brand_icon_default,
     responsive_default,
     epLinks_default,
@@ -36064,8 +36290,8 @@ Verification completed with ${requestedFor}. Ticket moved to Resolved.`;
   }
   function cleanDeviceCandidate(value = "") {
     let candidate = cleanText(value).replace(/\b\d{2}PI[A-Z0-9-]+\b.*$/i, "").replace(DEVICE_CONTEXT_MARKER, " __STOP__ ").split("__STOP__")[0].replace(DEVICE_TRAILING_WORDS, "").replace(/[.,;:|\-]+$/g, "").replace(/\s{2,}/g, " ").trim();
-    const tokens = candidate.split(/\s+/).filter(Boolean);
-    if (tokens.length > 7) candidate = tokens.slice(0, 7).join(" ");
+    const tokens2 = candidate.split(/\s+/).filter(Boolean);
+    if (tokens2.length > 7) candidate = tokens2.slice(0, 7).join(" ");
     return cleanText(candidate);
   }
   function extractCleanDevice(description = "") {
