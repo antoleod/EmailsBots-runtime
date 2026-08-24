@@ -6889,7 +6889,7 @@ Asset tag: ${item.equipmentAssetTag}`;
   }
 
   // Assistant/version.js
-  var VERSION = "V2.7.2";
+  var VERSION = "V2.7.3";
 
   // Assistant/templates/intelligence.js
   var TYPE_KEYWORDS = [
@@ -15975,6 +15975,76 @@ ${value}` : value;
     if (!source || !needle) return false;
     return new RegExp(`(?:^|\\b)${escapeRegex(needle)}(?:\\b|$)`, "i").test(source);
   }
+  var BUILTIN_TEMPLATE_STOP_WORDS = /* @__PURE__ */ new Set([
+    "and",
+    "the",
+    "for",
+    "with",
+    "from",
+    "your",
+    "this",
+    "that",
+    "email",
+    "ticket",
+    "follow",
+    "up",
+    "support",
+    "request",
+    "requests",
+    "generic",
+    "initial",
+    "reminder",
+    "confirmation",
+    "confirm",
+    "coordination",
+    "schedule",
+    "scheduling",
+    "issue",
+    "incident"
+  ]);
+  function normalizeTemplateToken(value = "") {
+    const token = normalizeMatchText(value).replace(/[^a-z0-9]+/g, "");
+    if (!token) return "";
+    if (/^remov(?:e|al|ed|ing)$/.test(token)) return "remove";
+    if (/^enrol+l?ment$/.test(token) || token === "enrollment") return "enrolment";
+    if (token.endsWith("ies") && token.length > 5) return `${token.slice(0, -3)}y`;
+    if (token.endsWith("s") && token.length > 5 && !token.endsWith("ss")) return token.slice(0, -1);
+    return token;
+  }
+  function getMeaningfulTemplateTokens(value = "") {
+    return Array.from(new Set(
+      normalizeMatchText(value).split(/[^a-z0-9]+/).map(normalizeTemplateToken).filter((token) => token.length >= 3 && !BUILTIN_TEMPLATE_STOP_WORDS.has(token))
+    ));
+  }
+  function selectTemplateByShortDescription(templates = [], context = {}) {
+    const shortDescription = cleanText(context.shortDescription || context.short_description);
+    if (!shortDescription) return null;
+    const shortTokens = new Set(getMeaningfulTemplateTokens(shortDescription));
+    if (!shortTokens.size) return null;
+    const candidates = [];
+    for (const template of templates || []) {
+      if (!template?.id || template.enabled === false) continue;
+      if (/^(?:generic|incident)_.*follow/i.test(template.id)) continue;
+      const templateTokens = getMeaningfulTemplateTokens(`${template.id} ${template.label || ""}`);
+      if (!templateTokens.length) continue;
+      const matches = templateTokens.filter((token) => shortTokens.has(token));
+      const coverage = matches.length / templateTokens.length;
+      const qualifies = matches.length >= 3 || matches.length >= 2 && coverage >= 0.4;
+      if (!qualifies) continue;
+      candidates.push({
+        template,
+        templateId: template.id,
+        matches,
+        coverage,
+        score: matches.length * 100 + Math.round(coverage * 100)
+      });
+    }
+    candidates.sort(
+      (left, right) => right.score - left.score || right.matches.length - left.matches.length || String(left.templateId).localeCompare(String(right.templateId))
+    );
+    const winner = candidates[0] || null;
+    return winner ? { ...winner, source: "builtin-short-description", candidates } : null;
+  }
   function selectTemplateByStudioMetadata(templates = [], context = {}) {
     const shortText = normalizeMatchText(context.shortDescription || context.short_description);
     const descriptionText = normalizeMatchText(context.description);
@@ -16088,6 +16158,7 @@ ${value}` : value;
     }
     const fullContext = state.context || {};
     const metadataSelection = getMetadataSelection(templates, fullContext);
+    const builtinShortSelection = ["email", "reminder"].includes(activeCategory) ? selectTemplateByShortDescription(groups.email || [], fullContext) : null;
     const { ticket: selectionTicket, detected: ticketContext } = getSmartSelectionSource(fullContext);
     let selectedTemplate = null;
     let selectedTemplateId = "";
@@ -16113,10 +16184,13 @@ ${value}` : value;
       selectedTemplateId = selection.templateId;
     } else if (activeCategory === "reminder") {
       const reminderTemplates = groups.reminder || [];
-      const detectedEmailSelection = selectEmailTemplate(groups.email || [], selectionTicket, ticketContext);
+      const detectedEmailSelection = builtinShortSelection || selectEmailTemplate(groups.email || [], selectionTicket, ticketContext);
       const suggestedReminderId = detectedEmailSelection.templateId ? `reminder_${detectedEmailSelection.templateId}` : "";
       selectedTemplateId = reminderTemplates.some((template) => template.id === suggestedReminderId) ? suggestedReminderId : reminderTemplates[0]?.id || "";
       selectedTemplate = reminderTemplates.find((template) => template.id === selectedTemplateId) || reminderTemplates[0] || null;
+      if (builtinShortSelection && selectedTemplateId === suggestedReminderId) {
+        selectionSource = builtinShortSelection.source;
+      }
     } else if (activeCategory === "close_note") {
       const selection = selectCloseNoteTemplate(groups.close_note || [], selectionTicket, ticketContext);
       selectedTemplate = selection.template;
@@ -16124,6 +16198,21 @@ ${value}` : value;
     } else if (activeCategory === "appointment") {
       selectedTemplate = templates[0] || null;
       selectedTemplateId = selectedTemplate?.id || "";
+    } else if (activeCategory === "email" && builtinShortSelection) {
+      selectedTemplate = builtinShortSelection.template;
+      selectedTemplateId = builtinShortSelection.templateId;
+      selectionSource = builtinShortSelection.source;
+      emailSelection = {
+        template: selectedTemplate,
+        templateId: selectedTemplateId,
+        score: builtinShortSelection.score,
+        ambiguous: false,
+        candidates: builtinShortSelection.candidates.map((entry) => ({
+          templateId: entry.templateId,
+          score: entry.score
+        })),
+        metadata: false
+      };
     } else {
       const selection = selectEmailTemplate(groups.email || [], selectionTicket, ticketContext);
       emailSelection = selection;
@@ -16213,6 +16302,26 @@ ${value}` : value;
       description
     };
   }
+  function normalizeRenderedSubject(renderedTemplate, context = {}) {
+    if (!renderedTemplate) return renderedTemplate;
+    const ticketCandidates = [
+      context.validTicketNumber,
+      context.customerTicketNumber,
+      context.requestItem,
+      context.ticketNumber,
+      context.recordNumber
+    ];
+    const ticket = ticketCandidates.map((value) => cleanText(value).toUpperCase()).find((value) => /^(?:RITM|INC|REQ|SCTASK)\d{4,}$/.test(value)) || "";
+    let subject = cleanText(renderedTemplate.subject).replace(/\bfollow\s*-\s*up\b/gi, "follow-up").replace(/\s{2,}/g, " ").trim();
+    if (ticket) {
+      subject = subject.replace(new RegExp(`\\b${ticket}\\b`, "ig"), "").replace(/^\s*(?:[-–—:|]\s*)+/, "").replace(/(?:\s*[-–—:|])+\s*$/, "").replace(/\s{2,}/g, " ").trim();
+      subject = subject ? `${ticket} - ${subject}` : ticket;
+    }
+    const clipboardText = renderedTemplate.category === "email" ? `Subject: ${subject}
+
+${cleanText(renderedTemplate.body)}` : renderedTemplate.clipboardText;
+    return { ...renderedTemplate, subject, clipboardText };
+  }
   async function getRenderedSelection({
     state,
     settings,
@@ -16260,11 +16369,11 @@ ${value}` : value;
       shortDescription: cleanText(context.shortDescription),
       hasDescription: Boolean(cleanText(context.description))
     });
-    const renderedTemplate = selection.selectedTemplate ? renderTemplate(selection.selectedTemplate, { context, settings }) : null;
+    const renderedTemplate = selection.selectedTemplate ? normalizeRenderedSubject(renderTemplate(selection.selectedTemplate, { context, settings }), context) : null;
     const emailSuggestions = selection.activeCategory === "email" && selection.emailSelection?.ambiguous ? (selection.emailSelection.candidates || []).slice(0, 3).map((candidate) => {
       const template = selection.templates.find((item) => item.id === candidate.templateId);
       if (!template) return null;
-      const rendered = renderTemplate(template, { context, settings });
+      const rendered = normalizeRenderedSubject(renderTemplate(template, { context, settings }), context);
       return {
         templateId: candidate.templateId,
         score: candidate.score,
@@ -17674,6 +17783,80 @@ ${value}` : value;
 }\r
 `;
 
+  // Assistant/ui/styles/iconography-auxiliary.css
+  var iconography_auxiliary_default = `/* Auxiliary Edge Panel icon polish.\r
+   The small secondary actions used to read as anonymous coloured squares.\r
+   Give Top 3, quick-generate and assignment-group configuration their own\r
+   recognizable glyphs while keeping the existing semantic palette. */\r
+\r
+.sn-ep__action[data-action="quick-draft-top3"] .sn-ep__icon,\r
+.sn-ep__action[data-action="generate-menu-toggle"] .sn-ep__icon,\r
+.sn-ep__action[data-action="configure-assign-group"] .sn-ep__icon {\r
+  position: relative;\r
+  width: 30px;\r
+  height: 30px;\r
+  border-radius: 9px;\r
+  border: 1px solid color-mix(in srgb, currentColor 14%, transparent);\r
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.32);\r
+}\r
+\r
+.sn-ep__action[data-action="quick-draft-top3"] .sn-ep__icon svg,\r
+.sn-ep__action[data-action="generate-menu-toggle"] .sn-ep__icon svg,\r
+.sn-ep__action[data-action="configure-assign-group"] .sn-ep__icon svg {\r
+  opacity: 0;\r
+}\r
+\r
+.sn-ep__action[data-action="quick-draft-top3"] .sn-ep__icon::before,\r
+.sn-ep__action[data-action="generate-menu-toggle"] .sn-ep__icon::before,\r
+.sn-ep__action[data-action="configure-assign-group"] .sn-ep__icon::before {\r
+  content: "";\r
+  position: absolute;\r
+  inset: 5px;\r
+  background: currentColor;\r
+  -webkit-mask-repeat: no-repeat;\r
+  mask-repeat: no-repeat;\r
+  -webkit-mask-position: center;\r
+  mask-position: center;\r
+  -webkit-mask-size: contain;\r
+  mask-size: contain;\r
+  pointer-events: none;\r
+}\r
+\r
+/* Top 3 \u2014 ranked list + sparkle. */\r
+.sn-ep__action[data-action="quick-draft-top3"] .sn-ep__icon::before {\r
+  -webkit-mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='white' stroke-width='1.9' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M5 6h2M5 12h2M5 18h2M10 6h7M10 12h7M10 18h5'/%3E%3Cpath d='M19 2.5l.7 1.8 1.8.7-1.8.7L19 7.5l-.7-1.8-1.8-.7 1.8-.7z'/%3E%3C/svg%3E");\r
+  mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='white' stroke-width='1.9' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M5 6h2M5 12h2M5 18h2M10 6h7M10 12h7M10 18h5'/%3E%3Cpath d='M19 2.5l.7 1.8 1.8.7-1.8.7L19 7.5l-.7-1.8-1.8-.7 1.8-.7z'/%3E%3C/svg%3E");\r
+  color: #2563eb;\r
+}\r
+\r
+/* Quick generate \u2014 lightning + sparkle. */\r
+.sn-ep__action[data-action="generate-menu-toggle"] .sn-ep__icon::before {\r
+  -webkit-mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='white' stroke-width='1.9' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M13 2 5 13h6l-1 9 8-12h-6z'/%3E%3Cpath d='M19 3l.5 1.3L21 5l-1.5.7L19 7l-.5-1.3L17 5l1.5-.7z'/%3E%3C/svg%3E");\r
+  mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='white' stroke-width='1.9' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M13 2 5 13h6l-1 9 8-12h-6z'/%3E%3Cpath d='M19 3l.5 1.3L21 5l-1.5.7L19 7l-.5-1.3L17 5l1.5-.7z'/%3E%3C/svg%3E");\r
+}\r
+\r
+/* Assignment configuration \u2014 users + sliders. */\r
+.sn-ep__action[data-action="configure-assign-group"] .sn-ep__icon::before {\r
+  -webkit-mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='white' stroke-width='1.9' stroke-linecap='round' stroke-linejoin='round'%3E%3Ccircle cx='8' cy='8' r='3'/%3E%3Cpath d='M3 19c.5-3.5 2.3-5 5-5 1.4 0 2.5.4 3.3 1.1M14 7h7M16 12h5M14 17h7M17 5v4M19 10v4M16 15v4'/%3E%3C/svg%3E");\r
+  mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='white' stroke-width='1.9' stroke-linecap='round' stroke-linejoin='round'%3E%3Ccircle cx='8' cy='8' r='3'/%3E%3Cpath d='M3 19c.5-3.5 2.3-5 5-5 1.4 0 2.5.4 3.3 1.1M14 7h7M16 12h5M14 17h7M17 5v4M19 10v4M16 15v4'/%3E%3C/svg%3E");\r
+}\r
+\r
+.sn-ep__action--mini-bolt {\r
+  border-radius: 9px;\r
+  background: color-mix(in srgb, var(--ep-ink) 3%, transparent);\r
+  border: 1px solid color-mix(in srgb, var(--ep-ink) 7%, transparent);\r
+}\r
+\r
+.sn-ep__action--mini-bolt:hover {\r
+  background: color-mix(in srgb, var(--ep-ink) 7%, transparent);\r
+  border-color: color-mix(in srgb, var(--ep-ink) 13%, transparent);\r
+}\r
+\r
+.sn-ep__action[data-action="quick-draft-top3"] .sn-ep__icon { color: #2563eb; background: rgba(37, 99, 235, 0.10); }\r
+.sn-ep__action[data-action="generate-menu-toggle"] .sn-ep__icon { color: #0f766e; background: rgba(15, 118, 110, 0.10); }\r
+.sn-ep__action[data-action="configure-assign-group"] .sn-ep__icon { color: #4f46e5; background: rgba(79, 70, 229, 0.10); }\r
+`;
+
   // Assistant/ui/styles/brand-icon.css
   var brand_icon_default = `/* \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\r
    EDGE TAB BRAND ICON\r
@@ -17801,6 +17984,7 @@ ${value}` : value;
     animations_default,
     edgePanel_default,
     iconography_default,
+    iconography_auxiliary_default,
     brand_icon_default,
     responsive_default,
     epLinks_default,
