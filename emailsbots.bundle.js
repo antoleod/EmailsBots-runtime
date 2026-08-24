@@ -4902,17 +4902,42 @@
   function extractEquipmentFromDescription(text2 = "") {
     const raw = cleanText(text2);
     if (!raw) return { equipmentAssetTag: "", equipmentModel: "", equipmentSummary: "" };
-    const line = raw.split(/\r?\n/).map(cleanText).find(Boolean) || raw;
-    const assetMatch = line.match(/\b((?:\d{2})?PI\d{6,}|[A-Z]{2,}\d{8,})\b/i);
-    const equipmentAssetTag = cleanText(assetMatch?.[1] || "");
-    let equipmentModel = "";
-    if (equipmentAssetTag) {
-      const idx = line.indexOf(equipmentAssetTag);
-      equipmentModel = cleanText(line.slice(idx + equipmentAssetTag.length).replace(/^[\s,;:-]+/, ""));
+    const assetPattern = /\b((?:\d{2})?PI\d{6,}|[A-Z]{2,}\d{8,})\b/i;
+    const equipmentItems = raw.split(/\r?\n/).map(cleanText).filter(Boolean).map((line) => {
+      const assetMatch = line.match(assetPattern);
+      const equipmentAssetTag = cleanText(assetMatch?.[1] || "");
+      if (!equipmentAssetTag) return null;
+      const assetIndex = line.toUpperCase().indexOf(equipmentAssetTag.toUpperCase());
+      const afterAsset = assetIndex >= 0 ? cleanText(line.slice(assetIndex + equipmentAssetTag.length).replace(/^[\s,;:-]+/, "")) : "";
+      const equipmentModel2 = cleanText(afterAsset.split(",")[0] || "").replace(/\b(APPLE)\s+\1\b/i, "$1").replace(/\b(HP)\s+\1\b/i, "$1");
+      return {
+        equipmentAssetTag,
+        equipmentModel: equipmentModel2 || "Device"
+      };
+    }).filter(Boolean);
+    if (!equipmentItems.length) {
+      return { equipmentAssetTag: "", equipmentModel: "", equipmentSummary: "" };
     }
-    equipmentModel = equipmentModel.replace(/\b(HP)\s+\1\b/i, "$1");
-    const equipmentSummary = [equipmentModel, equipmentAssetTag ? `asset tag ${equipmentAssetTag}` : ""].filter(Boolean).join(", ");
-    return { equipmentAssetTag, equipmentModel, equipmentSummary };
+    if (equipmentItems.length === 1) {
+      const item = equipmentItems[0];
+      return {
+        equipmentAssetTag: item.equipmentAssetTag,
+        equipmentModel: item.equipmentModel,
+        equipmentSummary: `${item.equipmentModel}, asset tag ${item.equipmentAssetTag}`
+      };
+    }
+    const equipmentModel = equipmentItems.map((item, index) => {
+      const isLast = index === equipmentItems.length - 1;
+      return isLast ? item.equipmentModel : `${item.equipmentModel}
+Asset tag: ${item.equipmentAssetTag}`;
+    }).join("\n\n");
+    const lastItem = equipmentItems[equipmentItems.length - 1];
+    const equipmentSummary = equipmentItems.map((item) => `${item.equipmentModel}, asset tag ${item.equipmentAssetTag}`).join("\n");
+    return {
+      equipmentAssetTag: lastItem.equipmentAssetTag,
+      equipmentModel,
+      equipmentSummary
+    };
   }
   function getChoiceFieldDisplayValue(fieldName, rootWindow = getRootWindow()) {
     const displayValue = safeGetDisplayValue(fieldName, rootWindow) || getFieldDisplayValue(fieldName, rootWindow);
@@ -5377,6 +5402,20 @@
     }
     return "";
   }
+  function resolveEquipmentDetails({ description = "", configurationItem = "" } = {}) {
+    const parsed = extractEquipmentFromDescription(description);
+    const equipmentAssetTag = cleanText(parsed?.equipmentAssetTag || configurationItem);
+    const equipmentModel = cleanText(parsed?.equipmentModel).split(",").map((part) => cleanText(part)).find(Boolean) || "";
+    const equipmentSummary = [
+      equipmentModel,
+      equipmentAssetTag ? `asset tag ${equipmentAssetTag}` : ""
+    ].filter(Boolean).join(", ");
+    return {
+      equipmentAssetTag,
+      equipmentModel,
+      equipmentSummary
+    };
+  }
   function resolveScTaskRequestItemNumber(rootWindow = getRootWindow()) {
     const direct = cleanText(safeGetDisplayValue("request_item", rootWindow));
     const directMatch = direct.toUpperCase().match(/\bRITM\d{4,}\b/);
@@ -5472,6 +5511,7 @@
     const configurationItem = cleanText(
       (!looksLikeTicketIdentifier(fieldConfigurationItem) ? fieldConfigurationItem : "") || (!looksLikeTicketIdentifier(visibleCmdbCi) ? visibleCmdbCi : "") || (!looksLikeTicketIdentifier(currentCmdbCi.display) ? currentCmdbCi.display : "") || (!looksLikeTicketIdentifier(currentCmdbCi.value) ? currentCmdbCi.value : "")
     );
+    const description = getDescription(table, rootWindow);
     const rawModel = getDeviceModel(table, rootWindow);
     const deviceModel = looksLikeRecordIdentifier(rawModel) ? "" : rawModel;
     const rawPhone = getPhoneNumber(table, rootWindow) || user?.phone || "";
@@ -5488,8 +5528,8 @@
       safeGetValue("incident", rootWindow)
     ]) || ticketNumber : ticketNumber;
     const sourceType = sourceNumber.startsWith("INC") ? "INC" : sourceNumber.startsWith("REQ") ? "REQ" : sourceNumber.startsWith("RITM") ? "RITM" : ticketNumber.startsWith("INC") ? "INC" : ticketNumber.startsWith("REQ") ? "REQ" : ticketNumber.startsWith("RITM") ? "RITM" : "";
-    const returnDate = extractReturnDateFromText(getShortDescription(table, rootWindow) || getDescription(table, rootWindow));
-    const equipment = extractEquipmentFromDescription(getDescription(table, rootWindow) || "");
+    const returnDate = extractReturnDateFromText(getShortDescription(table, rootWindow) || description);
+    const equipment = resolveEquipmentDetails({ description, configurationItem });
     const solution = cleanText(
       safeGetValue("solution", rootWindow) || safeGetDisplayValue("solution", rootWindow) || safeGetValue("u_solution", rootWindow) || safeGetDisplayValue("u_solution", rootWindow) || safeGetValue("resolution", rootWindow) || safeGetDisplayValue("resolution", rootWindow) || safeGetValue("u_resolution", rootWindow) || safeGetDisplayValue("u_resolution", rootWindow) || safeGetValue("resolution_notes", rootWindow) || safeGetDisplayValue("resolution_notes", rootWindow) || safeGetValue("u_resolution_notes", rootWindow) || safeGetDisplayValue("u_resolution_notes", rootWindow)
     );
@@ -5529,7 +5569,7 @@
       sourceType,
       source: sourceType ? "parent" : "",
       shortDescription: getShortDescription(table, rootWindow),
-      description: getDescription(table, rootWindow),
+      description,
       solution,
       resolution: solution,
       resolutionNotes: solution,
@@ -5699,6 +5739,13 @@
       dispatching = true;
       try {
         fn(state, payload);
+        if (name === "setSelectedTemplate") {
+          const category = String(payload?.category || state.ui?.activeCategory || "").trim();
+          if (category) {
+            state.ui.templateSelectionMode = state.ui.templateSelectionMode || {};
+            state.ui.templateSelectionMode[category] = "manual";
+          }
+        }
         notify(name, payload);
       } finally {
         dispatching = false;
@@ -5794,6 +5841,15 @@
       pdf: false
     };
   }
+  function createTemplateSelectionMode() {
+    return {
+      email: "auto",
+      reminder: "auto",
+      close_note: "auto",
+      work_note: "auto",
+      appointment: "auto"
+    };
+  }
   function createState(settings) {
     return {
       settings,
@@ -5856,6 +5912,7 @@
           work_note: "",
           appointment: ""
         },
+        templateSelectionMode: createTemplateSelectionMode(),
         templateSearch: {
           email: "",
           reminder: "",
@@ -5922,6 +5979,7 @@
     state.ui.ciLookupResults = [];
     state.ui.findCiExpanded = false;
     state.ui.findCiCopiedSysId = "";
+    state.ui.templateSelectionMode = createTemplateSelectionMode();
   }
   function setSettings(state, settings) {
     state.settings = deepClone(settings);
@@ -5949,8 +6007,14 @@
   function setActiveCategory(state, category) {
     state.ui.activeCategory = category;
   }
-  function setSelectedTemplate(state, category, templateId) {
+  function setSelectedTemplate(state, category, templateId, mode = "") {
     state.ui.selectedTemplates[category] = templateId;
+    state.ui.templateSelectionMode = state.ui.templateSelectionMode || createTemplateSelectionMode();
+    if (mode === "manual" || mode === "auto") {
+      state.ui.templateSelectionMode[category] = mode;
+    } else if (!state.ui.templateSelectionMode[category]) {
+      state.ui.templateSelectionMode[category] = "auto";
+    }
   }
 
   // Assistant/core/storage.js
@@ -5964,17 +6028,18 @@
     recentWorkNotePhrases: `${STORAGE_PREFIX}recent_work_note_phrases_v1`,
     recentTickets: `${STORAGE_PREFIX}recent_tickets_v1`,
     favoriteTemplates: `${STORAGE_PREFIX}favorite_templates_v1`,
-    // Per Module 2 spec — kept on its own key (not inside settings) so it can be
-    // shared with other browser-injected scripts that look for the same key.
     userGroup: "snlc_user_group",
     onboarding: `${STORAGE_PREFIX}onboarding_v1`
   };
   var LEGACY_STORAGE_KEYS = ["sn_assistant_settings_v2"];
   var HIDEABLE_BUTTON_IDS = Object.freeze([
     "quick-draft",
+    "quick-draft-top3",
     "open-work-notes",
-    "open-reminder",
     "incident-resolution-notes",
+    "user-info",
+    "user-open-tickets",
+    "assign-to-my-group",
     "open-ep-links",
     "create-calendar-event",
     "open-pdf"
@@ -6016,20 +6081,8 @@
     cannedPhrases: []
   });
   var OFFICE_PRESETS = {
-    kohl: {
-      id: "kohl",
-      label: "Kohl",
-      officeName: "Kohl",
-      officeRoom: "",
-      officeLabel: "IT Welcome Desk at Kohl"
-    },
-    spinelli: {
-      id: "spinelli",
-      label: "Spinelli",
-      officeName: "Spinelli",
-      officeRoom: "",
-      officeLabel: "IT Welcome Desk at Spinelli"
-    },
+    kohl: { id: "kohl", label: "Kohl", officeName: "Kohl", officeRoom: "", officeLabel: "IT Welcome Desk at Kohl" },
+    spinelli: { id: "spinelli", label: "Spinelli", officeName: "Spinelli", officeRoom: "", officeLabel: "IT Welcome Desk at Spinelli" },
     strasbourg_pflimlin: {
       id: "strasbourg_pflimlin",
       label: "Strasbourg / Pflimlin",
@@ -6062,14 +6115,14 @@
   function getSessionStorage(rootWindow) {
     try {
       return rootWindow.sessionStorage || window.sessionStorage;
-    } catch (error2) {
+    } catch {
       return null;
     }
   }
   function getLocalStorage(rootWindow) {
     try {
       return rootWindow.localStorage || window.localStorage;
-    } catch (error2) {
+    } catch {
       return null;
     }
   }
@@ -6081,9 +6134,7 @@
     for (const storage of storages) {
       for (const key of LEGACY_STORAGE_KEYS) {
         const rawValue = storage.getItem(key);
-        if (rawValue) {
-          return rawValue;
-        }
+        if (rawValue) return rawValue;
       }
     }
     return "";
@@ -6115,9 +6166,8 @@
     const entry = value && typeof value === "object" ? value : {};
     const rawCategory = cleanText(entry.category);
     const category = ["email", "reminder", "close_note", "work_note", "appointment"].includes(rawCategory) ? rawCategory : rawCategory === "resolution" ? "close_note" : rawCategory === "internal" ? "work_note" : "email";
-    const id = cleanText(entry.id);
     return {
-      id,
+      id: cleanText(entry.id),
       category,
       label: cleanText(entry.label),
       target: cleanText(entry.target),
@@ -6151,11 +6201,7 @@
   }
   function sanitizeCustomLinkEntry(value) {
     const entry = value && typeof value === "object" ? value : {};
-    return {
-      id: cleanText(entry.id),
-      label: cleanText(entry.label),
-      url: cleanText(entry.url)
-    };
+    return { id: cleanText(entry.id), label: cleanText(entry.label), url: cleanText(entry.url) };
   }
   function sanitizeCustomLinks(rawValue) {
     const links = Array.isArray(rawValue) ? rawValue : [];
@@ -6202,13 +6248,7 @@
       edgePanelTheme: ["light", "dark", "midnightSteel"].includes(cleanText(merged.edgePanelTheme)) ? cleanText(merged.edgePanelTheme) : defaults.edgePanelTheme,
       draftButtonLabel: cleanText(merged.draftButtonLabel) || defaults.draftButtonLabel,
       autoHideAssistantDelay: ["off", "10s", "20s", "30s", "60s"].includes(cleanText(merged.autoHideAssistantDelay)) ? cleanText(merged.autoHideAssistantDelay) : defaults.autoHideAssistantDelay,
-      calendarDateSource: [
-        "follow_up",
-        "planned_start",
-        "due_date",
-        "expected_date",
-        "scheduled_start"
-      ].includes(cleanText(merged.calendarDateSource)) ? cleanText(merged.calendarDateSource) : defaults.calendarDateSource,
+      calendarDateSource: ["follow_up", "planned_start", "due_date", "expected_date", "scheduled_start"].includes(cleanText(merged.calendarDateSource)) ? cleanText(merged.calendarDateSource) : defaults.calendarDateSource,
       ticketReferencePreference: ["auto", "ritm", "sctask"].includes(cleanText(merged.ticketReferencePreference).toLowerCase()) ? cleanText(merged.ticketReferencePreference).toLowerCase() : defaults.ticketReferencePreference,
       buttonColorTheme: ["subtle", "soft", "classic"].includes(cleanText(merged.buttonColorTheme)) ? cleanText(merged.buttonColorTheme) : defaults.buttonColorTheme,
       headerCountsSoundType: ["beep", "chime"].includes(cleanText(merged.headerCountsSoundType)) ? cleanText(merged.headerCountsSoundType) : defaults.headerCountsSoundType,
@@ -6239,10 +6279,7 @@
     const normalizedProfile = cleanText(profile).toLowerCase();
     const preset = OFFICE_PRESETS[normalizedProfile];
     if (!preset || preset.id === "custom") {
-      return sanitizeSettings({
-        ...safeBase,
-        officeProfile: normalizedProfile || "custom"
-      });
+      return sanitizeSettings({ ...safeBase, officeProfile: normalizedProfile || "custom" });
     }
     return sanitizeSettings({
       ...safeBase,
@@ -6259,8 +6296,7 @@
       return getDefaultSettings();
     }
     const rawValue = storage.getItem(STORAGE_KEYS.settings) || getLegacySettings(rootWindow);
-    const parsed = parseJson(rawValue, getDefaultSettings());
-    return sanitizeSettings(parsed);
+    return sanitizeSettings(parseJson(rawValue, getDefaultSettings()));
   }
   function saveSettings(rootWindow, settings, logger) {
     const storage = getPersistentStorage(rootWindow);
@@ -6288,19 +6324,17 @@
       const rawValue = storage.getItem(STORAGE_KEYS.workNoteTemplateUsage);
       if (!rawValue) return {};
       return normalizeWorkNoteTemplateUsage(parseJson(rawValue, {}));
-    } catch (error2) {
+    } catch {
       return {};
     }
   }
   function saveWorkNoteTemplateUsage(rootWindow, usage) {
     const storage = getPersistentStorage(rootWindow);
     const normalized = normalizeWorkNoteTemplateUsage(usage);
-    if (!storage) {
-      return normalized;
-    }
+    if (!storage) return normalized;
     try {
       storage.setItem(STORAGE_KEYS.workNoteTemplateUsage, JSON.stringify(normalized));
-    } catch (error2) {
+    } catch {
       return normalized;
     }
     return normalized;
@@ -6322,7 +6356,7 @@
       if (!rawValue) return [];
       const parsed = parseJson(rawValue, []);
       return (Array.isArray(parsed) ? parsed : []).map(normalizeRecentWorkNote).filter(Boolean).slice(0, MAX_RECENT_WORK_NOTES);
-    } catch (error2) {
+    } catch {
       return [];
     }
   }
@@ -6330,20 +6364,14 @@
     if (!templateId) return;
     const storage = getLocalStorage(rootWindow);
     if (!storage) return;
-    const existing = loadRecentWorkNotes(rootWindow).filter(
-      (note) => note.templateId !== templateId
-    );
+    const existing = loadRecentWorkNotes(rootWindow).filter((note) => note.templateId !== templateId);
     const updated = [
-      normalizeRecentWorkNote({
-        templateId,
-        label: cleanText(label) || templateId,
-        usedAt: (/* @__PURE__ */ new Date()).toISOString()
-      }),
+      normalizeRecentWorkNote({ templateId, label: cleanText(label) || templateId, usedAt: (/* @__PURE__ */ new Date()).toISOString() }),
       ...existing
     ].filter(Boolean).slice(0, MAX_RECENT_WORK_NOTES);
     try {
       storage.setItem(STORAGE_KEYS.recentWorkNotes, JSON.stringify(updated));
-    } catch (error2) {
+    } catch {
     }
   }
   var MAX_RECENT_WORK_NOTE_PHRASES = 5;
@@ -6363,7 +6391,7 @@
       const rawValue = storage.getItem(STORAGE_KEYS.recentWorkNotePhrases);
       if (!rawValue) return [];
       return normalizeRecentWorkNotePhrases(parseJson(rawValue, []));
-    } catch (error2) {
+    } catch {
       return [];
     }
   }
@@ -6373,7 +6401,7 @@
     if (!storage) return normalized;
     try {
       storage.setItem(STORAGE_KEYS.recentWorkNotePhrases, JSON.stringify(normalized));
-    } catch (error2) {
+    } catch {
     }
     return normalized;
   }
@@ -6391,9 +6419,7 @@
     };
   }
   async function tryWritePackageToTempFolder(rootWindow, fileName, payloadText) {
-    if (typeof rootWindow?.showDirectoryPicker !== "function") {
-      return null;
-    }
+    if (typeof rootWindow?.showDirectoryPicker !== "function") return null;
     const baseDirectoryHandle = await rootWindow.showDirectoryPicker({ mode: "readwrite" });
     const tempDirectoryHandle = await baseDirectoryHandle.getDirectoryHandle("temp", { create: true });
     const assistantDirectoryHandle = await tempDirectoryHandle.getDirectoryHandle("sn-assistant", { create: true });
@@ -6401,11 +6427,7 @@
     const writable = await fileHandle.createWritable();
     await writable.write(payloadText);
     await writable.close();
-    return {
-      mode: "filesystem",
-      fileName,
-      path: `${TEMP_WORKSPACE}/${fileName}`
-    };
+    return { mode: "filesystem", fileName, path: `${TEMP_WORKSPACE}/${fileName}` };
   }
   function downloadPackage(rootWindow, fileName, payloadText) {
     const blob = new Blob([payloadText], { type: "application/json" });
@@ -6418,10 +6440,7 @@
     anchor.click();
     anchor.remove();
     rootWindow.setTimeout(() => rootWindow.URL.revokeObjectURL(objectUrl), 0);
-    return {
-      mode: "download",
-      fileName
-    };
+    return { mode: "download", fileName };
   }
   async function exportSettingsPackage(rootWindow, settings) {
     const fileName = buildPackageFilename();
@@ -6429,32 +6448,17 @@
     if (typeof rootWindow?.showDirectoryPicker === "function") {
       try {
         const fileResult = await tryWritePackageToTempFolder(rootWindow, fileName, payloadText);
-        if (fileResult) {
-          return {
-            ok: true,
-            ...fileResult
-          };
-        }
+        if (fileResult) return { ok: true, ...fileResult };
       } catch (error2) {
-        if (error2?.name === "AbortError") {
-          return { ok: false, canceled: true };
-        }
+        if (error2?.name === "AbortError") return { ok: false, canceled: true };
       }
     }
-    return {
-      ok: true,
-      ...downloadPackage(rootWindow, fileName, payloadText)
-    };
+    return { ok: true, ...downloadPackage(rootWindow, fileName, payloadText) };
   }
   async function importSettingsPackage(file) {
-    if (!file) {
-      throw new Error("No file selected");
-    }
-    const rawText = await file.text();
-    const parsed = parseJson(rawText, null);
-    if (!parsed || typeof parsed !== "object") {
-      throw new Error("Invalid settings file");
-    }
+    if (!file) throw new Error("No file selected");
+    const parsed = parseJson(await file.text(), null);
+    if (!parsed || typeof parsed !== "object") throw new Error("Invalid settings file");
     const rawSettings = parsed.settings && typeof parsed.settings === "object" ? parsed.settings : parsed;
     return sanitizeSettings(rawSettings);
   }
@@ -6477,7 +6481,7 @@
       if (!rawValue) return [];
       const parsed = parseJson(rawValue, []);
       return (Array.isArray(parsed) ? parsed : []).map(normalizeRecentTicket).filter(Boolean).slice(0, MAX_RECENT_TICKETS);
-    } catch (error2) {
+    } catch {
       return [];
     }
   }
@@ -6485,13 +6489,11 @@
     if (!ticket?.number) return;
     const storage = getLocalStorage(rootWindow);
     if (!storage) return;
-    const existing = loadRecentTickets(rootWindow).filter(
-      (t) => t.number !== ticket.number
-    );
+    const existing = loadRecentTickets(rootWindow).filter((t) => t.number !== ticket.number);
     const updated = [normalizeRecentTicket(ticket), ...existing].filter(Boolean).slice(0, MAX_RECENT_TICKETS);
     try {
       storage.setItem(STORAGE_KEYS.recentTickets, JSON.stringify(updated));
-    } catch (error2) {
+    } catch {
     }
   }
   var MAX_FAVORITE_TEMPLATES = 5;
@@ -6510,7 +6512,7 @@
       if (!rawValue) return [];
       const parsed = parseJson(rawValue, []);
       return (Array.isArray(parsed) ? parsed : []).map(normalizeFavoriteTemplate).filter(Boolean).slice(0, MAX_FAVORITE_TEMPLATES);
-    } catch (error2) {
+    } catch {
       return [];
     }
   }
@@ -6523,7 +6525,7 @@
     const updated = exists ? current.filter((t) => !(t.templateId === templateId && t.category === category)) : [...current, normalizeFavoriteTemplate({ templateId, category })].slice(0, MAX_FAVORITE_TEMPLATES);
     try {
       storage.setItem(STORAGE_KEYS.favoriteTemplates, JSON.stringify(updated));
-    } catch (error2) {
+    } catch {
     }
     return updated;
   }
@@ -6827,6 +6829,44 @@
     }
   }
 
+  // Assistant/application/persistence/panelPositionState.js
+  var STORAGE_KEY = "sn_assistant_panel_position_v1";
+  var EDGES = /* @__PURE__ */ new Set(["left", "right"]);
+  function getStorage(rootWindow) {
+    try {
+      return rootWindow?.localStorage || null;
+    } catch {
+      return null;
+    }
+  }
+  function loadPanelPosition(rootWindow) {
+    const storage = getStorage(rootWindow);
+    if (!storage) return null;
+    try {
+      const parsed = JSON.parse(storage.getItem(STORAGE_KEY) || "null");
+      const edge = String(parsed?.edge || "");
+      const top = Number(parsed?.top);
+      if (!EDGES.has(edge) || !Number.isFinite(top)) return null;
+      return { edge, top: Math.max(0, top) };
+    } catch {
+      return null;
+    }
+  }
+  function savePanelPosition(rootWindow, position) {
+    const storage = getStorage(rootWindow);
+    if (!storage) return null;
+    const edge = String(position?.edge || "");
+    const top = Number(position?.top);
+    if (!EDGES.has(edge) || !Number.isFinite(top)) return null;
+    const normalized = { edge, top: Math.max(0, top) };
+    try {
+      storage.setItem(STORAGE_KEY, JSON.stringify(normalized));
+    } catch {
+      return normalized;
+    }
+    return normalized;
+  }
+
   // Assistant/ui/ids.js
   var UI_IDS = {
     style: "sn-assistant-styles",
@@ -6849,7 +6889,7 @@
   }
 
   // Assistant/version.js
-  var VERSION = "V2.7";
+  var VERSION = "V2.7.2";
 
   // Assistant/templates/intelligence.js
   var TYPE_KEYWORDS = [
@@ -8796,7 +8836,7 @@ ${configurationItemLine}`,
     ),
     withReminder2(
       {
-        id: "ivote_ipad_support",
+        id: "worknote_ivote_ipad_support",
         category: "work_note",
         label: "IVOTE support",
         target: "work_notes",
@@ -9765,6 +9805,16 @@ ${configurationItemLine}`,
     appointment: APPOINTMENT_TEMPLATES
   };
   var SUPPORTED_CATEGORIES = ["email", "reminder", "close_note", "work_note", "appointment"];
+  var LEGACY_PLACEHOLDER_ALIASES = Object.freeze({
+    assigned_to: "agent_name",
+    assignee: "agent_name",
+    asset_tag: "equipment_asset_tag",
+    follow_up_date: "appointment_date",
+    followup_date: "appointment_date",
+    short_desc: "short_description",
+    ticket: "ticket_number",
+    requested_for_name: "requested_for"
+  });
   function normalizeTemplateCategory(value) {
     const category = String(value || "").trim();
     if (SUPPORTED_CATEGORIES.includes(category)) return category;
@@ -9773,9 +9823,32 @@ ${configurationItemLine}`,
     if (category === "event") return "appointment";
     return "";
   }
+  function normalizeTemplatePlaceholders(value = "") {
+    return String(value || "").replace(/\{\{\s*([a-z0-9_]+)\s*\}\}/gi, (match, key) => {
+      const normalizedKey = String(key || "").toLowerCase();
+      const replacement = LEGACY_PLACEHOLDER_ALIASES[normalizedKey];
+      return replacement ? `{{${replacement}}}` : match;
+    });
+  }
+  function normalizePlaceholderList(values2) {
+    if (!Array.isArray(values2)) return values2;
+    return values2.map((value) => {
+      const key = String(value || "").trim().toLowerCase();
+      return LEGACY_PLACEHOLDER_ALIASES[key] || key;
+    });
+  }
   function normalizeStudioTemplate(template) {
     if (!template || !template.id || template.enabled === false) return null;
-    const sourceCategory = normalizeTemplateCategory(template.type) || normalizeTemplateCategory(template.category) || "email";
+    const rawId = String(template.id || "").trim();
+    const rawType = String(template.type || "").trim().toLowerCase();
+    const rawCategory = String(template.category || "").trim().toLowerCase();
+    if (rawCategory === "test" || /^test(?:_|-)/i.test(rawId)) return null;
+    const sourceCategory = normalizeTemplateCategory(rawType) || normalizeTemplateCategory(rawCategory);
+    if (!sourceCategory) {
+      if (rawType || rawCategory) return null;
+      if (!template.body && !template.subject) return null;
+    }
+    const safeCategory = sourceCategory || "email";
     const contentByCategory = {
       email: template.body,
       reminder: template.body,
@@ -9785,13 +9858,16 @@ ${configurationItemLine}`,
     };
     return {
       ...deepClone(template),
-      category: sourceCategory,
+      category: safeCategory,
       subcategory: template.subcategory || template.category || "",
       label: template.label || template.title || template.id,
       title: template.title || template.label || template.id,
-      subject: sourceCategory === "appointment" ? template.event_title || template.subject || "" : template.subject || "",
-      body: contentByCategory[sourceCategory] || "",
-      target: template.target || (sourceCategory === "work_note" ? "work_notes" : sourceCategory === "close_note" ? "close_notes" : "comments"),
+      subject: normalizeTemplatePlaceholders(
+        safeCategory === "appointment" ? template.event_title || template.subject || "" : template.subject || ""
+      ),
+      body: normalizeTemplatePlaceholders(contentByCategory[safeCategory] || ""),
+      placeholders: normalizePlaceholderList(template.placeholders),
+      target: template.target || (safeCategory === "work_note" ? "work_notes" : safeCategory === "close_note" ? "close_notes" : "comments"),
       isCustom: true,
       source: template.source || "customTemplates.json"
     };
@@ -9801,17 +9877,24 @@ ${configurationItemLine}`,
     return {
       ...deepClone(template),
       label: override.label || template.label,
-      subject: override.subject || template.subject,
-      body: override.body || template.body,
+      subject: normalizeTemplatePlaceholders(override.subject || template.subject),
+      body: normalizeTemplatePlaceholders(override.body || template.body),
       target: override.target || template.target,
       paragraphSpacing: override.paragraphSpacing || template.paragraphSpacing || "standard"
     };
   }
+  function mergeTemplatesById(...lists) {
+    const map = /* @__PURE__ */ new Map();
+    lists.flat().forEach((template) => {
+      if (!template?.id) return;
+      map.set(template.id, template);
+    });
+    return [...map.values()];
+  }
   function getCustomTemplatesByCategory(settings) {
-    const templates = [
-      ...Array.isArray(customTemplates_default) ? customTemplates_default.map(normalizeStudioTemplate).filter(Boolean) : [],
-      ...Array.isArray(settings?.customTemplates) ? settings.customTemplates : []
-    ];
+    const fileTemplates = Array.isArray(customTemplates_default) ? customTemplates_default.map(normalizeStudioTemplate).filter(Boolean) : [];
+    const persistedTemplates = Array.isArray(settings?.customTemplates) ? settings.customTemplates.map((template) => normalizeStudioTemplate({ ...template, source: template?.source || "settings" })).filter(Boolean) : [];
+    const templates = mergeTemplatesById(fileTemplates, persistedTemplates);
     const output = {
       email: [],
       reminder: [],
@@ -9845,15 +9928,15 @@ ${configurationItemLine}`,
   }
   function buildReminderSubject(template) {
     const explicit = String(template?.reminderSubject || "").trim();
-    if (explicit) return explicit;
-    const subject = String(template?.subject || "").trim();
+    if (explicit) return normalizeTemplatePlaceholders(explicit);
+    const subject = normalizeTemplatePlaceholders(template?.subject || "").trim();
     if (!subject) return "Reminder";
     return /^reminder:/i.test(subject) ? subject : `Reminder: ${subject.charAt(0).toLowerCase()}${subject.slice(1)}`;
   }
   function buildReminderBody(template) {
     const explicit = String(template?.reminderBody || "").trim();
-    if (explicit) return explicit;
-    let body = String(template?.body || "").trim();
+    if (explicit) return normalizeTemplatePlaceholders(explicit);
+    let body = normalizeTemplatePlaceholders(template?.body || "").trim();
     if (!body) return "";
     body = body.replace(/We are contacting you regarding/gi, "This is a friendly reminder regarding");
     body = body.replace(/I am reaching out regarding/gi, "This is a friendly reminder regarding");
@@ -9883,10 +9966,7 @@ ${configurationItemLine}`,
         const baseTemplates = category === "reminder" ? reminderTemplates : templates.map((template) => applyTemplateOverride(template, overrides[category]?.[template.id]));
         return [
           category,
-          [
-            ...baseTemplates,
-            ...customTemplates[category]
-          ]
+          mergeTemplatesById(baseTemplates, customTemplates[category])
         ];
       })
     );
@@ -9902,879 +9982,879 @@ ${configurationItemLine}`,
   }
 
   // Assistant/core/email/signature-data.generated.js
-  var SIGNATURE_HTML = `<html xmlns:v="urn:schemas-microsoft-com:vml"
-xmlns:o="urn:schemas-microsoft-com:office:office"
-xmlns:w="urn:schemas-microsoft-com:office:word"
-xmlns:m="http://schemas.microsoft.com/office/2004/12/omml"
-xmlns="http://www.w3.org/TR/REC-html40">
-
-<head>
-<meta http-equiv=Content-Type content="text/html; charset=windows-1252">
-<meta name=ProgId content=Word.Document>
-<meta name=Generator content="Microsoft Word 15">
-<meta name=Originator content="Microsoft Word 15">
-<link rel=File-List href="data:application/xml;base64,PHhtbCB4bWxuczpvPSJ1cm46c2NoZW1hcy1taWNyb3NvZnQtY29tOm9mZmljZTpvZmZpY2UiPgogPG86TWFpbkZpbGUgSFJlZj0iLi4vbWFpbi5odG0iLz4KIDxvOkZpbGUgSFJlZj0idGhlbWVkYXRhLnRobXgiLz4KIDxvOkZpbGUgSFJlZj0iY29sb3JzY2hlbWVtYXBwaW5nLnhtbCIvPgogPG86RmlsZSBIUmVmPSJmaWxlbGlzdC54bWwiLz4KPC94bWw+">
-<link rel=Edit-Time-Data href="main_files/editdata.mso">
-<!--[if !mso]>
-<style>
-v\\:* {behavior:url(#default#VML);}
-o\\:* {behavior:url(#default#VML);}
-w\\:* {behavior:url(#default#VML);}
-.shape {behavior:url(#default#VML);}
-</style>
-<![endif]--><!--[if gte mso 9]><xml>
- <o:DocumentProperties>
-  <o:Template>NormalEmail.dotm</o:Template>
-  <o:Revision>0</o:Revision>
-  <o:TotalTime>0</o:TotalTime>
-  <o:Pages>1</o:Pages>
-  <o:Words>85</o:Words>
-  <o:Characters>485</o:Characters>
-  <o:Company>European Parliament</o:Company>
-  <o:Lines>4</o:Lines>
-  <o:Paragraphs>1</o:Paragraphs>
-  <o:CharactersWithSpaces>569</o:CharactersWithSpaces>
-  <o:Version>16.00</o:Version>
- </o:DocumentProperties>
- <o:OfficeDocumentSettings>
-  <o:AllowPNG/>
- </o:OfficeDocumentSettings>
-</xml><![endif]-->
-<link rel=themeData href="data:application/vnd.ms-officetheme;base64,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">
-<link rel=colorSchemeMapping href="data:application/xml;base64,PD94bWwgdmVyc2lvbj0iMS4wIiBlbmNvZGluZz0iVVRGLTgiIHN0YW5kYWxvbmU9InllcyI/Pgo8YTpjbHJNYXAgeG1sbnM6YT0iaHR0cDovL3NjaGVtYXMub3BlbnhtbGZvcm1hdHMub3JnL2RyYXdpbmdtbC8yMDA2L21haW4iIGJnMT0ibHQxIiB0eDE9ImRrMSIgYmcyPSJsdDIiIHR4Mj0iZGsyIiBhY2NlbnQxPSJhY2NlbnQxIiBhY2NlbnQyPSJhY2NlbnQyIiBhY2NlbnQzPSJhY2NlbnQzIiBhY2NlbnQ0PSJhY2NlbnQ0IiBhY2NlbnQ1PSJhY2NlbnQ1IiBhY2NlbnQ2PSJhY2NlbnQ2IiBobGluaz0iaGxpbmsiIGZvbEhsaW5rPSJmb2xIbGluayIvPg==">
-<!--[if gte mso 9]><xml>
- <w:WordDocument>
-  <w:View>Normal</w:View>
-  <w:Zoom>0</w:Zoom>
-  <w:TrackMoves/>
-  <w:TrackFormatting/>
-  <w:PunctuationKerning/>
-  <w:ValidateAgainstSchemas/>
-  <w:SaveIfXMLInvalid>false</w:SaveIfXMLInvalid>
-  <w:IgnoreMixedContent>false</w:IgnoreMixedContent>
-  <w:AlwaysShowPlaceholderText>false</w:AlwaysShowPlaceholderText>
-  <w:DoNotPromoteQF/>
-  <w:LidThemeOther>EN-GB</w:LidThemeOther>
-  <w:LidThemeAsian>X-NONE</w:LidThemeAsian>
-  <w:LidThemeComplexScript>X-NONE</w:LidThemeComplexScript>
-  <w:DoNotShadeFormData/>
-  <w:Compatibility>
-   <w:BreakWrappedTables/>
-   <w:SnapToGridInCell/>
-   <w:WrapTextWithPunct/>
-   <w:UseAsianBreakRules/>
-   <w:DontGrowAutofit/>
-   <w:SplitPgBreakAndParaMark/>
-   <w:EnableOpenTypeKerning/>
-   <w:DontFlipMirrorIndents/>
-   <w:OverrideTableStyleHps/>
-   <w:UseFELayout/>
-  </w:Compatibility>
-  <m:mathPr>
-   <m:mathFont m:val="Cambria Math"/>
-   <m:brkBin m:val="before"/>
-   <m:brkBinSub m:val="&#45;-"/>
-   <m:smallFrac m:val="off"/>
-   <m:dispDef/>
-   <m:lMargin m:val="0"/>
-   <m:rMargin m:val="0"/>
-   <m:defJc m:val="centerGroup"/>
-   <m:wrapIndent m:val="1440"/>
-   <m:intLim m:val="subSup"/>
-   <m:naryLim m:val="undOvr"/>
-  </m:mathPr></w:WordDocument>
-</xml><![endif]--><!--[if gte mso 9]><xml>
- <w:LatentStyles DefLockedState="false" DefUnhideWhenUsed="false"
-  DefSemiHidden="false" DefQFormat="false" DefPriority="99"
-  LatentStyleCount="376">
-  <w:LsdException Locked="false" Priority="0" QFormat="true" Name="Normal"/>
-  <w:LsdException Locked="false" Priority="9" QFormat="true" Name="heading 1"/>
-  <w:LsdException Locked="false" Priority="9" SemiHidden="true"
-   UnhideWhenUsed="true" QFormat="true" Name="heading 2"/>
-  <w:LsdException Locked="false" Priority="9" SemiHidden="true"
-   UnhideWhenUsed="true" QFormat="true" Name="heading 3"/>
-  <w:LsdException Locked="false" Priority="9" SemiHidden="true"
-   UnhideWhenUsed="true" QFormat="true" Name="heading 4"/>
-  <w:LsdException Locked="false" Priority="9" SemiHidden="true"
-   UnhideWhenUsed="true" QFormat="true" Name="heading 5"/>
-  <w:LsdException Locked="false" Priority="9" SemiHidden="true"
-   UnhideWhenUsed="true" QFormat="true" Name="heading 6"/>
-  <w:LsdException Locked="false" Priority="9" SemiHidden="true"
-   UnhideWhenUsed="true" QFormat="true" Name="heading 7"/>
-  <w:LsdException Locked="false" Priority="9" SemiHidden="true"
-   UnhideWhenUsed="true" QFormat="true" Name="heading 8"/>
-  <w:LsdException Locked="false" Priority="9" SemiHidden="true"
-   UnhideWhenUsed="true" QFormat="true" Name="heading 9"/>
-  <w:LsdException Locked="false" SemiHidden="true" UnhideWhenUsed="true"
-   Name="index 1"/>
-  <w:LsdException Locked="false" SemiHidden="true" UnhideWhenUsed="true"
-   Name="index 2"/>
-  <w:LsdException Locked="false" SemiHidden="true" UnhideWhenUsed="true"
-   Name="index 3"/>
-  <w:LsdException Locked="false" SemiHidden="true" UnhideWhenUsed="true"
-   Name="index 4"/>
-  <w:LsdException Locked="false" SemiHidden="true" UnhideWhenUsed="true"
-   Name="index 5"/>
-  <w:LsdException Locked="false" SemiHidden="true" UnhideWhenUsed="true"
-   Name="index 6"/>
-  <w:LsdException Locked="false" SemiHidden="true" UnhideWhenUsed="true"
-   Name="index 7"/>
-  <w:LsdException Locked="false" SemiHidden="true" UnhideWhenUsed="true"
-   Name="index 8"/>
-  <w:LsdException Locked="false" SemiHidden="true" UnhideWhenUsed="true"
-   Name="index 9"/>
-  <w:LsdException Locked="false" Priority="39" SemiHidden="true"
-   UnhideWhenUsed="true" Name="toc 1"/>
-  <w:LsdException Locked="false" Priority="39" SemiHidden="true"
-   UnhideWhenUsed="true" Name="toc 2"/>
-  <w:LsdException Locked="false" Priority="39" SemiHidden="true"
-   UnhideWhenUsed="true" Name="toc 3"/>
-  <w:LsdException Locked="false" Priority="39" SemiHidden="true"
-   UnhideWhenUsed="true" Name="toc 4"/>
-  <w:LsdException Locked="false" Priority="39" SemiHidden="true"
-   UnhideWhenUsed="true" Name="toc 5"/>
-  <w:LsdException Locked="false" Priority="39" SemiHidden="true"
-   UnhideWhenUsed="true" Name="toc 6"/>
-  <w:LsdException Locked="false" Priority="39" SemiHidden="true"
-   UnhideWhenUsed="true" Name="toc 7"/>
-  <w:LsdException Locked="false" Priority="39" SemiHidden="true"
-   UnhideWhenUsed="true" Name="toc 8"/>
-  <w:LsdException Locked="false" Priority="39" SemiHidden="true"
-   UnhideWhenUsed="true" Name="toc 9"/>
-  <w:LsdException Locked="false" SemiHidden="true" UnhideWhenUsed="true"
-   Name="Normal Indent"/>
-  <w:LsdException Locked="false" SemiHidden="true" UnhideWhenUsed="true"
-   Name="footnote text"/>
-  <w:LsdException Locked="false" SemiHidden="true" UnhideWhenUsed="true"
-   Name="annotation text"/>
-  <w:LsdException Locked="false" SemiHidden="true" UnhideWhenUsed="true"
-   Name="header"/>
-  <w:LsdException Locked="false" SemiHidden="true" UnhideWhenUsed="true"
-   Name="footer"/>
-  <w:LsdException Locked="false" SemiHidden="true" UnhideWhenUsed="true"
-   Name="index heading"/>
-  <w:LsdException Locked="false" Priority="35" SemiHidden="true"
-   UnhideWhenUsed="true" QFormat="true" Name="caption"/>
-  <w:LsdException Locked="false" SemiHidden="true" UnhideWhenUsed="true"
-   Name="table of figures"/>
-  <w:LsdException Locked="false" SemiHidden="true" UnhideWhenUsed="true"
-   Name="envelope address"/>
-  <w:LsdException Locked="false" SemiHidden="true" UnhideWhenUsed="true"
-   Name="envelope return"/>
-  <w:LsdException Locked="false" SemiHidden="true" UnhideWhenUsed="true"
-   Name="footnote reference"/>
-  <w:LsdException Locked="false" SemiHidden="true" UnhideWhenUsed="true"
-   Name="annotation reference"/>
-  <w:LsdException Locked="false" SemiHidden="true" UnhideWhenUsed="true"
-   Name="line number"/>
-  <w:LsdException Locked="false" SemiHidden="true" UnhideWhenUsed="true"
-   Name="page number"/>
-  <w:LsdException Locked="false" SemiHidden="true" UnhideWhenUsed="true"
-   Name="endnote reference"/>
-  <w:LsdException Locked="false" SemiHidden="true" UnhideWhenUsed="true"
-   Name="endnote text"/>
-  <w:LsdException Locked="false" SemiHidden="true" UnhideWhenUsed="true"
-   Name="table of authorities"/>
-  <w:LsdException Locked="false" SemiHidden="true" UnhideWhenUsed="true"
-   Name="macro"/>
-  <w:LsdException Locked="false" SemiHidden="true" UnhideWhenUsed="true"
-   Name="toa heading"/>
-  <w:LsdException Locked="false" SemiHidden="true" UnhideWhenUsed="true"
-   Name="List"/>
-  <w:LsdException Locked="false" SemiHidden="true" UnhideWhenUsed="true"
-   Name="List Bullet"/>
-  <w:LsdException Locked="false" SemiHidden="true" UnhideWhenUsed="true"
-   Name="List Number"/>
-  <w:LsdException Locked="false" SemiHidden="true" UnhideWhenUsed="true"
-   Name="List 2"/>
-  <w:LsdException Locked="false" SemiHidden="true" UnhideWhenUsed="true"
-   Name="List 3"/>
-  <w:LsdException Locked="false" SemiHidden="true" UnhideWhenUsed="true"
-   Name="List 4"/>
-  <w:LsdException Locked="false" SemiHidden="true" UnhideWhenUsed="true"
-   Name="List 5"/>
-  <w:LsdException Locked="false" SemiHidden="true" UnhideWhenUsed="true"
-   Name="List Bullet 2"/>
-  <w:LsdException Locked="false" SemiHidden="true" UnhideWhenUsed="true"
-   Name="List Bullet 3"/>
-  <w:LsdException Locked="false" SemiHidden="true" UnhideWhenUsed="true"
-   Name="List Bullet 4"/>
-  <w:LsdException Locked="false" SemiHidden="true" UnhideWhenUsed="true"
-   Name="List Bullet 5"/>
-  <w:LsdException Locked="false" SemiHidden="true" UnhideWhenUsed="true"
-   Name="List Number 2"/>
-  <w:LsdException Locked="false" SemiHidden="true" UnhideWhenUsed="true"
-   Name="List Number 3"/>
-  <w:LsdException Locked="false" SemiHidden="true" UnhideWhenUsed="true"
-   Name="List Number 4"/>
-  <w:LsdException Locked="false" SemiHidden="true" UnhideWhenUsed="true"
-   Name="List Number 5"/>
-  <w:LsdException Locked="false" Priority="10" QFormat="true" Name="Title"/>
-  <w:LsdException Locked="false" SemiHidden="true" UnhideWhenUsed="true"
-   Name="Closing"/>
-  <w:LsdException Locked="false" SemiHidden="true" UnhideWhenUsed="true"
-   Name="Signature"/>
-  <w:LsdException Locked="false" Priority="1" SemiHidden="true"
-   UnhideWhenUsed="true" Name="Default Paragraph Font"/>
-  <w:LsdException Locked="false" SemiHidden="true" UnhideWhenUsed="true"
-   Name="Body Text"/>
-  <w:LsdException Locked="false" SemiHidden="true" UnhideWhenUsed="true"
-   Name="Body Text Indent"/>
-  <w:LsdException Locked="false" SemiHidden="true" UnhideWhenUsed="true"
-   Name="List Continue"/>
-  <w:LsdException Locked="false" SemiHidden="true" UnhideWhenUsed="true"
-   Name="List Continue 2"/>
-  <w:LsdException Locked="false" SemiHidden="true" UnhideWhenUsed="true"
-   Name="List Continue 3"/>
-  <w:LsdException Locked="false" SemiHidden="true" UnhideWhenUsed="true"
-   Name="List Continue 4"/>
-  <w:LsdException Locked="false" SemiHidden="true" UnhideWhenUsed="true"
-   Name="List Continue 5"/>
-  <w:LsdException Locked="false" SemiHidden="true" UnhideWhenUsed="true"
-   Name="Message Header"/>
-  <w:LsdException Locked="false" Priority="11" QFormat="true" Name="Subtitle"/>
-  <w:LsdException Locked="false" SemiHidden="true" UnhideWhenUsed="true"
-   Name="Salutation"/>
-  <w:LsdException Locked="false" SemiHidden="true" UnhideWhenUsed="true"
-   Name="Date"/>
-  <w:LsdException Locked="false" SemiHidden="true" UnhideWhenUsed="true"
-   Name="Body Text First Indent"/>
-  <w:LsdException Locked="false" SemiHidden="true" UnhideWhenUsed="true"
-   Name="Body Text First Indent 2"/>
-  <w:LsdException Locked="false" SemiHidden="true" UnhideWhenUsed="true"
-   Name="Note Heading"/>
-  <w:LsdException Locked="false" SemiHidden="true" UnhideWhenUsed="true"
-   Name="Body Text 2"/>
-  <w:LsdException Locked="false" SemiHidden="true" UnhideWhenUsed="true"
-   Name="Body Text 3"/>
-  <w:LsdException Locked="false" SemiHidden="true" UnhideWhenUsed="true"
-   Name="Body Text Indent 2"/>
-  <w:LsdException Locked="false" SemiHidden="true" UnhideWhenUsed="true"
-   Name="Body Text Indent 3"/>
-  <w:LsdException Locked="false" SemiHidden="true" UnhideWhenUsed="true"
-   Name="Block Text"/>
-  <w:LsdException Locked="false" SemiHidden="true" UnhideWhenUsed="true"
-   Name="Hyperlink"/>
-  <w:LsdException Locked="false" SemiHidden="true" UnhideWhenUsed="true"
-   Name="FollowedHyperlink"/>
-  <w:LsdException Locked="false" Priority="22" QFormat="true" Name="Strong"/>
-  <w:LsdException Locked="false" Priority="20" QFormat="true" Name="Emphasis"/>
-  <w:LsdException Locked="false" SemiHidden="true" UnhideWhenUsed="true"
-   Name="Document Map"/>
-  <w:LsdException Locked="false" SemiHidden="true" UnhideWhenUsed="true"
-   Name="Plain Text"/>
-  <w:LsdException Locked="false" SemiHidden="true" UnhideWhenUsed="true"
-   Name="E-mail Signature"/>
-  <w:LsdException Locked="false" SemiHidden="true" UnhideWhenUsed="true"
-   Name="HTML Top of Form"/>
-  <w:LsdException Locked="false" SemiHidden="true" UnhideWhenUsed="true"
-   Name="HTML Bottom of Form"/>
-  <w:LsdException Locked="false" SemiHidden="true" UnhideWhenUsed="true"
-   Name="Normal (Web)"/>
-  <w:LsdException Locked="false" SemiHidden="true" UnhideWhenUsed="true"
-   Name="HTML Acronym"/>
-  <w:LsdException Locked="false" SemiHidden="true" UnhideWhenUsed="true"
-   Name="HTML Address"/>
-  <w:LsdException Locked="false" SemiHidden="true" UnhideWhenUsed="true"
-   Name="HTML Cite"/>
-  <w:LsdException Locked="false" SemiHidden="true" UnhideWhenUsed="true"
-   Name="HTML Code"/>
-  <w:LsdException Locked="false" SemiHidden="true" UnhideWhenUsed="true"
-   Name="HTML Definition"/>
-  <w:LsdException Locked="false" SemiHidden="true" UnhideWhenUsed="true"
-   Name="HTML Keyboard"/>
-  <w:LsdException Locked="false" SemiHidden="true" UnhideWhenUsed="true"
-   Name="HTML Preformatted"/>
-  <w:LsdException Locked="false" SemiHidden="true" UnhideWhenUsed="true"
-   Name="HTML Sample"/>
-  <w:LsdException Locked="false" SemiHidden="true" UnhideWhenUsed="true"
-   Name="HTML Typewriter"/>
-  <w:LsdException Locked="false" SemiHidden="true" UnhideWhenUsed="true"
-   Name="HTML Variable"/>
-  <w:LsdException Locked="false" SemiHidden="true" UnhideWhenUsed="true"
-   Name="Normal Table"/>
-  <w:LsdException Locked="false" SemiHidden="true" UnhideWhenUsed="true"
-   Name="annotation subject"/>
-  <w:LsdException Locked="false" SemiHidden="true" UnhideWhenUsed="true"
-   Name="No List"/>
-  <w:LsdException Locked="false" SemiHidden="true" UnhideWhenUsed="true"
-   Name="Outline List 1"/>
-  <w:LsdException Locked="false" SemiHidden="true" UnhideWhenUsed="true"
-   Name="Outline List 2"/>
-  <w:LsdException Locked="false" SemiHidden="true" UnhideWhenUsed="true"
-   Name="Outline List 3"/>
-  <w:LsdException Locked="false" SemiHidden="true" UnhideWhenUsed="true"
-   Name="Table Simple 1"/>
-  <w:LsdException Locked="false" SemiHidden="true" UnhideWhenUsed="true"
-   Name="Table Simple 2"/>
-  <w:LsdException Locked="false" SemiHidden="true" UnhideWhenUsed="true"
-   Name="Table Simple 3"/>
-  <w:LsdException Locked="false" SemiHidden="true" UnhideWhenUsed="true"
-   Name="Table Classic 1"/>
-  <w:LsdException Locked="false" SemiHidden="true" UnhideWhenUsed="true"
-   Name="Table Classic 2"/>
-  <w:LsdException Locked="false" SemiHidden="true" UnhideWhenUsed="true"
-   Name="Table Classic 3"/>
-  <w:LsdException Locked="false" SemiHidden="true" UnhideWhenUsed="true"
-   Name="Table Classic 4"/>
-  <w:LsdException Locked="false" SemiHidden="true" UnhideWhenUsed="true"
-   Name="Table Colorful 1"/>
-  <w:LsdException Locked="false" SemiHidden="true" UnhideWhenUsed="true"
-   Name="Table Colorful 2"/>
-  <w:LsdException Locked="false" SemiHidden="true" UnhideWhenUsed="true"
-   Name="Table Colorful 3"/>
-  <w:LsdException Locked="false" SemiHidden="true" UnhideWhenUsed="true"
-   Name="Table Columns 1"/>
-  <w:LsdException Locked="false" SemiHidden="true" UnhideWhenUsed="true"
-   Name="Table Columns 2"/>
-  <w:LsdException Locked="false" SemiHidden="true" UnhideWhenUsed="true"
-   Name="Table Columns 3"/>
-  <w:LsdException Locked="false" SemiHidden="true" UnhideWhenUsed="true"
-   Name="Table Columns 4"/>
-  <w:LsdException Locked="false" SemiHidden="true" UnhideWhenUsed="true"
-   Name="Table Columns 5"/>
-  <w:LsdException Locked="false" SemiHidden="true" UnhideWhenUsed="true"
-   Name="Table Grid 1"/>
-  <w:LsdException Locked="false" SemiHidden="true" UnhideWhenUsed="true"
-   Name="Table Grid 2"/>
-  <w:LsdException Locked="false" SemiHidden="true" UnhideWhenUsed="true"
-   Name="Table Grid 3"/>
-  <w:LsdException Locked="false" SemiHidden="true" UnhideWhenUsed="true"
-   Name="Table Grid 4"/>
-  <w:LsdException Locked="false" SemiHidden="true" UnhideWhenUsed="true"
-   Name="Table Grid 5"/>
-  <w:LsdException Locked="false" SemiHidden="true" UnhideWhenUsed="true"
-   Name="Table Grid 6"/>
-  <w:LsdException Locked="false" SemiHidden="true" UnhideWhenUsed="true"
-   Name="Table Grid 7"/>
-  <w:LsdException Locked="false" SemiHidden="true" UnhideWhenUsed="true"
-   Name="Table Grid 8"/>
-  <w:LsdException Locked="false" SemiHidden="true" UnhideWhenUsed="true"
-   Name="Table List 1"/>
-  <w:LsdException Locked="false" SemiHidden="true" UnhideWhenUsed="true"
-   Name="Table List 2"/>
-  <w:LsdException Locked="false" SemiHidden="true" UnhideWhenUsed="true"
-   Name="Table List 3"/>
-  <w:LsdException Locked="false" SemiHidden="true" UnhideWhenUsed="true"
-   Name="Table List 4"/>
-  <w:LsdException Locked="false" SemiHidden="true" UnhideWhenUsed="true"
-   Name="Table List 5"/>
-  <w:LsdException Locked="false" SemiHidden="true" UnhideWhenUsed="true"
-   Name="Table List 6"/>
-  <w:LsdException Locked="false" SemiHidden="true" UnhideWhenUsed="true"
-   Name="Table List 7"/>
-  <w:LsdException Locked="false" SemiHidden="true" UnhideWhenUsed="true"
-   Name="Table List 8"/>
-  <w:LsdException Locked="false" SemiHidden="true" UnhideWhenUsed="true"
-   Name="Table 3D effects 1"/>
-  <w:LsdException Locked="false" SemiHidden="true" UnhideWhenUsed="true"
-   Name="Table 3D effects 2"/>
-  <w:LsdException Locked="false" SemiHidden="true" UnhideWhenUsed="true"
-   Name="Table 3D effects 3"/>
-  <w:LsdException Locked="false" SemiHidden="true" UnhideWhenUsed="true"
-   Name="Table Contemporary"/>
-  <w:LsdException Locked="false" SemiHidden="true" UnhideWhenUsed="true"
-   Name="Table Elegant"/>
-  <w:LsdException Locked="false" SemiHidden="true" UnhideWhenUsed="true"
-   Name="Table Professional"/>
-  <w:LsdException Locked="false" SemiHidden="true" UnhideWhenUsed="true"
-   Name="Table Subtle 1"/>
-  <w:LsdException Locked="false" SemiHidden="true" UnhideWhenUsed="true"
-   Name="Table Subtle 2"/>
-  <w:LsdException Locked="false" SemiHidden="true" UnhideWhenUsed="true"
-   Name="Table Web 1"/>
-  <w:LsdException Locked="false" SemiHidden="true" UnhideWhenUsed="true"
-   Name="Table Web 2"/>
-  <w:LsdException Locked="false" SemiHidden="true" UnhideWhenUsed="true"
-   Name="Table Web 3"/>
-  <w:LsdException Locked="false" SemiHidden="true" UnhideWhenUsed="true"
-   Name="Balloon Text"/>
-  <w:LsdException Locked="false" Priority="39" Name="Table Grid"/>
-  <w:LsdException Locked="false" SemiHidden="true" UnhideWhenUsed="true"
-   Name="Table Theme"/>
-  <w:LsdException Locked="false" SemiHidden="true" Name="Placeholder Text"/>
-  <w:LsdException Locked="false" Priority="1" QFormat="true" Name="No Spacing"/>
-  <w:LsdException Locked="false" Priority="60" Name="Light Shading"/>
-  <w:LsdException Locked="false" Priority="61" Name="Light List"/>
-  <w:LsdException Locked="false" Priority="62" Name="Light Grid"/>
-  <w:LsdException Locked="false" Priority="63" Name="Medium Shading 1"/>
-  <w:LsdException Locked="false" Priority="64" Name="Medium Shading 2"/>
-  <w:LsdException Locked="false" Priority="65" Name="Medium List 1"/>
-  <w:LsdException Locked="false" Priority="66" Name="Medium List 2"/>
-  <w:LsdException Locked="false" Priority="67" Name="Medium Grid 1"/>
-  <w:LsdException Locked="false" Priority="68" Name="Medium Grid 2"/>
-  <w:LsdException Locked="false" Priority="69" Name="Medium Grid 3"/>
-  <w:LsdException Locked="false" Priority="70" Name="Dark List"/>
-  <w:LsdException Locked="false" Priority="71" Name="Colorful Shading"/>
-  <w:LsdException Locked="false" Priority="72" Name="Colorful List"/>
-  <w:LsdException Locked="false" Priority="73" Name="Colorful Grid"/>
-  <w:LsdException Locked="false" Priority="60" Name="Light Shading Accent 1"/>
-  <w:LsdException Locked="false" Priority="61" Name="Light List Accent 1"/>
-  <w:LsdException Locked="false" Priority="62" Name="Light Grid Accent 1"/>
-  <w:LsdException Locked="false" Priority="63" Name="Medium Shading 1 Accent 1"/>
-  <w:LsdException Locked="false" Priority="64" Name="Medium Shading 2 Accent 1"/>
-  <w:LsdException Locked="false" Priority="65" Name="Medium List 1 Accent 1"/>
-  <w:LsdException Locked="false" SemiHidden="true" Name="Revision"/>
-  <w:LsdException Locked="false" Priority="34" QFormat="true"
-   Name="List Paragraph"/>
-  <w:LsdException Locked="false" Priority="29" QFormat="true" Name="Quote"/>
-  <w:LsdException Locked="false" Priority="30" QFormat="true"
-   Name="Intense Quote"/>
-  <w:LsdException Locked="false" Priority="66" Name="Medium List 2 Accent 1"/>
-  <w:LsdException Locked="false" Priority="67" Name="Medium Grid 1 Accent 1"/>
-  <w:LsdException Locked="false" Priority="68" Name="Medium Grid 2 Accent 1"/>
-  <w:LsdException Locked="false" Priority="69" Name="Medium Grid 3 Accent 1"/>
-  <w:LsdException Locked="false" Priority="70" Name="Dark List Accent 1"/>
-  <w:LsdException Locked="false" Priority="71" Name="Colorful Shading Accent 1"/>
-  <w:LsdException Locked="false" Priority="72" Name="Colorful List Accent 1"/>
-  <w:LsdException Locked="false" Priority="73" Name="Colorful Grid Accent 1"/>
-  <w:LsdException Locked="false" Priority="60" Name="Light Shading Accent 2"/>
-  <w:LsdException Locked="false" Priority="61" Name="Light List Accent 2"/>
-  <w:LsdException Locked="false" Priority="62" Name="Light Grid Accent 2"/>
-  <w:LsdException Locked="false" Priority="63" Name="Medium Shading 1 Accent 2"/>
-  <w:LsdException Locked="false" Priority="64" Name="Medium Shading 2 Accent 2"/>
-  <w:LsdException Locked="false" Priority="65" Name="Medium List 1 Accent 2"/>
-  <w:LsdException Locked="false" Priority="66" Name="Medium List 2 Accent 2"/>
-  <w:LsdException Locked="false" Priority="67" Name="Medium Grid 1 Accent 2"/>
-  <w:LsdException Locked="false" Priority="68" Name="Medium Grid 2 Accent 2"/>
-  <w:LsdException Locked="false" Priority="69" Name="Medium Grid 3 Accent 2"/>
-  <w:LsdException Locked="false" Priority="70" Name="Dark List Accent 2"/>
-  <w:LsdException Locked="false" Priority="71" Name="Colorful Shading Accent 2"/>
-  <w:LsdException Locked="false" Priority="72" Name="Colorful List Accent 2"/>
-  <w:LsdException Locked="false" Priority="73" Name="Colorful Grid Accent 2"/>
-  <w:LsdException Locked="false" Priority="60" Name="Light Shading Accent 3"/>
-  <w:LsdException Locked="false" Priority="61" Name="Light List Accent 3"/>
-  <w:LsdException Locked="false" Priority="62" Name="Light Grid Accent 3"/>
-  <w:LsdException Locked="false" Priority="63" Name="Medium Shading 1 Accent 3"/>
-  <w:LsdException Locked="false" Priority="64" Name="Medium Shading 2 Accent 3"/>
-  <w:LsdException Locked="false" Priority="65" Name="Medium List 1 Accent 3"/>
-  <w:LsdException Locked="false" Priority="66" Name="Medium List 2 Accent 3"/>
-  <w:LsdException Locked="false" Priority="67" Name="Medium Grid 1 Accent 3"/>
-  <w:LsdException Locked="false" Priority="68" Name="Medium Grid 2 Accent 3"/>
-  <w:LsdException Locked="false" Priority="69" Name="Medium Grid 3 Accent 3"/>
-  <w:LsdException Locked="false" Priority="70" Name="Dark List Accent 3"/>
-  <w:LsdException Locked="false" Priority="71" Name="Colorful Shading Accent 3"/>
-  <w:LsdException Locked="false" Priority="72" Name="Colorful List Accent 3"/>
-  <w:LsdException Locked="false" Priority="73" Name="Colorful Grid Accent 3"/>
-  <w:LsdException Locked="false" Priority="60" Name="Light Shading Accent 4"/>
-  <w:LsdException Locked="false" Priority="61" Name="Light List Accent 4"/>
-  <w:LsdException Locked="false" Priority="62" Name="Light Grid Accent 4"/>
-  <w:LsdException Locked="false" Priority="63" Name="Medium Shading 1 Accent 4"/>
-  <w:LsdException Locked="false" Priority="64" Name="Medium Shading 2 Accent 4"/>
-  <w:LsdException Locked="false" Priority="65" Name="Medium List 1 Accent 4"/>
-  <w:LsdException Locked="false" Priority="66" Name="Medium List 2 Accent 4"/>
-  <w:LsdException Locked="false" Priority="67" Name="Medium Grid 1 Accent 4"/>
-  <w:LsdException Locked="false" Priority="68" Name="Medium Grid 2 Accent 4"/>
-  <w:LsdException Locked="false" Priority="69" Name="Medium Grid 3 Accent 4"/>
-  <w:LsdException Locked="false" Priority="70" Name="Dark List Accent 4"/>
-  <w:LsdException Locked="false" Priority="71" Name="Colorful Shading Accent 4"/>
-  <w:LsdException Locked="false" Priority="72" Name="Colorful List Accent 4"/>
-  <w:LsdException Locked="false" Priority="73" Name="Colorful Grid Accent 4"/>
-  <w:LsdException Locked="false" Priority="60" Name="Light Shading Accent 5"/>
-  <w:LsdException Locked="false" Priority="61" Name="Light List Accent 5"/>
-  <w:LsdException Locked="false" Priority="62" Name="Light Grid Accent 5"/>
-  <w:LsdException Locked="false" Priority="63" Name="Medium Shading 1 Accent 5"/>
-  <w:LsdException Locked="false" Priority="64" Name="Medium Shading 2 Accent 5"/>
-  <w:LsdException Locked="false" Priority="65" Name="Medium List 1 Accent 5"/>
-  <w:LsdException Locked="false" Priority="66" Name="Medium List 2 Accent 5"/>
-  <w:LsdException Locked="false" Priority="67" Name="Medium Grid 1 Accent 5"/>
-  <w:LsdException Locked="false" Priority="68" Name="Medium Grid 2 Accent 5"/>
-  <w:LsdException Locked="false" Priority="69" Name="Medium Grid 3 Accent 5"/>
-  <w:LsdException Locked="false" Priority="70" Name="Dark List Accent 5"/>
-  <w:LsdException Locked="false" Priority="71" Name="Colorful Shading Accent 5"/>
-  <w:LsdException Locked="false" Priority="72" Name="Colorful List Accent 5"/>
-  <w:LsdException Locked="false" Priority="73" Name="Colorful Grid Accent 5"/>
-  <w:LsdException Locked="false" Priority="60" Name="Light Shading Accent 6"/>
-  <w:LsdException Locked="false" Priority="61" Name="Light List Accent 6"/>
-  <w:LsdException Locked="false" Priority="62" Name="Light Grid Accent 6"/>
-  <w:LsdException Locked="false" Priority="63" Name="Medium Shading 1 Accent 6"/>
-  <w:LsdException Locked="false" Priority="64" Name="Medium Shading 2 Accent 6"/>
-  <w:LsdException Locked="false" Priority="65" Name="Medium List 1 Accent 6"/>
-  <w:LsdException Locked="false" Priority="66" Name="Medium List 2 Accent 6"/>
-  <w:LsdException Locked="false" Priority="67" Name="Medium Grid 1 Accent 6"/>
-  <w:LsdException Locked="false" Priority="68" Name="Medium Grid 2 Accent 6"/>
-  <w:LsdException Locked="false" Priority="69" Name="Medium Grid 3 Accent 6"/>
-  <w:LsdException Locked="false" Priority="70" Name="Dark List Accent 6"/>
-  <w:LsdException Locked="false" Priority="71" Name="Colorful Shading Accent 6"/>
-  <w:LsdException Locked="false" Priority="72" Name="Colorful List Accent 6"/>
-  <w:LsdException Locked="false" Priority="73" Name="Colorful Grid Accent 6"/>
-  <w:LsdException Locked="false" Priority="19" QFormat="true"
-   Name="Subtle Emphasis"/>
-  <w:LsdException Locked="false" Priority="21" QFormat="true"
-   Name="Intense Emphasis"/>
-  <w:LsdException Locked="false" Priority="31" QFormat="true"
-   Name="Subtle Reference"/>
-  <w:LsdException Locked="false" Priority="32" QFormat="true"
-   Name="Intense Reference"/>
-  <w:LsdException Locked="false" Priority="33" QFormat="true" Name="Book Title"/>
-  <w:LsdException Locked="false" Priority="37" SemiHidden="true"
-   UnhideWhenUsed="true" Name="Bibliography"/>
-  <w:LsdException Locked="false" Priority="39" SemiHidden="true"
-   UnhideWhenUsed="true" QFormat="true" Name="TOC Heading"/>
-  <w:LsdException Locked="false" Priority="41" Name="Plain Table 1"/>
-  <w:LsdException Locked="false" Priority="42" Name="Plain Table 2"/>
-  <w:LsdException Locked="false" Priority="43" Name="Plain Table 3"/>
-  <w:LsdException Locked="false" Priority="44" Name="Plain Table 4"/>
-  <w:LsdException Locked="false" Priority="45" Name="Plain Table 5"/>
-  <w:LsdException Locked="false" Priority="40" Name="Grid Table Light"/>
-  <w:LsdException Locked="false" Priority="46" Name="Grid Table 1 Light"/>
-  <w:LsdException Locked="false" Priority="47" Name="Grid Table 2"/>
-  <w:LsdException Locked="false" Priority="48" Name="Grid Table 3"/>
-  <w:LsdException Locked="false" Priority="49" Name="Grid Table 4"/>
-  <w:LsdException Locked="false" Priority="50" Name="Grid Table 5 Dark"/>
-  <w:LsdException Locked="false" Priority="51" Name="Grid Table 6 Colorful"/>
-  <w:LsdException Locked="false" Priority="52" Name="Grid Table 7 Colorful"/>
-  <w:LsdException Locked="false" Priority="46"
-   Name="Grid Table 1 Light Accent 1"/>
-  <w:LsdException Locked="false" Priority="47" Name="Grid Table 2 Accent 1"/>
-  <w:LsdException Locked="false" Priority="48" Name="Grid Table 3 Accent 1"/>
-  <w:LsdException Locked="false" Priority="49" Name="Grid Table 4 Accent 1"/>
-  <w:LsdException Locked="false" Priority="50" Name="Grid Table 5 Dark Accent 1"/>
-  <w:LsdException Locked="false" Priority="51"
-   Name="Grid Table 6 Colorful Accent 1"/>
-  <w:LsdException Locked="false" Priority="52"
-   Name="Grid Table 7 Colorful Accent 1"/>
-  <w:LsdException Locked="false" Priority="46"
-   Name="Grid Table 1 Light Accent 2"/>
-  <w:LsdException Locked="false" Priority="47" Name="Grid Table 2 Accent 2"/>
-  <w:LsdException Locked="false" Priority="48" Name="Grid Table 3 Accent 2"/>
-  <w:LsdException Locked="false" Priority="49" Name="Grid Table 4 Accent 2"/>
-  <w:LsdException Locked="false" Priority="50" Name="Grid Table 5 Dark Accent 2"/>
-  <w:LsdException Locked="false" Priority="51"
-   Name="Grid Table 6 Colorful Accent 2"/>
-  <w:LsdException Locked="false" Priority="52"
-   Name="Grid Table 7 Colorful Accent 2"/>
-  <w:LsdException Locked="false" Priority="46"
-   Name="Grid Table 1 Light Accent 3"/>
-  <w:LsdException Locked="false" Priority="47" Name="Grid Table 2 Accent 3"/>
-  <w:LsdException Locked="false" Priority="48" Name="Grid Table 3 Accent 3"/>
-  <w:LsdException Locked="false" Priority="49" Name="Grid Table 4 Accent 3"/>
-  <w:LsdException Locked="false" Priority="50" Name="Grid Table 5 Dark Accent 3"/>
-  <w:LsdException Locked="false" Priority="51"
-   Name="Grid Table 6 Colorful Accent 3"/>
-  <w:LsdException Locked="false" Priority="52"
-   Name="Grid Table 7 Colorful Accent 3"/>
-  <w:LsdException Locked="false" Priority="46"
-   Name="Grid Table 1 Light Accent 4"/>
-  <w:LsdException Locked="false" Priority="47" Name="Grid Table 2 Accent 4"/>
-  <w:LsdException Locked="false" Priority="48" Name="Grid Table 3 Accent 4"/>
-  <w:LsdException Locked="false" Priority="49" Name="Grid Table 4 Accent 4"/>
-  <w:LsdException Locked="false" Priority="50" Name="Grid Table 5 Dark Accent 4"/>
-  <w:LsdException Locked="false" Priority="51"
-   Name="Grid Table 6 Colorful Accent 4"/>
-  <w:LsdException Locked="false" Priority="52"
-   Name="Grid Table 7 Colorful Accent 4"/>
-  <w:LsdException Locked="false" Priority="46"
-   Name="Grid Table 1 Light Accent 5"/>
-  <w:LsdException Locked="false" Priority="47" Name="Grid Table 2 Accent 5"/>
-  <w:LsdException Locked="false" Priority="48" Name="Grid Table 3 Accent 5"/>
-  <w:LsdException Locked="false" Priority="49" Name="Grid Table 4 Accent 5"/>
-  <w:LsdException Locked="false" Priority="50" Name="Grid Table 5 Dark Accent 5"/>
-  <w:LsdException Locked="false" Priority="51"
-   Name="Grid Table 6 Colorful Accent 5"/>
-  <w:LsdException Locked="false" Priority="52"
-   Name="Grid Table 7 Colorful Accent 5"/>
-  <w:LsdException Locked="false" Priority="46"
-   Name="Grid Table 1 Light Accent 6"/>
-  <w:LsdException Locked="false" Priority="47" Name="Grid Table 2 Accent 6"/>
-  <w:LsdException Locked="false" Priority="48" Name="Grid Table 3 Accent 6"/>
-  <w:LsdException Locked="false" Priority="49" Name="Grid Table 4 Accent 6"/>
-  <w:LsdException Locked="false" Priority="50" Name="Grid Table 5 Dark Accent 6"/>
-  <w:LsdException Locked="false" Priority="51"
-   Name="Grid Table 6 Colorful Accent 6"/>
-  <w:LsdException Locked="false" Priority="52"
-   Name="Grid Table 7 Colorful Accent 6"/>
-  <w:LsdException Locked="false" Priority="46" Name="List Table 1 Light"/>
-  <w:LsdException Locked="false" Priority="47" Name="List Table 2"/>
-  <w:LsdException Locked="false" Priority="48" Name="List Table 3"/>
-  <w:LsdException Locked="false" Priority="49" Name="List Table 4"/>
-  <w:LsdException Locked="false" Priority="50" Name="List Table 5 Dark"/>
-  <w:LsdException Locked="false" Priority="51" Name="List Table 6 Colorful"/>
-  <w:LsdException Locked="false" Priority="52" Name="List Table 7 Colorful"/>
-  <w:LsdException Locked="false" Priority="46"
-   Name="List Table 1 Light Accent 1"/>
-  <w:LsdException Locked="false" Priority="47" Name="List Table 2 Accent 1"/>
-  <w:LsdException Locked="false" Priority="48" Name="List Table 3 Accent 1"/>
-  <w:LsdException Locked="false" Priority="49" Name="List Table 4 Accent 1"/>
-  <w:LsdException Locked="false" Priority="50" Name="List Table 5 Dark Accent 1"/>
-  <w:LsdException Locked="false" Priority="51"
-   Name="List Table 6 Colorful Accent 1"/>
-  <w:LsdException Locked="false" Priority="52"
-   Name="List Table 7 Colorful Accent 1"/>
-  <w:LsdException Locked="false" Priority="46"
-   Name="List Table 1 Light Accent 2"/>
-  <w:LsdException Locked="false" Priority="47" Name="List Table 2 Accent 2"/>
-  <w:LsdException Locked="false" Priority="48" Name="List Table 3 Accent 2"/>
-  <w:LsdException Locked="false" Priority="49" Name="List Table 4 Accent 2"/>
-  <w:LsdException Locked="false" Priority="50" Name="List Table 5 Dark Accent 2"/>
-  <w:LsdException Locked="false" Priority="51"
-   Name="List Table 6 Colorful Accent 2"/>
-  <w:LsdException Locked="false" Priority="52"
-   Name="List Table 7 Colorful Accent 2"/>
-  <w:LsdException Locked="false" Priority="46"
-   Name="List Table 1 Light Accent 3"/>
-  <w:LsdException Locked="false" Priority="47" Name="List Table 2 Accent 3"/>
-  <w:LsdException Locked="false" Priority="48" Name="List Table 3 Accent 3"/>
-  <w:LsdException Locked="false" Priority="49" Name="List Table 4 Accent 3"/>
-  <w:LsdException Locked="false" Priority="50" Name="List Table 5 Dark Accent 3"/>
-  <w:LsdException Locked="false" Priority="51"
-   Name="List Table 6 Colorful Accent 3"/>
-  <w:LsdException Locked="false" Priority="52"
-   Name="List Table 7 Colorful Accent 3"/>
-  <w:LsdException Locked="false" Priority="46"
-   Name="List Table 1 Light Accent 4"/>
-  <w:LsdException Locked="false" Priority="47" Name="List Table 2 Accent 4"/>
-  <w:LsdException Locked="false" Priority="48" Name="List Table 3 Accent 4"/>
-  <w:LsdException Locked="false" Priority="49" Name="List Table 4 Accent 4"/>
-  <w:LsdException Locked="false" Priority="50" Name="List Table 5 Dark Accent 4"/>
-  <w:LsdException Locked="false" Priority="51"
-   Name="List Table 6 Colorful Accent 4"/>
-  <w:LsdException Locked="false" Priority="52"
-   Name="List Table 7 Colorful Accent 4"/>
-  <w:LsdException Locked="false" Priority="46"
-   Name="List Table 1 Light Accent 5"/>
-  <w:LsdException Locked="false" Priority="47" Name="List Table 2 Accent 5"/>
-  <w:LsdException Locked="false" Priority="48" Name="List Table 3 Accent 5"/>
-  <w:LsdException Locked="false" Priority="49" Name="List Table 4 Accent 5"/>
-  <w:LsdException Locked="false" Priority="50" Name="List Table 5 Dark Accent 5"/>
-  <w:LsdException Locked="false" Priority="51"
-   Name="List Table 6 Colorful Accent 5"/>
-  <w:LsdException Locked="false" Priority="52"
-   Name="List Table 7 Colorful Accent 5"/>
-  <w:LsdException Locked="false" Priority="46"
-   Name="List Table 1 Light Accent 6"/>
-  <w:LsdException Locked="false" Priority="47" Name="List Table 2 Accent 6"/>
-  <w:LsdException Locked="false" Priority="48" Name="List Table 3 Accent 6"/>
-  <w:LsdException Locked="false" Priority="49" Name="List Table 4 Accent 6"/>
-  <w:LsdException Locked="false" Priority="50" Name="List Table 5 Dark Accent 6"/>
-  <w:LsdException Locked="false" Priority="51"
-   Name="List Table 6 Colorful Accent 6"/>
-  <w:LsdException Locked="false" Priority="52"
-   Name="List Table 7 Colorful Accent 6"/>
-  <w:LsdException Locked="false" SemiHidden="true" UnhideWhenUsed="true"
-   Name="Mention"/>
-  <w:LsdException Locked="false" SemiHidden="true" UnhideWhenUsed="true"
-   Name="Smart Hyperlink"/>
-  <w:LsdException Locked="false" SemiHidden="true" UnhideWhenUsed="true"
-   Name="Hashtag"/>
-  <w:LsdException Locked="false" SemiHidden="true" UnhideWhenUsed="true"
-   Name="Unresolved Mention"/>
-  <w:LsdException Locked="false" SemiHidden="true" UnhideWhenUsed="true"
-   Name="Smart Link"/>
- </w:LatentStyles>
-</xml><![endif]-->
-<style>
-<!--
- /* Font Definitions */
- @font-face
-	{font-family:"Cambria Math";
-	panose-1:2 4 5 3 5 4 6 3 2 4;
-	mso-font-charset:0;
-	mso-generic-font-family:roman;
-	mso-font-pitch:variable;
-	mso-font-signature:-536869121 1107305727 33554432 0 415 0;}
-@font-face
-	{font-family:Aptos;
-	mso-font-charset:0;
-	mso-generic-font-family:swiss;
-	mso-font-pitch:variable;
-	mso-font-signature:536871559 3 0 0 415 0;}
-@font-face
-	{font-family:EuropeaNarrow;
-	panose-1:0 0 0 0 0 0 0 0 0 0;
-	mso-font-charset:0;
-	mso-generic-font-family:modern;
-	mso-font-format:other;
-	mso-font-pitch:variable;
-	mso-font-signature:-1610611969 1342301307 0 0 415 0;}
- /* Style Definitions */
- p.MsoNormal, li.MsoNormal, div.MsoNormal
-	{mso-style-unhide:no;
-	mso-style-qformat:yes;
-	mso-style-parent:"";
-	margin:0cm;
-	mso-pagination:widow-orphan;
-	font-size:12.0pt;
-	font-family:"Aptos",sans-serif;
-	mso-ascii-font-family:Aptos;
-	mso-ascii-theme-font:minor-latin;
-	mso-fareast-font-family:"Times New Roman";
-	mso-fareast-theme-font:minor-fareast;
-	mso-hansi-font-family:Aptos;
-	mso-hansi-theme-font:minor-latin;
-	mso-bidi-font-family:"Times New Roman";
-	mso-bidi-theme-font:minor-bidi;
-	mso-font-kerning:1.0pt;
-	mso-ligatures:standardcontextual;}
-a:link, span.MsoHyperlink
-	{mso-style-noshow:yes;
-	mso-style-priority:99;
-	color:blue;
-	text-decoration:underline;
-	text-underline:single;}
-a:visited, span.MsoHyperlinkFollowed
-	{mso-style-noshow:yes;
-	mso-style-priority:99;
-	color:#96607D;
-	mso-themecolor:followedhyperlink;
-	text-decoration:underline;
-	text-underline:single;}
-.MsoChpDefault
-	{mso-style-type:export-only;
-	mso-default-props:yes;
-	font-size:12.0pt;
-	mso-ansi-font-size:12.0pt;
-	mso-bidi-font-size:12.0pt;
-	mso-ascii-font-family:Aptos;
-	mso-ascii-theme-font:minor-latin;
-	mso-fareast-font-family:"Times New Roman";
-	mso-fareast-theme-font:minor-fareast;
-	mso-hansi-font-family:Aptos;
-	mso-hansi-theme-font:minor-latin;
-	mso-bidi-font-family:"Times New Roman";
-	mso-bidi-theme-font:minor-bidi;
-	mso-font-kerning:1.0pt;
-	mso-ligatures:standardcontextual;}
-@page WordSection1
-	{size:612.0pt 792.0pt;
-	margin:72.0pt 72.0pt 72.0pt 72.0pt;
-	mso-header-margin:36.0pt;
-	mso-footer-margin:36.0pt;
-	mso-paper-source:0;}
-div.WordSection1
-	{page:WordSection1;}
--->
-</style>
-<!--[if gte mso 10]>
-<style>
- /* Style Definitions */
- table.MsoNormalTable
-	{mso-style-name:"Table Normal";
-	mso-tstyle-rowband-size:0;
-	mso-tstyle-colband-size:0;
-	mso-style-noshow:yes;
-	mso-style-priority:99;
-	mso-style-parent:"";
-	mso-padding-alt:0cm 5.4pt 0cm 5.4pt;
-	mso-para-margin:0cm;
-	mso-pagination:widow-orphan;
-	font-size:12.0pt;
-	font-family:"Aptos",sans-serif;
-	mso-ascii-font-family:Aptos;
-	mso-ascii-theme-font:minor-latin;
-	mso-hansi-font-family:Aptos;
-	mso-hansi-theme-font:minor-latin;
-	mso-font-kerning:1.0pt;
-	mso-ligatures:standardcontextual;}
-</style>
-<![endif]-->
-</head>
-
-<body lang=EN-GB link=blue vlink="#96607D" style='tab-interval:36.0pt;
-word-wrap:break-word'>
-
-<div class=WordSection1>
-
-<table class=MsoNormalTable border=0 cellspacing=4 cellpadding=0 width=715
- style='width:536.25pt;mso-cellspacing:1.5pt;margin-left:2.25pt;mso-yfti-tbllook:
- 1184;mso-padding-alt:0cm 5.4pt 0cm 5.4pt'>
- <tr style='mso-yfti-irow:0;mso-yfti-firstrow:yes;mso-yfti-lastrow:yes'>
-  <td width=115 valign=top style='width:86.25pt;padding:.75pt 7.5pt .75pt .75pt'>
-  <p class=MsoNormal><span lang=EN style='font-size:9.0pt;font-family:"Arial",sans-serif;
-  mso-fareast-font-family:"Times New Roman";color:#838B8B;mso-ansi-language:
-  EN;mso-no-proof:yes'><img id="_x0000_i1028" src="data:image/png;base64,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"
-  alt="European Parliament logo"></span><span lang=EN style='font-size:9.0pt;
-  font-family:"Arial",sans-serif;mso-fareast-font-family:"Times New Roman";
-  color:#838B8B;mso-font-kerning:0pt;mso-ligatures:none;mso-ansi-language:EN'><o:p></o:p></span></p>
-  </td>
-  <td width=600 style='width:450.0pt;padding:.75pt .75pt .75pt .75pt'>
-  <div>
-  <p class=MsoNormal><b><span lang=EN style='font-family:EuropeaNarrow;
-  mso-fareast-font-family:"Times New Roman";mso-bidi-font-family:Arial;
-  color:#0C4DA5;mso-ansi-language:EN'>Juan carlos&nbsp;DIOSES <o:p></o:p></span></b></p>
-  </div>
-  <div>
-  <p class=MsoNormal style='line-height:11.0pt'><span lang=EN style='font-size:
-  9.0pt;font-family:"Arial",sans-serif;mso-fareast-font-family:"Times New Roman";
-  color:#838B8B;mso-ansi-language:EN'>IT support External Consultant <o:p></o:p></span></p>
-  </div>
-  <div>
-  <p class=MsoNormal style='line-height:14.0pt'><b><span lang=EN
-  style='font-size:11.0pt;font-family:EuropeaNarrow;mso-fareast-font-family:
-  "Times New Roman";mso-bidi-font-family:Arial;color:#7A868E;mso-ansi-language:
-  EN'><br>
-  European Parliament<o:p></o:p></span></b></p>
-  </div>
-  <div>
-  <p class=MsoNormal style='line-height:11.0pt'><span lang=EN style='font-size:
-  9.0pt;font-family:"Arial",sans-serif;mso-fareast-font-family:"Times New Roman";
-  color:#838B8B;mso-ansi-language:EN'>Directorate-General for Information
-  Technologies and Cybersecurity<o:p></o:p></span></p>
-  </div>
-  <div>
-  <p class=MsoNormal style='line-height:11.0pt'><span lang=EN style='font-size:
-  9.0pt;font-family:"Arial",sans-serif;mso-fareast-font-family:"Times New Roman";
-  color:#838B8B;mso-ansi-language:EN'>Directorate for Customers and Digital
-  Workplace<o:p></o:p></span></p>
-  </div>
-  <div>
-  <p class=MsoNormal style='line-height:11.0pt'><span lang=EN style='font-size:
-  9.0pt;font-family:"Arial",sans-serif;mso-fareast-font-family:"Times New Roman";
-  color:#838B8B;mso-ansi-language:EN'>Members' Digital Experience Unit<o:p></o:p></span></p>
-  </div>
-  <div>
-  <p class=MsoNormal style='line-height:11.0pt'><span lang=EN style='font-size:
-  9.0pt;font-family:"Arial",sans-serif;mso-fareast-font-family:"Times New Roman";
-  color:#838B8B;mso-ansi-language:EN'>Digital Workplace Support<o:p></o:p></span></p>
-  </div>
-  <table class=MsoNormalTable border=0 cellspacing=0 cellpadding=0
-   style='border-collapse:collapse;mso-yfti-tbllook:1184;mso-padding-alt:0cm 5.4pt 0cm 5.4pt'>
-   <tr style='mso-yfti-irow:0;mso-yfti-firstrow:yes;mso-yfti-lastrow:yes'>
-    <td style='padding:.75pt 12.0pt .75pt .75pt'>
-    <p class=MsoNormal><span style='font-size:9.0pt;font-family:"Arial",sans-serif;
-    mso-fareast-font-family:"Times New Roman";color:#838B8B'>BRU - Remard
-    02J006<o:p></o:p></span></p>
-    </td>
-    <td style='border:none;border-left:solid #838B8B 1.0pt;mso-border-left-alt:
-    solid #838B8B .75pt;padding:.75pt .75pt .75pt 12.0pt'>
-    <p class=MsoNormal><span style='font-size:9.0pt;font-family:"Arial",sans-serif;
-    mso-fareast-font-family:"Times New Roman";color:#838B8B'>Tel +32 228 43913<o:p></o:p></span></p>
-    </td>
-   </tr>
-  </table>
-  <div>
-  <p class=MsoNormal style='line-height:12.0pt'><span lang=EN style='font-size:
-  9.0pt;font-family:"Arial",sans-serif;mso-fareast-font-family:"Times New Roman";
-  color:#838B8B;mso-ansi-language:EN'><a
-  href="mailto:juan.dioses@ext.europarl.europa.eu">juan.dioses@ext.europarl.europa.eu</a><o:p></o:p></span></p>
-  </div>
-  <div>
-  <p class=MsoNormal style='line-height:12.0pt'><span lang=EN style='font-size:
-  9.0pt;font-family:"Arial",sans-serif;mso-fareast-font-family:"Times New Roman";
-  color:#838B8B;mso-ansi-language:EN'><a href="www.europarl.europa.eu">www.europarl.europa.eu</a><o:p></o:p></span></p>
-  </div>
-  <table class=MsoNormalTable border=0 cellspacing=4 cellpadding=0
-   style='mso-cellspacing:1.5pt;mso-yfti-tbllook:1184;mso-padding-alt:0cm 5.4pt 0cm 5.4pt'>
-   <tr style='mso-yfti-irow:0;mso-yfti-firstrow:yes;mso-yfti-lastrow:yes'>
-    <td style='padding:.75pt .75pt .75pt .75pt'></td>
-   </tr>
-  </table>
-  </td>
- </tr>
-</table>
-
-<p class=MsoNormal><o:p>&nbsp;</o:p></p>
-
-<p class=MsoNormal><o:p>&nbsp;</o:p></p>
-
-</div>
-
-</body>
-
-</html>
+  var SIGNATURE_HTML = `<html xmlns:v="urn:schemas-microsoft-com:vml"\r
+xmlns:o="urn:schemas-microsoft-com:office:office"\r
+xmlns:w="urn:schemas-microsoft-com:office:word"\r
+xmlns:m="http://schemas.microsoft.com/office/2004/12/omml"\r
+xmlns="http://www.w3.org/TR/REC-html40">\r
+\r
+<head>\r
+<meta http-equiv=Content-Type content="text/html; charset=windows-1252">\r
+<meta name=ProgId content=Word.Document>\r
+<meta name=Generator content="Microsoft Word 15">\r
+<meta name=Originator content="Microsoft Word 15">\r
+<link rel=File-List href="data:application/xml;base64,PHhtbCB4bWxuczpvPSJ1cm46c2NoZW1hcy1taWNyb3NvZnQtY29tOm9mZmljZTpvZmZpY2UiPg0KIDxvOk1haW5GaWxlIEhSZWY9Ii4uL21haW4uaHRtIi8+DQogPG86RmlsZSBIUmVmPSJ0aGVtZWRhdGEudGhteCIvPg0KIDxvOkZpbGUgSFJlZj0iY29sb3JzY2hlbWVtYXBwaW5nLnhtbCIvPg0KIDxvOkZpbGUgSFJlZj0iZmlsZWxpc3QueG1sIi8+DQo8L3htbD4=">\r
+<link rel=Edit-Time-Data href="main_files/editdata.mso">\r
+<!--[if !mso]>\r
+<style>\r
+v\\:* {behavior:url(#default#VML);}\r
+o\\:* {behavior:url(#default#VML);}\r
+w\\:* {behavior:url(#default#VML);}\r
+.shape {behavior:url(#default#VML);}\r
+</style>\r
+<![endif]--><!--[if gte mso 9]><xml>\r
+ <o:DocumentProperties>\r
+  <o:Template>NormalEmail.dotm</o:Template>\r
+  <o:Revision>0</o:Revision>\r
+  <o:TotalTime>0</o:TotalTime>\r
+  <o:Pages>1</o:Pages>\r
+  <o:Words>85</o:Words>\r
+  <o:Characters>485</o:Characters>\r
+  <o:Company>European Parliament</o:Company>\r
+  <o:Lines>4</o:Lines>\r
+  <o:Paragraphs>1</o:Paragraphs>\r
+  <o:CharactersWithSpaces>569</o:CharactersWithSpaces>\r
+  <o:Version>16.00</o:Version>\r
+ </o:DocumentProperties>\r
+ <o:OfficeDocumentSettings>\r
+  <o:AllowPNG/>\r
+ </o:OfficeDocumentSettings>\r
+</xml><![endif]-->\r
+<link rel=themeData href="data:application/vnd.ms-officetheme;base64,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">\r
+<link rel=colorSchemeMapping href="data:application/xml;base64,PD94bWwgdmVyc2lvbj0iMS4wIiBlbmNvZGluZz0iVVRGLTgiIHN0YW5kYWxvbmU9InllcyI/Pg0KPGE6Y2xyTWFwIHhtbG5zOmE9Imh0dHA6Ly9zY2hlbWFzLm9wZW54bWxmb3JtYXRzLm9yZy9kcmF3aW5nbWwvMjAwNi9tYWluIiBiZzE9Imx0MSIgdHgxPSJkazEiIGJnMj0ibHQyIiB0eDI9ImRrMiIgYWNjZW50MT0iYWNjZW50MSIgYWNjZW50Mj0iYWNjZW50MiIgYWNjZW50Mz0iYWNjZW50MyIgYWNjZW50ND0iYWNjZW50NCIgYWNjZW50NT0iYWNjZW50NSIgYWNjZW50Nj0iYWNjZW50NiIgaGxpbms9ImhsaW5rIiBmb2xIbGluaz0iZm9sSGxpbmsiLz4=">\r
+<!--[if gte mso 9]><xml>\r
+ <w:WordDocument>\r
+  <w:View>Normal</w:View>\r
+  <w:Zoom>0</w:Zoom>\r
+  <w:TrackMoves/>\r
+  <w:TrackFormatting/>\r
+  <w:PunctuationKerning/>\r
+  <w:ValidateAgainstSchemas/>\r
+  <w:SaveIfXMLInvalid>false</w:SaveIfXMLInvalid>\r
+  <w:IgnoreMixedContent>false</w:IgnoreMixedContent>\r
+  <w:AlwaysShowPlaceholderText>false</w:AlwaysShowPlaceholderText>\r
+  <w:DoNotPromoteQF/>\r
+  <w:LidThemeOther>EN-GB</w:LidThemeOther>\r
+  <w:LidThemeAsian>X-NONE</w:LidThemeAsian>\r
+  <w:LidThemeComplexScript>X-NONE</w:LidThemeComplexScript>\r
+  <w:DoNotShadeFormData/>\r
+  <w:Compatibility>\r
+   <w:BreakWrappedTables/>\r
+   <w:SnapToGridInCell/>\r
+   <w:WrapTextWithPunct/>\r
+   <w:UseAsianBreakRules/>\r
+   <w:DontGrowAutofit/>\r
+   <w:SplitPgBreakAndParaMark/>\r
+   <w:EnableOpenTypeKerning/>\r
+   <w:DontFlipMirrorIndents/>\r
+   <w:OverrideTableStyleHps/>\r
+   <w:UseFELayout/>\r
+  </w:Compatibility>\r
+  <m:mathPr>\r
+   <m:mathFont m:val="Cambria Math"/>\r
+   <m:brkBin m:val="before"/>\r
+   <m:brkBinSub m:val="&#45;-"/>\r
+   <m:smallFrac m:val="off"/>\r
+   <m:dispDef/>\r
+   <m:lMargin m:val="0"/>\r
+   <m:rMargin m:val="0"/>\r
+   <m:defJc m:val="centerGroup"/>\r
+   <m:wrapIndent m:val="1440"/>\r
+   <m:intLim m:val="subSup"/>\r
+   <m:naryLim m:val="undOvr"/>\r
+  </m:mathPr></w:WordDocument>\r
+</xml><![endif]--><!--[if gte mso 9]><xml>\r
+ <w:LatentStyles DefLockedState="false" DefUnhideWhenUsed="false"\r
+  DefSemiHidden="false" DefQFormat="false" DefPriority="99"\r
+  LatentStyleCount="376">\r
+  <w:LsdException Locked="false" Priority="0" QFormat="true" Name="Normal"/>\r
+  <w:LsdException Locked="false" Priority="9" QFormat="true" Name="heading 1"/>\r
+  <w:LsdException Locked="false" Priority="9" SemiHidden="true"\r
+   UnhideWhenUsed="true" QFormat="true" Name="heading 2"/>\r
+  <w:LsdException Locked="false" Priority="9" SemiHidden="true"\r
+   UnhideWhenUsed="true" QFormat="true" Name="heading 3"/>\r
+  <w:LsdException Locked="false" Priority="9" SemiHidden="true"\r
+   UnhideWhenUsed="true" QFormat="true" Name="heading 4"/>\r
+  <w:LsdException Locked="false" Priority="9" SemiHidden="true"\r
+   UnhideWhenUsed="true" QFormat="true" Name="heading 5"/>\r
+  <w:LsdException Locked="false" Priority="9" SemiHidden="true"\r
+   UnhideWhenUsed="true" QFormat="true" Name="heading 6"/>\r
+  <w:LsdException Locked="false" Priority="9" SemiHidden="true"\r
+   UnhideWhenUsed="true" QFormat="true" Name="heading 7"/>\r
+  <w:LsdException Locked="false" Priority="9" SemiHidden="true"\r
+   UnhideWhenUsed="true" QFormat="true" Name="heading 8"/>\r
+  <w:LsdException Locked="false" Priority="9" SemiHidden="true"\r
+   UnhideWhenUsed="true" QFormat="true" Name="heading 9"/>\r
+  <w:LsdException Locked="false" SemiHidden="true" UnhideWhenUsed="true"\r
+   Name="index 1"/>\r
+  <w:LsdException Locked="false" SemiHidden="true" UnhideWhenUsed="true"\r
+   Name="index 2"/>\r
+  <w:LsdException Locked="false" SemiHidden="true" UnhideWhenUsed="true"\r
+   Name="index 3"/>\r
+  <w:LsdException Locked="false" SemiHidden="true" UnhideWhenUsed="true"\r
+   Name="index 4"/>\r
+  <w:LsdException Locked="false" SemiHidden="true" UnhideWhenUsed="true"\r
+   Name="index 5"/>\r
+  <w:LsdException Locked="false" SemiHidden="true" UnhideWhenUsed="true"\r
+   Name="index 6"/>\r
+  <w:LsdException Locked="false" SemiHidden="true" UnhideWhenUsed="true"\r
+   Name="index 7"/>\r
+  <w:LsdException Locked="false" SemiHidden="true" UnhideWhenUsed="true"\r
+   Name="index 8"/>\r
+  <w:LsdException Locked="false" SemiHidden="true" UnhideWhenUsed="true"\r
+   Name="index 9"/>\r
+  <w:LsdException Locked="false" Priority="39" SemiHidden="true"\r
+   UnhideWhenUsed="true" Name="toc 1"/>\r
+  <w:LsdException Locked="false" Priority="39" SemiHidden="true"\r
+   UnhideWhenUsed="true" Name="toc 2"/>\r
+  <w:LsdException Locked="false" Priority="39" SemiHidden="true"\r
+   UnhideWhenUsed="true" Name="toc 3"/>\r
+  <w:LsdException Locked="false" Priority="39" SemiHidden="true"\r
+   UnhideWhenUsed="true" Name="toc 4"/>\r
+  <w:LsdException Locked="false" Priority="39" SemiHidden="true"\r
+   UnhideWhenUsed="true" Name="toc 5"/>\r
+  <w:LsdException Locked="false" Priority="39" SemiHidden="true"\r
+   UnhideWhenUsed="true" Name="toc 6"/>\r
+  <w:LsdException Locked="false" Priority="39" SemiHidden="true"\r
+   UnhideWhenUsed="true" Name="toc 7"/>\r
+  <w:LsdException Locked="false" Priority="39" SemiHidden="true"\r
+   UnhideWhenUsed="true" Name="toc 8"/>\r
+  <w:LsdException Locked="false" Priority="39" SemiHidden="true"\r
+   UnhideWhenUsed="true" Name="toc 9"/>\r
+  <w:LsdException Locked="false" SemiHidden="true" UnhideWhenUsed="true"\r
+   Name="Normal Indent"/>\r
+  <w:LsdException Locked="false" SemiHidden="true" UnhideWhenUsed="true"\r
+   Name="footnote text"/>\r
+  <w:LsdException Locked="false" SemiHidden="true" UnhideWhenUsed="true"\r
+   Name="annotation text"/>\r
+  <w:LsdException Locked="false" SemiHidden="true" UnhideWhenUsed="true"\r
+   Name="header"/>\r
+  <w:LsdException Locked="false" SemiHidden="true" UnhideWhenUsed="true"\r
+   Name="footer"/>\r
+  <w:LsdException Locked="false" SemiHidden="true" UnhideWhenUsed="true"\r
+   Name="index heading"/>\r
+  <w:LsdException Locked="false" Priority="35" SemiHidden="true"\r
+   UnhideWhenUsed="true" QFormat="true" Name="caption"/>\r
+  <w:LsdException Locked="false" SemiHidden="true" UnhideWhenUsed="true"\r
+   Name="table of figures"/>\r
+  <w:LsdException Locked="false" SemiHidden="true" UnhideWhenUsed="true"\r
+   Name="envelope address"/>\r
+  <w:LsdException Locked="false" SemiHidden="true" UnhideWhenUsed="true"\r
+   Name="envelope return"/>\r
+  <w:LsdException Locked="false" SemiHidden="true" UnhideWhenUsed="true"\r
+   Name="footnote reference"/>\r
+  <w:LsdException Locked="false" SemiHidden="true" UnhideWhenUsed="true"\r
+   Name="annotation reference"/>\r
+  <w:LsdException Locked="false" SemiHidden="true" UnhideWhenUsed="true"\r
+   Name="line number"/>\r
+  <w:LsdException Locked="false" SemiHidden="true" UnhideWhenUsed="true"\r
+   Name="page number"/>\r
+  <w:LsdException Locked="false" SemiHidden="true" UnhideWhenUsed="true"\r
+   Name="endnote reference"/>\r
+  <w:LsdException Locked="false" SemiHidden="true" UnhideWhenUsed="true"\r
+   Name="endnote text"/>\r
+  <w:LsdException Locked="false" SemiHidden="true" UnhideWhenUsed="true"\r
+   Name="table of authorities"/>\r
+  <w:LsdException Locked="false" SemiHidden="true" UnhideWhenUsed="true"\r
+   Name="macro"/>\r
+  <w:LsdException Locked="false" SemiHidden="true" UnhideWhenUsed="true"\r
+   Name="toa heading"/>\r
+  <w:LsdException Locked="false" SemiHidden="true" UnhideWhenUsed="true"\r
+   Name="List"/>\r
+  <w:LsdException Locked="false" SemiHidden="true" UnhideWhenUsed="true"\r
+   Name="List Bullet"/>\r
+  <w:LsdException Locked="false" SemiHidden="true" UnhideWhenUsed="true"\r
+   Name="List Number"/>\r
+  <w:LsdException Locked="false" SemiHidden="true" UnhideWhenUsed="true"\r
+   Name="List 2"/>\r
+  <w:LsdException Locked="false" SemiHidden="true" UnhideWhenUsed="true"\r
+   Name="List 3"/>\r
+  <w:LsdException Locked="false" SemiHidden="true" UnhideWhenUsed="true"\r
+   Name="List 4"/>\r
+  <w:LsdException Locked="false" SemiHidden="true" UnhideWhenUsed="true"\r
+   Name="List 5"/>\r
+  <w:LsdException Locked="false" SemiHidden="true" UnhideWhenUsed="true"\r
+   Name="List Bullet 2"/>\r
+  <w:LsdException Locked="false" SemiHidden="true" UnhideWhenUsed="true"\r
+   Name="List Bullet 3"/>\r
+  <w:LsdException Locked="false" SemiHidden="true" UnhideWhenUsed="true"\r
+   Name="List Bullet 4"/>\r
+  <w:LsdException Locked="false" SemiHidden="true" UnhideWhenUsed="true"\r
+   Name="List Bullet 5"/>\r
+  <w:LsdException Locked="false" SemiHidden="true" UnhideWhenUsed="true"\r
+   Name="List Number 2"/>\r
+  <w:LsdException Locked="false" SemiHidden="true" UnhideWhenUsed="true"\r
+   Name="List Number 3"/>\r
+  <w:LsdException Locked="false" SemiHidden="true" UnhideWhenUsed="true"\r
+   Name="List Number 4"/>\r
+  <w:LsdException Locked="false" SemiHidden="true" UnhideWhenUsed="true"\r
+   Name="List Number 5"/>\r
+  <w:LsdException Locked="false" Priority="10" QFormat="true" Name="Title"/>\r
+  <w:LsdException Locked="false" SemiHidden="true" UnhideWhenUsed="true"\r
+   Name="Closing"/>\r
+  <w:LsdException Locked="false" SemiHidden="true" UnhideWhenUsed="true"\r
+   Name="Signature"/>\r
+  <w:LsdException Locked="false" Priority="1" SemiHidden="true"\r
+   UnhideWhenUsed="true" Name="Default Paragraph Font"/>\r
+  <w:LsdException Locked="false" SemiHidden="true" UnhideWhenUsed="true"\r
+   Name="Body Text"/>\r
+  <w:LsdException Locked="false" SemiHidden="true" UnhideWhenUsed="true"\r
+   Name="Body Text Indent"/>\r
+  <w:LsdException Locked="false" SemiHidden="true" UnhideWhenUsed="true"\r
+   Name="List Continue"/>\r
+  <w:LsdException Locked="false" SemiHidden="true" UnhideWhenUsed="true"\r
+   Name="List Continue 2"/>\r
+  <w:LsdException Locked="false" SemiHidden="true" UnhideWhenUsed="true"\r
+   Name="List Continue 3"/>\r
+  <w:LsdException Locked="false" SemiHidden="true" UnhideWhenUsed="true"\r
+   Name="List Continue 4"/>\r
+  <w:LsdException Locked="false" SemiHidden="true" UnhideWhenUsed="true"\r
+   Name="List Continue 5"/>\r
+  <w:LsdException Locked="false" SemiHidden="true" UnhideWhenUsed="true"\r
+   Name="Message Header"/>\r
+  <w:LsdException Locked="false" Priority="11" QFormat="true" Name="Subtitle"/>\r
+  <w:LsdException Locked="false" SemiHidden="true" UnhideWhenUsed="true"\r
+   Name="Salutation"/>\r
+  <w:LsdException Locked="false" SemiHidden="true" UnhideWhenUsed="true"\r
+   Name="Date"/>\r
+  <w:LsdException Locked="false" SemiHidden="true" UnhideWhenUsed="true"\r
+   Name="Body Text First Indent"/>\r
+  <w:LsdException Locked="false" SemiHidden="true" UnhideWhenUsed="true"\r
+   Name="Body Text First Indent 2"/>\r
+  <w:LsdException Locked="false" SemiHidden="true" UnhideWhenUsed="true"\r
+   Name="Note Heading"/>\r
+  <w:LsdException Locked="false" SemiHidden="true" UnhideWhenUsed="true"\r
+   Name="Body Text 2"/>\r
+  <w:LsdException Locked="false" SemiHidden="true" UnhideWhenUsed="true"\r
+   Name="Body Text 3"/>\r
+  <w:LsdException Locked="false" SemiHidden="true" UnhideWhenUsed="true"\r
+   Name="Body Text Indent 2"/>\r
+  <w:LsdException Locked="false" SemiHidden="true" UnhideWhenUsed="true"\r
+   Name="Body Text Indent 3"/>\r
+  <w:LsdException Locked="false" SemiHidden="true" UnhideWhenUsed="true"\r
+   Name="Block Text"/>\r
+  <w:LsdException Locked="false" SemiHidden="true" UnhideWhenUsed="true"\r
+   Name="Hyperlink"/>\r
+  <w:LsdException Locked="false" SemiHidden="true" UnhideWhenUsed="true"\r
+   Name="FollowedHyperlink"/>\r
+  <w:LsdException Locked="false" Priority="22" QFormat="true" Name="Strong"/>\r
+  <w:LsdException Locked="false" Priority="20" QFormat="true" Name="Emphasis"/>\r
+  <w:LsdException Locked="false" SemiHidden="true" UnhideWhenUsed="true"\r
+   Name="Document Map"/>\r
+  <w:LsdException Locked="false" SemiHidden="true" UnhideWhenUsed="true"\r
+   Name="Plain Text"/>\r
+  <w:LsdException Locked="false" SemiHidden="true" UnhideWhenUsed="true"\r
+   Name="E-mail Signature"/>\r
+  <w:LsdException Locked="false" SemiHidden="true" UnhideWhenUsed="true"\r
+   Name="HTML Top of Form"/>\r
+  <w:LsdException Locked="false" SemiHidden="true" UnhideWhenUsed="true"\r
+   Name="HTML Bottom of Form"/>\r
+  <w:LsdException Locked="false" SemiHidden="true" UnhideWhenUsed="true"\r
+   Name="Normal (Web)"/>\r
+  <w:LsdException Locked="false" SemiHidden="true" UnhideWhenUsed="true"\r
+   Name="HTML Acronym"/>\r
+  <w:LsdException Locked="false" SemiHidden="true" UnhideWhenUsed="true"\r
+   Name="HTML Address"/>\r
+  <w:LsdException Locked="false" SemiHidden="true" UnhideWhenUsed="true"\r
+   Name="HTML Cite"/>\r
+  <w:LsdException Locked="false" SemiHidden="true" UnhideWhenUsed="true"\r
+   Name="HTML Code"/>\r
+  <w:LsdException Locked="false" SemiHidden="true" UnhideWhenUsed="true"\r
+   Name="HTML Definition"/>\r
+  <w:LsdException Locked="false" SemiHidden="true" UnhideWhenUsed="true"\r
+   Name="HTML Keyboard"/>\r
+  <w:LsdException Locked="false" SemiHidden="true" UnhideWhenUsed="true"\r
+   Name="HTML Preformatted"/>\r
+  <w:LsdException Locked="false" SemiHidden="true" UnhideWhenUsed="true"\r
+   Name="HTML Sample"/>\r
+  <w:LsdException Locked="false" SemiHidden="true" UnhideWhenUsed="true"\r
+   Name="HTML Typewriter"/>\r
+  <w:LsdException Locked="false" SemiHidden="true" UnhideWhenUsed="true"\r
+   Name="HTML Variable"/>\r
+  <w:LsdException Locked="false" SemiHidden="true" UnhideWhenUsed="true"\r
+   Name="Normal Table"/>\r
+  <w:LsdException Locked="false" SemiHidden="true" UnhideWhenUsed="true"\r
+   Name="annotation subject"/>\r
+  <w:LsdException Locked="false" SemiHidden="true" UnhideWhenUsed="true"\r
+   Name="No List"/>\r
+  <w:LsdException Locked="false" SemiHidden="true" UnhideWhenUsed="true"\r
+   Name="Outline List 1"/>\r
+  <w:LsdException Locked="false" SemiHidden="true" UnhideWhenUsed="true"\r
+   Name="Outline List 2"/>\r
+  <w:LsdException Locked="false" SemiHidden="true" UnhideWhenUsed="true"\r
+   Name="Outline List 3"/>\r
+  <w:LsdException Locked="false" SemiHidden="true" UnhideWhenUsed="true"\r
+   Name="Table Simple 1"/>\r
+  <w:LsdException Locked="false" SemiHidden="true" UnhideWhenUsed="true"\r
+   Name="Table Simple 2"/>\r
+  <w:LsdException Locked="false" SemiHidden="true" UnhideWhenUsed="true"\r
+   Name="Table Simple 3"/>\r
+  <w:LsdException Locked="false" SemiHidden="true" UnhideWhenUsed="true"\r
+   Name="Table Classic 1"/>\r
+  <w:LsdException Locked="false" SemiHidden="true" UnhideWhenUsed="true"\r
+   Name="Table Classic 2"/>\r
+  <w:LsdException Locked="false" SemiHidden="true" UnhideWhenUsed="true"\r
+   Name="Table Classic 3"/>\r
+  <w:LsdException Locked="false" SemiHidden="true" UnhideWhenUsed="true"\r
+   Name="Table Classic 4"/>\r
+  <w:LsdException Locked="false" SemiHidden="true" UnhideWhenUsed="true"\r
+   Name="Table Colorful 1"/>\r
+  <w:LsdException Locked="false" SemiHidden="true" UnhideWhenUsed="true"\r
+   Name="Table Colorful 2"/>\r
+  <w:LsdException Locked="false" SemiHidden="true" UnhideWhenUsed="true"\r
+   Name="Table Colorful 3"/>\r
+  <w:LsdException Locked="false" SemiHidden="true" UnhideWhenUsed="true"\r
+   Name="Table Columns 1"/>\r
+  <w:LsdException Locked="false" SemiHidden="true" UnhideWhenUsed="true"\r
+   Name="Table Columns 2"/>\r
+  <w:LsdException Locked="false" SemiHidden="true" UnhideWhenUsed="true"\r
+   Name="Table Columns 3"/>\r
+  <w:LsdException Locked="false" SemiHidden="true" UnhideWhenUsed="true"\r
+   Name="Table Columns 4"/>\r
+  <w:LsdException Locked="false" SemiHidden="true" UnhideWhenUsed="true"\r
+   Name="Table Columns 5"/>\r
+  <w:LsdException Locked="false" SemiHidden="true" UnhideWhenUsed="true"\r
+   Name="Table Grid 1"/>\r
+  <w:LsdException Locked="false" SemiHidden="true" UnhideWhenUsed="true"\r
+   Name="Table Grid 2"/>\r
+  <w:LsdException Locked="false" SemiHidden="true" UnhideWhenUsed="true"\r
+   Name="Table Grid 3"/>\r
+  <w:LsdException Locked="false" SemiHidden="true" UnhideWhenUsed="true"\r
+   Name="Table Grid 4"/>\r
+  <w:LsdException Locked="false" SemiHidden="true" UnhideWhenUsed="true"\r
+   Name="Table Grid 5"/>\r
+  <w:LsdException Locked="false" SemiHidden="true" UnhideWhenUsed="true"\r
+   Name="Table Grid 6"/>\r
+  <w:LsdException Locked="false" SemiHidden="true" UnhideWhenUsed="true"\r
+   Name="Table Grid 7"/>\r
+  <w:LsdException Locked="false" SemiHidden="true" UnhideWhenUsed="true"\r
+   Name="Table Grid 8"/>\r
+  <w:LsdException Locked="false" SemiHidden="true" UnhideWhenUsed="true"\r
+   Name="Table List 1"/>\r
+  <w:LsdException Locked="false" SemiHidden="true" UnhideWhenUsed="true"\r
+   Name="Table List 2"/>\r
+  <w:LsdException Locked="false" SemiHidden="true" UnhideWhenUsed="true"\r
+   Name="Table List 3"/>\r
+  <w:LsdException Locked="false" SemiHidden="true" UnhideWhenUsed="true"\r
+   Name="Table List 4"/>\r
+  <w:LsdException Locked="false" SemiHidden="true" UnhideWhenUsed="true"\r
+   Name="Table List 5"/>\r
+  <w:LsdException Locked="false" SemiHidden="true" UnhideWhenUsed="true"\r
+   Name="Table List 6"/>\r
+  <w:LsdException Locked="false" SemiHidden="true" UnhideWhenUsed="true"\r
+   Name="Table List 7"/>\r
+  <w:LsdException Locked="false" SemiHidden="true" UnhideWhenUsed="true"\r
+   Name="Table List 8"/>\r
+  <w:LsdException Locked="false" SemiHidden="true" UnhideWhenUsed="true"\r
+   Name="Table 3D effects 1"/>\r
+  <w:LsdException Locked="false" SemiHidden="true" UnhideWhenUsed="true"\r
+   Name="Table 3D effects 2"/>\r
+  <w:LsdException Locked="false" SemiHidden="true" UnhideWhenUsed="true"\r
+   Name="Table 3D effects 3"/>\r
+  <w:LsdException Locked="false" SemiHidden="true" UnhideWhenUsed="true"\r
+   Name="Table Contemporary"/>\r
+  <w:LsdException Locked="false" SemiHidden="true" UnhideWhenUsed="true"\r
+   Name="Table Elegant"/>\r
+  <w:LsdException Locked="false" SemiHidden="true" UnhideWhenUsed="true"\r
+   Name="Table Professional"/>\r
+  <w:LsdException Locked="false" SemiHidden="true" UnhideWhenUsed="true"\r
+   Name="Table Subtle 1"/>\r
+  <w:LsdException Locked="false" SemiHidden="true" UnhideWhenUsed="true"\r
+   Name="Table Subtle 2"/>\r
+  <w:LsdException Locked="false" SemiHidden="true" UnhideWhenUsed="true"\r
+   Name="Table Web 1"/>\r
+  <w:LsdException Locked="false" SemiHidden="true" UnhideWhenUsed="true"\r
+   Name="Table Web 2"/>\r
+  <w:LsdException Locked="false" SemiHidden="true" UnhideWhenUsed="true"\r
+   Name="Table Web 3"/>\r
+  <w:LsdException Locked="false" SemiHidden="true" UnhideWhenUsed="true"\r
+   Name="Balloon Text"/>\r
+  <w:LsdException Locked="false" Priority="39" Name="Table Grid"/>\r
+  <w:LsdException Locked="false" SemiHidden="true" UnhideWhenUsed="true"\r
+   Name="Table Theme"/>\r
+  <w:LsdException Locked="false" SemiHidden="true" Name="Placeholder Text"/>\r
+  <w:LsdException Locked="false" Priority="1" QFormat="true" Name="No Spacing"/>\r
+  <w:LsdException Locked="false" Priority="60" Name="Light Shading"/>\r
+  <w:LsdException Locked="false" Priority="61" Name="Light List"/>\r
+  <w:LsdException Locked="false" Priority="62" Name="Light Grid"/>\r
+  <w:LsdException Locked="false" Priority="63" Name="Medium Shading 1"/>\r
+  <w:LsdException Locked="false" Priority="64" Name="Medium Shading 2"/>\r
+  <w:LsdException Locked="false" Priority="65" Name="Medium List 1"/>\r
+  <w:LsdException Locked="false" Priority="66" Name="Medium List 2"/>\r
+  <w:LsdException Locked="false" Priority="67" Name="Medium Grid 1"/>\r
+  <w:LsdException Locked="false" Priority="68" Name="Medium Grid 2"/>\r
+  <w:LsdException Locked="false" Priority="69" Name="Medium Grid 3"/>\r
+  <w:LsdException Locked="false" Priority="70" Name="Dark List"/>\r
+  <w:LsdException Locked="false" Priority="71" Name="Colorful Shading"/>\r
+  <w:LsdException Locked="false" Priority="72" Name="Colorful List"/>\r
+  <w:LsdException Locked="false" Priority="73" Name="Colorful Grid"/>\r
+  <w:LsdException Locked="false" Priority="60" Name="Light Shading Accent 1"/>\r
+  <w:LsdException Locked="false" Priority="61" Name="Light List Accent 1"/>\r
+  <w:LsdException Locked="false" Priority="62" Name="Light Grid Accent 1"/>\r
+  <w:LsdException Locked="false" Priority="63" Name="Medium Shading 1 Accent 1"/>\r
+  <w:LsdException Locked="false" Priority="64" Name="Medium Shading 2 Accent 1"/>\r
+  <w:LsdException Locked="false" Priority="65" Name="Medium List 1 Accent 1"/>\r
+  <w:LsdException Locked="false" SemiHidden="true" Name="Revision"/>\r
+  <w:LsdException Locked="false" Priority="34" QFormat="true"\r
+   Name="List Paragraph"/>\r
+  <w:LsdException Locked="false" Priority="29" QFormat="true" Name="Quote"/>\r
+  <w:LsdException Locked="false" Priority="30" QFormat="true"\r
+   Name="Intense Quote"/>\r
+  <w:LsdException Locked="false" Priority="66" Name="Medium List 2 Accent 1"/>\r
+  <w:LsdException Locked="false" Priority="67" Name="Medium Grid 1 Accent 1"/>\r
+  <w:LsdException Locked="false" Priority="68" Name="Medium Grid 2 Accent 1"/>\r
+  <w:LsdException Locked="false" Priority="69" Name="Medium Grid 3 Accent 1"/>\r
+  <w:LsdException Locked="false" Priority="70" Name="Dark List Accent 1"/>\r
+  <w:LsdException Locked="false" Priority="71" Name="Colorful Shading Accent 1"/>\r
+  <w:LsdException Locked="false" Priority="72" Name="Colorful List Accent 1"/>\r
+  <w:LsdException Locked="false" Priority="73" Name="Colorful Grid Accent 1"/>\r
+  <w:LsdException Locked="false" Priority="60" Name="Light Shading Accent 2"/>\r
+  <w:LsdException Locked="false" Priority="61" Name="Light List Accent 2"/>\r
+  <w:LsdException Locked="false" Priority="62" Name="Light Grid Accent 2"/>\r
+  <w:LsdException Locked="false" Priority="63" Name="Medium Shading 1 Accent 2"/>\r
+  <w:LsdException Locked="false" Priority="64" Name="Medium Shading 2 Accent 2"/>\r
+  <w:LsdException Locked="false" Priority="65" Name="Medium List 1 Accent 2"/>\r
+  <w:LsdException Locked="false" Priority="66" Name="Medium List 2 Accent 2"/>\r
+  <w:LsdException Locked="false" Priority="67" Name="Medium Grid 1 Accent 2"/>\r
+  <w:LsdException Locked="false" Priority="68" Name="Medium Grid 2 Accent 2"/>\r
+  <w:LsdException Locked="false" Priority="69" Name="Medium Grid 3 Accent 2"/>\r
+  <w:LsdException Locked="false" Priority="70" Name="Dark List Accent 2"/>\r
+  <w:LsdException Locked="false" Priority="71" Name="Colorful Shading Accent 2"/>\r
+  <w:LsdException Locked="false" Priority="72" Name="Colorful List Accent 2"/>\r
+  <w:LsdException Locked="false" Priority="73" Name="Colorful Grid Accent 2"/>\r
+  <w:LsdException Locked="false" Priority="60" Name="Light Shading Accent 3"/>\r
+  <w:LsdException Locked="false" Priority="61" Name="Light List Accent 3"/>\r
+  <w:LsdException Locked="false" Priority="62" Name="Light Grid Accent 3"/>\r
+  <w:LsdException Locked="false" Priority="63" Name="Medium Shading 1 Accent 3"/>\r
+  <w:LsdException Locked="false" Priority="64" Name="Medium Shading 2 Accent 3"/>\r
+  <w:LsdException Locked="false" Priority="65" Name="Medium List 1 Accent 3"/>\r
+  <w:LsdException Locked="false" Priority="66" Name="Medium List 2 Accent 3"/>\r
+  <w:LsdException Locked="false" Priority="67" Name="Medium Grid 1 Accent 3"/>\r
+  <w:LsdException Locked="false" Priority="68" Name="Medium Grid 2 Accent 3"/>\r
+  <w:LsdException Locked="false" Priority="69" Name="Medium Grid 3 Accent 3"/>\r
+  <w:LsdException Locked="false" Priority="70" Name="Dark List Accent 3"/>\r
+  <w:LsdException Locked="false" Priority="71" Name="Colorful Shading Accent 3"/>\r
+  <w:LsdException Locked="false" Priority="72" Name="Colorful List Accent 3"/>\r
+  <w:LsdException Locked="false" Priority="73" Name="Colorful Grid Accent 3"/>\r
+  <w:LsdException Locked="false" Priority="60" Name="Light Shading Accent 4"/>\r
+  <w:LsdException Locked="false" Priority="61" Name="Light List Accent 4"/>\r
+  <w:LsdException Locked="false" Priority="62" Name="Light Grid Accent 4"/>\r
+  <w:LsdException Locked="false" Priority="63" Name="Medium Shading 1 Accent 4"/>\r
+  <w:LsdException Locked="false" Priority="64" Name="Medium Shading 2 Accent 4"/>\r
+  <w:LsdException Locked="false" Priority="65" Name="Medium List 1 Accent 4"/>\r
+  <w:LsdException Locked="false" Priority="66" Name="Medium List 2 Accent 4"/>\r
+  <w:LsdException Locked="false" Priority="67" Name="Medium Grid 1 Accent 4"/>\r
+  <w:LsdException Locked="false" Priority="68" Name="Medium Grid 2 Accent 4"/>\r
+  <w:LsdException Locked="false" Priority="69" Name="Medium Grid 3 Accent 4"/>\r
+  <w:LsdException Locked="false" Priority="70" Name="Dark List Accent 4"/>\r
+  <w:LsdException Locked="false" Priority="71" Name="Colorful Shading Accent 4"/>\r
+  <w:LsdException Locked="false" Priority="72" Name="Colorful List Accent 4"/>\r
+  <w:LsdException Locked="false" Priority="73" Name="Colorful Grid Accent 4"/>\r
+  <w:LsdException Locked="false" Priority="60" Name="Light Shading Accent 5"/>\r
+  <w:LsdException Locked="false" Priority="61" Name="Light List Accent 5"/>\r
+  <w:LsdException Locked="false" Priority="62" Name="Light Grid Accent 5"/>\r
+  <w:LsdException Locked="false" Priority="63" Name="Medium Shading 1 Accent 5"/>\r
+  <w:LsdException Locked="false" Priority="64" Name="Medium Shading 2 Accent 5"/>\r
+  <w:LsdException Locked="false" Priority="65" Name="Medium List 1 Accent 5"/>\r
+  <w:LsdException Locked="false" Priority="66" Name="Medium List 2 Accent 5"/>\r
+  <w:LsdException Locked="false" Priority="67" Name="Medium Grid 1 Accent 5"/>\r
+  <w:LsdException Locked="false" Priority="68" Name="Medium Grid 2 Accent 5"/>\r
+  <w:LsdException Locked="false" Priority="69" Name="Medium Grid 3 Accent 5"/>\r
+  <w:LsdException Locked="false" Priority="70" Name="Dark List Accent 5"/>\r
+  <w:LsdException Locked="false" Priority="71" Name="Colorful Shading Accent 5"/>\r
+  <w:LsdException Locked="false" Priority="72" Name="Colorful List Accent 5"/>\r
+  <w:LsdException Locked="false" Priority="73" Name="Colorful Grid Accent 5"/>\r
+  <w:LsdException Locked="false" Priority="60" Name="Light Shading Accent 6"/>\r
+  <w:LsdException Locked="false" Priority="61" Name="Light List Accent 6"/>\r
+  <w:LsdException Locked="false" Priority="62" Name="Light Grid Accent 6"/>\r
+  <w:LsdException Locked="false" Priority="63" Name="Medium Shading 1 Accent 6"/>\r
+  <w:LsdException Locked="false" Priority="64" Name="Medium Shading 2 Accent 6"/>\r
+  <w:LsdException Locked="false" Priority="65" Name="Medium List 1 Accent 6"/>\r
+  <w:LsdException Locked="false" Priority="66" Name="Medium List 2 Accent 6"/>\r
+  <w:LsdException Locked="false" Priority="67" Name="Medium Grid 1 Accent 6"/>\r
+  <w:LsdException Locked="false" Priority="68" Name="Medium Grid 2 Accent 6"/>\r
+  <w:LsdException Locked="false" Priority="69" Name="Medium Grid 3 Accent 6"/>\r
+  <w:LsdException Locked="false" Priority="70" Name="Dark List Accent 6"/>\r
+  <w:LsdException Locked="false" Priority="71" Name="Colorful Shading Accent 6"/>\r
+  <w:LsdException Locked="false" Priority="72" Name="Colorful List Accent 6"/>\r
+  <w:LsdException Locked="false" Priority="73" Name="Colorful Grid Accent 6"/>\r
+  <w:LsdException Locked="false" Priority="19" QFormat="true"\r
+   Name="Subtle Emphasis"/>\r
+  <w:LsdException Locked="false" Priority="21" QFormat="true"\r
+   Name="Intense Emphasis"/>\r
+  <w:LsdException Locked="false" Priority="31" QFormat="true"\r
+   Name="Subtle Reference"/>\r
+  <w:LsdException Locked="false" Priority="32" QFormat="true"\r
+   Name="Intense Reference"/>\r
+  <w:LsdException Locked="false" Priority="33" QFormat="true" Name="Book Title"/>\r
+  <w:LsdException Locked="false" Priority="37" SemiHidden="true"\r
+   UnhideWhenUsed="true" Name="Bibliography"/>\r
+  <w:LsdException Locked="false" Priority="39" SemiHidden="true"\r
+   UnhideWhenUsed="true" QFormat="true" Name="TOC Heading"/>\r
+  <w:LsdException Locked="false" Priority="41" Name="Plain Table 1"/>\r
+  <w:LsdException Locked="false" Priority="42" Name="Plain Table 2"/>\r
+  <w:LsdException Locked="false" Priority="43" Name="Plain Table 3"/>\r
+  <w:LsdException Locked="false" Priority="44" Name="Plain Table 4"/>\r
+  <w:LsdException Locked="false" Priority="45" Name="Plain Table 5"/>\r
+  <w:LsdException Locked="false" Priority="40" Name="Grid Table Light"/>\r
+  <w:LsdException Locked="false" Priority="46" Name="Grid Table 1 Light"/>\r
+  <w:LsdException Locked="false" Priority="47" Name="Grid Table 2"/>\r
+  <w:LsdException Locked="false" Priority="48" Name="Grid Table 3"/>\r
+  <w:LsdException Locked="false" Priority="49" Name="Grid Table 4"/>\r
+  <w:LsdException Locked="false" Priority="50" Name="Grid Table 5 Dark"/>\r
+  <w:LsdException Locked="false" Priority="51" Name="Grid Table 6 Colorful"/>\r
+  <w:LsdException Locked="false" Priority="52" Name="Grid Table 7 Colorful"/>\r
+  <w:LsdException Locked="false" Priority="46"\r
+   Name="Grid Table 1 Light Accent 1"/>\r
+  <w:LsdException Locked="false" Priority="47" Name="Grid Table 2 Accent 1"/>\r
+  <w:LsdException Locked="false" Priority="48" Name="Grid Table 3 Accent 1"/>\r
+  <w:LsdException Locked="false" Priority="49" Name="Grid Table 4 Accent 1"/>\r
+  <w:LsdException Locked="false" Priority="50" Name="Grid Table 5 Dark Accent 1"/>\r
+  <w:LsdException Locked="false" Priority="51"\r
+   Name="Grid Table 6 Colorful Accent 1"/>\r
+  <w:LsdException Locked="false" Priority="52"\r
+   Name="Grid Table 7 Colorful Accent 1"/>\r
+  <w:LsdException Locked="false" Priority="46"\r
+   Name="Grid Table 1 Light Accent 2"/>\r
+  <w:LsdException Locked="false" Priority="47" Name="Grid Table 2 Accent 2"/>\r
+  <w:LsdException Locked="false" Priority="48" Name="Grid Table 3 Accent 2"/>\r
+  <w:LsdException Locked="false" Priority="49" Name="Grid Table 4 Accent 2"/>\r
+  <w:LsdException Locked="false" Priority="50" Name="Grid Table 5 Dark Accent 2"/>\r
+  <w:LsdException Locked="false" Priority="51"\r
+   Name="Grid Table 6 Colorful Accent 2"/>\r
+  <w:LsdException Locked="false" Priority="52"\r
+   Name="Grid Table 7 Colorful Accent 2"/>\r
+  <w:LsdException Locked="false" Priority="46"\r
+   Name="Grid Table 1 Light Accent 3"/>\r
+  <w:LsdException Locked="false" Priority="47" Name="Grid Table 2 Accent 3"/>\r
+  <w:LsdException Locked="false" Priority="48" Name="Grid Table 3 Accent 3"/>\r
+  <w:LsdException Locked="false" Priority="49" Name="Grid Table 4 Accent 3"/>\r
+  <w:LsdException Locked="false" Priority="50" Name="Grid Table 5 Dark Accent 3"/>\r
+  <w:LsdException Locked="false" Priority="51"\r
+   Name="Grid Table 6 Colorful Accent 3"/>\r
+  <w:LsdException Locked="false" Priority="52"\r
+   Name="Grid Table 7 Colorful Accent 3"/>\r
+  <w:LsdException Locked="false" Priority="46"\r
+   Name="Grid Table 1 Light Accent 4"/>\r
+  <w:LsdException Locked="false" Priority="47" Name="Grid Table 2 Accent 4"/>\r
+  <w:LsdException Locked="false" Priority="48" Name="Grid Table 3 Accent 4"/>\r
+  <w:LsdException Locked="false" Priority="49" Name="Grid Table 4 Accent 4"/>\r
+  <w:LsdException Locked="false" Priority="50" Name="Grid Table 5 Dark Accent 4"/>\r
+  <w:LsdException Locked="false" Priority="51"\r
+   Name="Grid Table 6 Colorful Accent 4"/>\r
+  <w:LsdException Locked="false" Priority="52"\r
+   Name="Grid Table 7 Colorful Accent 4"/>\r
+  <w:LsdException Locked="false" Priority="46"\r
+   Name="Grid Table 1 Light Accent 5"/>\r
+  <w:LsdException Locked="false" Priority="47" Name="Grid Table 2 Accent 5"/>\r
+  <w:LsdException Locked="false" Priority="48" Name="Grid Table 3 Accent 5"/>\r
+  <w:LsdException Locked="false" Priority="49" Name="Grid Table 4 Accent 5"/>\r
+  <w:LsdException Locked="false" Priority="50" Name="Grid Table 5 Dark Accent 5"/>\r
+  <w:LsdException Locked="false" Priority="51"\r
+   Name="Grid Table 6 Colorful Accent 5"/>\r
+  <w:LsdException Locked="false" Priority="52"\r
+   Name="Grid Table 7 Colorful Accent 5"/>\r
+  <w:LsdException Locked="false" Priority="46"\r
+   Name="Grid Table 1 Light Accent 6"/>\r
+  <w:LsdException Locked="false" Priority="47" Name="Grid Table 2 Accent 6"/>\r
+  <w:LsdException Locked="false" Priority="48" Name="Grid Table 3 Accent 6"/>\r
+  <w:LsdException Locked="false" Priority="49" Name="Grid Table 4 Accent 6"/>\r
+  <w:LsdException Locked="false" Priority="50" Name="Grid Table 5 Dark Accent 6"/>\r
+  <w:LsdException Locked="false" Priority="51"\r
+   Name="Grid Table 6 Colorful Accent 6"/>\r
+  <w:LsdException Locked="false" Priority="52"\r
+   Name="Grid Table 7 Colorful Accent 6"/>\r
+  <w:LsdException Locked="false" Priority="46" Name="List Table 1 Light"/>\r
+  <w:LsdException Locked="false" Priority="47" Name="List Table 2"/>\r
+  <w:LsdException Locked="false" Priority="48" Name="List Table 3"/>\r
+  <w:LsdException Locked="false" Priority="49" Name="List Table 4"/>\r
+  <w:LsdException Locked="false" Priority="50" Name="List Table 5 Dark"/>\r
+  <w:LsdException Locked="false" Priority="51" Name="List Table 6 Colorful"/>\r
+  <w:LsdException Locked="false" Priority="52" Name="List Table 7 Colorful"/>\r
+  <w:LsdException Locked="false" Priority="46"\r
+   Name="List Table 1 Light Accent 1"/>\r
+  <w:LsdException Locked="false" Priority="47" Name="List Table 2 Accent 1"/>\r
+  <w:LsdException Locked="false" Priority="48" Name="List Table 3 Accent 1"/>\r
+  <w:LsdException Locked="false" Priority="49" Name="List Table 4 Accent 1"/>\r
+  <w:LsdException Locked="false" Priority="50" Name="List Table 5 Dark Accent 1"/>\r
+  <w:LsdException Locked="false" Priority="51"\r
+   Name="List Table 6 Colorful Accent 1"/>\r
+  <w:LsdException Locked="false" Priority="52"\r
+   Name="List Table 7 Colorful Accent 1"/>\r
+  <w:LsdException Locked="false" Priority="46"\r
+   Name="List Table 1 Light Accent 2"/>\r
+  <w:LsdException Locked="false" Priority="47" Name="List Table 2 Accent 2"/>\r
+  <w:LsdException Locked="false" Priority="48" Name="List Table 3 Accent 2"/>\r
+  <w:LsdException Locked="false" Priority="49" Name="List Table 4 Accent 2"/>\r
+  <w:LsdException Locked="false" Priority="50" Name="List Table 5 Dark Accent 2"/>\r
+  <w:LsdException Locked="false" Priority="51"\r
+   Name="List Table 6 Colorful Accent 2"/>\r
+  <w:LsdException Locked="false" Priority="52"\r
+   Name="List Table 7 Colorful Accent 2"/>\r
+  <w:LsdException Locked="false" Priority="46"\r
+   Name="List Table 1 Light Accent 3"/>\r
+  <w:LsdException Locked="false" Priority="47" Name="List Table 2 Accent 3"/>\r
+  <w:LsdException Locked="false" Priority="48" Name="List Table 3 Accent 3"/>\r
+  <w:LsdException Locked="false" Priority="49" Name="List Table 4 Accent 3"/>\r
+  <w:LsdException Locked="false" Priority="50" Name="List Table 5 Dark Accent 3"/>\r
+  <w:LsdException Locked="false" Priority="51"\r
+   Name="List Table 6 Colorful Accent 3"/>\r
+  <w:LsdException Locked="false" Priority="52"\r
+   Name="List Table 7 Colorful Accent 3"/>\r
+  <w:LsdException Locked="false" Priority="46"\r
+   Name="List Table 1 Light Accent 4"/>\r
+  <w:LsdException Locked="false" Priority="47" Name="List Table 2 Accent 4"/>\r
+  <w:LsdException Locked="false" Priority="48" Name="List Table 3 Accent 4"/>\r
+  <w:LsdException Locked="false" Priority="49" Name="List Table 4 Accent 4"/>\r
+  <w:LsdException Locked="false" Priority="50" Name="List Table 5 Dark Accent 4"/>\r
+  <w:LsdException Locked="false" Priority="51"\r
+   Name="List Table 6 Colorful Accent 4"/>\r
+  <w:LsdException Locked="false" Priority="52"\r
+   Name="List Table 7 Colorful Accent 4"/>\r
+  <w:LsdException Locked="false" Priority="46"\r
+   Name="List Table 1 Light Accent 5"/>\r
+  <w:LsdException Locked="false" Priority="47" Name="List Table 2 Accent 5"/>\r
+  <w:LsdException Locked="false" Priority="48" Name="List Table 3 Accent 5"/>\r
+  <w:LsdException Locked="false" Priority="49" Name="List Table 4 Accent 5"/>\r
+  <w:LsdException Locked="false" Priority="50" Name="List Table 5 Dark Accent 5"/>\r
+  <w:LsdException Locked="false" Priority="51"\r
+   Name="List Table 6 Colorful Accent 5"/>\r
+  <w:LsdException Locked="false" Priority="52"\r
+   Name="List Table 7 Colorful Accent 5"/>\r
+  <w:LsdException Locked="false" Priority="46"\r
+   Name="List Table 1 Light Accent 6"/>\r
+  <w:LsdException Locked="false" Priority="47" Name="List Table 2 Accent 6"/>\r
+  <w:LsdException Locked="false" Priority="48" Name="List Table 3 Accent 6"/>\r
+  <w:LsdException Locked="false" Priority="49" Name="List Table 4 Accent 6"/>\r
+  <w:LsdException Locked="false" Priority="50" Name="List Table 5 Dark Accent 6"/>\r
+  <w:LsdException Locked="false" Priority="51"\r
+   Name="List Table 6 Colorful Accent 6"/>\r
+  <w:LsdException Locked="false" Priority="52"\r
+   Name="List Table 7 Colorful Accent 6"/>\r
+  <w:LsdException Locked="false" SemiHidden="true" UnhideWhenUsed="true"\r
+   Name="Mention"/>\r
+  <w:LsdException Locked="false" SemiHidden="true" UnhideWhenUsed="true"\r
+   Name="Smart Hyperlink"/>\r
+  <w:LsdException Locked="false" SemiHidden="true" UnhideWhenUsed="true"\r
+   Name="Hashtag"/>\r
+  <w:LsdException Locked="false" SemiHidden="true" UnhideWhenUsed="true"\r
+   Name="Unresolved Mention"/>\r
+  <w:LsdException Locked="false" SemiHidden="true" UnhideWhenUsed="true"\r
+   Name="Smart Link"/>\r
+ </w:LatentStyles>\r
+</xml><![endif]-->\r
+<style>\r
+<!--\r
+ /* Font Definitions */\r
+ @font-face\r
+	{font-family:"Cambria Math";\r
+	panose-1:2 4 5 3 5 4 6 3 2 4;\r
+	mso-font-charset:0;\r
+	mso-generic-font-family:roman;\r
+	mso-font-pitch:variable;\r
+	mso-font-signature:-536869121 1107305727 33554432 0 415 0;}\r
+@font-face\r
+	{font-family:Aptos;\r
+	mso-font-charset:0;\r
+	mso-generic-font-family:swiss;\r
+	mso-font-pitch:variable;\r
+	mso-font-signature:536871559 3 0 0 415 0;}\r
+@font-face\r
+	{font-family:EuropeaNarrow;\r
+	panose-1:0 0 0 0 0 0 0 0 0 0;\r
+	mso-font-charset:0;\r
+	mso-generic-font-family:modern;\r
+	mso-font-format:other;\r
+	mso-font-pitch:variable;\r
+	mso-font-signature:-1610611969 1342301307 0 0 415 0;}\r
+ /* Style Definitions */\r
+ p.MsoNormal, li.MsoNormal, div.MsoNormal\r
+	{mso-style-unhide:no;\r
+	mso-style-qformat:yes;\r
+	mso-style-parent:"";\r
+	margin:0cm;\r
+	mso-pagination:widow-orphan;\r
+	font-size:12.0pt;\r
+	font-family:"Aptos",sans-serif;\r
+	mso-ascii-font-family:Aptos;\r
+	mso-ascii-theme-font:minor-latin;\r
+	mso-fareast-font-family:"Times New Roman";\r
+	mso-fareast-theme-font:minor-fareast;\r
+	mso-hansi-font-family:Aptos;\r
+	mso-hansi-theme-font:minor-latin;\r
+	mso-bidi-font-family:"Times New Roman";\r
+	mso-bidi-theme-font:minor-bidi;\r
+	mso-font-kerning:1.0pt;\r
+	mso-ligatures:standardcontextual;}\r
+a:link, span.MsoHyperlink\r
+	{mso-style-noshow:yes;\r
+	mso-style-priority:99;\r
+	color:blue;\r
+	text-decoration:underline;\r
+	text-underline:single;}\r
+a:visited, span.MsoHyperlinkFollowed\r
+	{mso-style-noshow:yes;\r
+	mso-style-priority:99;\r
+	color:#96607D;\r
+	mso-themecolor:followedhyperlink;\r
+	text-decoration:underline;\r
+	text-underline:single;}\r
+.MsoChpDefault\r
+	{mso-style-type:export-only;\r
+	mso-default-props:yes;\r
+	font-size:12.0pt;\r
+	mso-ansi-font-size:12.0pt;\r
+	mso-bidi-font-size:12.0pt;\r
+	mso-ascii-font-family:Aptos;\r
+	mso-ascii-theme-font:minor-latin;\r
+	mso-fareast-font-family:"Times New Roman";\r
+	mso-fareast-theme-font:minor-fareast;\r
+	mso-hansi-font-family:Aptos;\r
+	mso-hansi-theme-font:minor-latin;\r
+	mso-bidi-font-family:"Times New Roman";\r
+	mso-bidi-theme-font:minor-bidi;\r
+	mso-font-kerning:1.0pt;\r
+	mso-ligatures:standardcontextual;}\r
+@page WordSection1\r
+	{size:612.0pt 792.0pt;\r
+	margin:72.0pt 72.0pt 72.0pt 72.0pt;\r
+	mso-header-margin:36.0pt;\r
+	mso-footer-margin:36.0pt;\r
+	mso-paper-source:0;}\r
+div.WordSection1\r
+	{page:WordSection1;}\r
+-->\r
+</style>\r
+<!--[if gte mso 10]>\r
+<style>\r
+ /* Style Definitions */\r
+ table.MsoNormalTable\r
+	{mso-style-name:"Table Normal";\r
+	mso-tstyle-rowband-size:0;\r
+	mso-tstyle-colband-size:0;\r
+	mso-style-noshow:yes;\r
+	mso-style-priority:99;\r
+	mso-style-parent:"";\r
+	mso-padding-alt:0cm 5.4pt 0cm 5.4pt;\r
+	mso-para-margin:0cm;\r
+	mso-pagination:widow-orphan;\r
+	font-size:12.0pt;\r
+	font-family:"Aptos",sans-serif;\r
+	mso-ascii-font-family:Aptos;\r
+	mso-ascii-theme-font:minor-latin;\r
+	mso-hansi-font-family:Aptos;\r
+	mso-hansi-theme-font:minor-latin;\r
+	mso-font-kerning:1.0pt;\r
+	mso-ligatures:standardcontextual;}\r
+</style>\r
+<![endif]-->\r
+</head>\r
+\r
+<body lang=EN-GB link=blue vlink="#96607D" style='tab-interval:36.0pt;\r
+word-wrap:break-word'>\r
+\r
+<div class=WordSection1>\r
+\r
+<table class=MsoNormalTable border=0 cellspacing=4 cellpadding=0 width=715\r
+ style='width:536.25pt;mso-cellspacing:1.5pt;margin-left:2.25pt;mso-yfti-tbllook:\r
+ 1184;mso-padding-alt:0cm 5.4pt 0cm 5.4pt'>\r
+ <tr style='mso-yfti-irow:0;mso-yfti-firstrow:yes;mso-yfti-lastrow:yes'>\r
+  <td width=115 valign=top style='width:86.25pt;padding:.75pt 7.5pt .75pt .75pt'>\r
+  <p class=MsoNormal><span lang=EN style='font-size:9.0pt;font-family:"Arial",sans-serif;\r
+  mso-fareast-font-family:"Times New Roman";color:#838B8B;mso-ansi-language:\r
+  EN;mso-no-proof:yes'><img id="_x0000_i1028" src="data:image/png;base64,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"\r
+  alt="European Parliament logo"></span><span lang=EN style='font-size:9.0pt;\r
+  font-family:"Arial",sans-serif;mso-fareast-font-family:"Times New Roman";\r
+  color:#838B8B;mso-font-kerning:0pt;mso-ligatures:none;mso-ansi-language:EN'><o:p></o:p></span></p>\r
+  </td>\r
+  <td width=600 style='width:450.0pt;padding:.75pt .75pt .75pt .75pt'>\r
+  <div>\r
+  <p class=MsoNormal><b><span lang=EN style='font-family:EuropeaNarrow;\r
+  mso-fareast-font-family:"Times New Roman";mso-bidi-font-family:Arial;\r
+  color:#0C4DA5;mso-ansi-language:EN'>Juan carlos&nbsp;DIOSES <o:p></o:p></span></b></p>\r
+  </div>\r
+  <div>\r
+  <p class=MsoNormal style='line-height:11.0pt'><span lang=EN style='font-size:\r
+  9.0pt;font-family:"Arial",sans-serif;mso-fareast-font-family:"Times New Roman";\r
+  color:#838B8B;mso-ansi-language:EN'>IT support External Consultant <o:p></o:p></span></p>\r
+  </div>\r
+  <div>\r
+  <p class=MsoNormal style='line-height:14.0pt'><b><span lang=EN\r
+  style='font-size:11.0pt;font-family:EuropeaNarrow;mso-fareast-font-family:\r
+  "Times New Roman";mso-bidi-font-family:Arial;color:#7A868E;mso-ansi-language:\r
+  EN'><br>\r
+  European Parliament<o:p></o:p></span></b></p>\r
+  </div>\r
+  <div>\r
+  <p class=MsoNormal style='line-height:11.0pt'><span lang=EN style='font-size:\r
+  9.0pt;font-family:"Arial",sans-serif;mso-fareast-font-family:"Times New Roman";\r
+  color:#838B8B;mso-ansi-language:EN'>Directorate-General for Information\r
+  Technologies and Cybersecurity<o:p></o:p></span></p>\r
+  </div>\r
+  <div>\r
+  <p class=MsoNormal style='line-height:11.0pt'><span lang=EN style='font-size:\r
+  9.0pt;font-family:"Arial",sans-serif;mso-fareast-font-family:"Times New Roman";\r
+  color:#838B8B;mso-ansi-language:EN'>Directorate for Customers and Digital\r
+  Workplace<o:p></o:p></span></p>\r
+  </div>\r
+  <div>\r
+  <p class=MsoNormal style='line-height:11.0pt'><span lang=EN style='font-size:\r
+  9.0pt;font-family:"Arial",sans-serif;mso-fareast-font-family:"Times New Roman";\r
+  color:#838B8B;mso-ansi-language:EN'>Members' Digital Experience Unit<o:p></o:p></span></p>\r
+  </div>\r
+  <div>\r
+  <p class=MsoNormal style='line-height:11.0pt'><span lang=EN style='font-size:\r
+  9.0pt;font-family:"Arial",sans-serif;mso-fareast-font-family:"Times New Roman";\r
+  color:#838B8B;mso-ansi-language:EN'>Digital Workplace Support<o:p></o:p></span></p>\r
+  </div>\r
+  <table class=MsoNormalTable border=0 cellspacing=0 cellpadding=0\r
+   style='border-collapse:collapse;mso-yfti-tbllook:1184;mso-padding-alt:0cm 5.4pt 0cm 5.4pt'>\r
+   <tr style='mso-yfti-irow:0;mso-yfti-firstrow:yes;mso-yfti-lastrow:yes'>\r
+    <td style='padding:.75pt 12.0pt .75pt .75pt'>\r
+    <p class=MsoNormal><span style='font-size:9.0pt;font-family:"Arial",sans-serif;\r
+    mso-fareast-font-family:"Times New Roman";color:#838B8B'>BRU - Remard\r
+    02J006<o:p></o:p></span></p>\r
+    </td>\r
+    <td style='border:none;border-left:solid #838B8B 1.0pt;mso-border-left-alt:\r
+    solid #838B8B .75pt;padding:.75pt .75pt .75pt 12.0pt'>\r
+    <p class=MsoNormal><span style='font-size:9.0pt;font-family:"Arial",sans-serif;\r
+    mso-fareast-font-family:"Times New Roman";color:#838B8B'>Tel +32 228 43913<o:p></o:p></span></p>\r
+    </td>\r
+   </tr>\r
+  </table>\r
+  <div>\r
+  <p class=MsoNormal style='line-height:12.0pt'><span lang=EN style='font-size:\r
+  9.0pt;font-family:"Arial",sans-serif;mso-fareast-font-family:"Times New Roman";\r
+  color:#838B8B;mso-ansi-language:EN'><a\r
+  href="mailto:juan.dioses@ext.europarl.europa.eu">juan.dioses@ext.europarl.europa.eu</a><o:p></o:p></span></p>\r
+  </div>\r
+  <div>\r
+  <p class=MsoNormal style='line-height:12.0pt'><span lang=EN style='font-size:\r
+  9.0pt;font-family:"Arial",sans-serif;mso-fareast-font-family:"Times New Roman";\r
+  color:#838B8B;mso-ansi-language:EN'><a href="www.europarl.europa.eu">www.europarl.europa.eu</a><o:p></o:p></span></p>\r
+  </div>\r
+  <table class=MsoNormalTable border=0 cellspacing=4 cellpadding=0\r
+   style='mso-cellspacing:1.5pt;mso-yfti-tbllook:1184;mso-padding-alt:0cm 5.4pt 0cm 5.4pt'>\r
+   <tr style='mso-yfti-irow:0;mso-yfti-firstrow:yes;mso-yfti-lastrow:yes'>\r
+    <td style='padding:.75pt .75pt .75pt .75pt'></td>\r
+   </tr>\r
+  </table>\r
+  </td>\r
+ </tr>\r
+</table>\r
+\r
+<p class=MsoNormal><o:p>&nbsp;</o:p></p>\r
+\r
+<p class=MsoNormal><o:p>&nbsp;</o:p></p>\r
+\r
+</div>\r
+\r
+</body>\r
+\r
+</html>\r
 `;
   var SIGNATURE_FILE = "Assistant/templates/email/signature/main.htm";
-  var SIGNATURE_ASSETS = { "LOGO_EP.png": "data:image/png;base64,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", "main_files/colorschememapping.xml": "data:application/xml;base64,PD94bWwgdmVyc2lvbj0iMS4wIiBlbmNvZGluZz0iVVRGLTgiIHN0YW5kYWxvbmU9InllcyI/Pgo8YTpjbHJNYXAgeG1sbnM6YT0iaHR0cDovL3NjaGVtYXMub3BlbnhtbGZvcm1hdHMub3JnL2RyYXdpbmdtbC8yMDA2L21haW4iIGJnMT0ibHQxIiB0eDE9ImRrMSIgYmcyPSJsdDIiIHR4Mj0iZGsyIiBhY2NlbnQxPSJhY2NlbnQxIiBhY2NlbnQyPSJhY2NlbnQyIiBhY2NlbnQzPSJhY2NlbnQzIiBhY2NlbnQ0PSJhY2NlbnQ0IiBhY2NlbnQ1PSJhY2NlbnQ1IiBhY2NlbnQ2PSJhY2NlbnQ2IiBobGluaz0iaGxpbmsiIGZvbEhsaW5rPSJmb2xIbGluayIvPg==", "main_files/filelist.xml": "data:application/xml;base64,PHhtbCB4bWxuczpvPSJ1cm46c2NoZW1hcy1taWNyb3NvZnQtY29tOm9mZmljZTpvZmZpY2UiPgogPG86TWFpbkZpbGUgSFJlZj0iLi4vbWFpbi5odG0iLz4KIDxvOkZpbGUgSFJlZj0idGhlbWVkYXRhLnRobXgiLz4KIDxvOkZpbGUgSFJlZj0iY29sb3JzY2hlbWVtYXBwaW5nLnhtbCIvPgogPG86RmlsZSBIUmVmPSJmaWxlbGlzdC54bWwiLz4KPC94bWw+", "main_files/themedata.thmx": "data:application/vnd.ms-officetheme;base64,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" };
+  var SIGNATURE_ASSETS = { "LOGO_EP.png": "data:image/png;base64,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", "main_files/colorschememapping.xml": "data:application/xml;base64,PD94bWwgdmVyc2lvbj0iMS4wIiBlbmNvZGluZz0iVVRGLTgiIHN0YW5kYWxvbmU9InllcyI/Pg0KPGE6Y2xyTWFwIHhtbG5zOmE9Imh0dHA6Ly9zY2hlbWFzLm9wZW54bWxmb3JtYXRzLm9yZy9kcmF3aW5nbWwvMjAwNi9tYWluIiBiZzE9Imx0MSIgdHgxPSJkazEiIGJnMj0ibHQyIiB0eDI9ImRrMiIgYWNjZW50MT0iYWNjZW50MSIgYWNjZW50Mj0iYWNjZW50MiIgYWNjZW50Mz0iYWNjZW50MyIgYWNjZW50ND0iYWNjZW50NCIgYWNjZW50NT0iYWNjZW50NSIgYWNjZW50Nj0iYWNjZW50NiIgaGxpbms9ImhsaW5rIiBmb2xIbGluaz0iZm9sSGxpbmsiLz4=", "main_files/filelist.xml": "data:application/xml;base64,PHhtbCB4bWxuczpvPSJ1cm46c2NoZW1hcy1taWNyb3NvZnQtY29tOm9mZmljZTpvZmZpY2UiPg0KIDxvOk1haW5GaWxlIEhSZWY9Ii4uL21haW4uaHRtIi8+DQogPG86RmlsZSBIUmVmPSJ0aGVtZWRhdGEudGhteCIvPg0KIDxvOkZpbGUgSFJlZj0iY29sb3JzY2hlbWVtYXBwaW5nLnhtbCIvPg0KIDxvOkZpbGUgSFJlZj0iZmlsZWxpc3QueG1sIi8+DQo8L3htbD4=", "main_files/themedata.thmx": "data:application/vnd.ms-officetheme;base64,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" };
 
   // Assistant/core/email/signature.js
   var cachedSignature = null;
@@ -11797,13 +11877,42 @@ ${value}` : value;
   function normalizeSearchText(value) {
     return cleanText3(value).toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
   }
-  function matchesSearch(template, searchTerm) {
-    const needle = normalizeSearchText(searchTerm);
-    if (!needle) return true;
-    const haystack = normalizeSearchText(
-      [template?.id, template?.label, template?.target, template?.body].filter(Boolean).join(" ")
+  function flattenSearchValue(value) {
+    if (Array.isArray(value)) return value.map(flattenSearchValue).filter(Boolean).join(" ");
+    if (value && typeof value === "object") {
+      return Object.values(value).map(flattenSearchValue).filter(Boolean).join(" ");
+    }
+    return cleanText3(value);
+  }
+  function buildWorkNoteSearchText(template = {}) {
+    return normalizeSearchText(
+      [
+        template?.id,
+        template?.label,
+        template?.title,
+        template?.target,
+        template?.body,
+        template?.category,
+        template?.subcategory,
+        template?.notes,
+        flattenSearchValue(template?.keywords)
+      ].filter(Boolean).join(" ")
     );
-    return haystack.includes(needle);
+  }
+  function getSearchTokens(value) {
+    return normalizeSearchText(value).replace(/[^a-z0-9à-ÿ_-]+/gi, " ").split(/\s+/).map(cleanText3).filter(Boolean);
+  }
+  function matchesWorkNoteSearch(template, searchTerm) {
+    const tokens = getSearchTokens(searchTerm);
+    if (!tokens.length) return true;
+    const haystack = buildWorkNoteSearchText(template);
+    return tokens.every((token) => haystack.includes(token));
+  }
+  function matchesSearchCorpus(haystack, searchTerm) {
+    const tokens = getSearchTokens(searchTerm);
+    if (!tokens.length) return true;
+    const corpus = normalizeSearchText(haystack);
+    return tokens.every((token) => corpus.includes(token));
   }
   function uniqueTemplates(templates, preferredId) {
     const ordered = [];
@@ -11833,11 +11942,7 @@ ${value}` : value;
       context?.intent
     ].filter(Boolean).join(" "));
     if (!text2) return 0;
-    const corpus = normalizeSearchText([
-      template?.id,
-      template?.label,
-      template?.body
-    ].filter(Boolean).join(" "));
+    const corpus = buildWorkNoteSearchText(template);
     let score = 0;
     if (/schedule smartphone delivery|smartphone delivery|iphone delivery|phone delivery/.test(text2) && /(phone|smartphone|delivery|handover|device_ready|device_delivered|swap_phone)/.test(corpus)) score += 9;
     if (/\bswap\b/.test(text2) && /\bswap\b/.test(corpus)) score += 6;
@@ -11916,7 +12021,7 @@ ${value}` : value;
       class="${classes}"
       data-action="work-notes-select-template"
       data-template-id="${escapeHtml(template.id)}"
-      data-template-search="${escapeHtml(normalizeSearchText([template.id, template.label, template.target, template.body].filter(Boolean).join(" ")))}"
+      data-template-search="${escapeHtml(buildWorkNoteSearchText(template))}"
       title="${escapeHtml(template.label)}"
     >
       ${escapeHtml(template.label)}
@@ -11929,22 +12034,21 @@ ${value}` : value;
     const selectedTemplate = model.templates.find((template) => template.id === model.selectedTemplateId);
     const previewText = cleanText3(state.ui.workNotesText) || model.draftText;
     const searchText = cleanText3(state.ui.workNotesSearch);
-    const filteredTemplates = model.templates.filter((template) => matchesSearch(template, searchText));
     const selectedLabel = selectedTemplate?.label || "Smart suggestion";
     const recommendedTemplate = model.templates.find((template) => template.id === model.recommendedTemplateId) || model.recommendation.template || null;
-    const displayTemplates = searchText ? filteredTemplates : [
-      ...recommendedTemplate ? [recommendedTemplate] : [],
-      ...model.templates.filter((template) => template.id !== model.recommendedTemplateId)
-    ];
     const shortTitle = context.ticketNumber || context.recordNumber || context.tableLabel || "Work Notes";
     const userName = cleanText3(context?.user?.fullName || context?.requestedFor || context?.caller || "");
     const subHeading = userName ? `${selectedLabel} - ${userName.split(" ")[0]}` : selectedLabel;
     const { usageMap } = model;
-    const recentTemplates = !searchText ? model.templates.filter((template) => template.id !== model.recommendedTemplateId && getUsageScore(usageMap, template.id) > 0).slice(0, 3) : [];
+    const recentTemplates = model.templates.filter((template) => template.id !== model.recommendedTemplateId && getUsageScore(usageMap, template.id) > 0).slice(0, 4);
+    const suggestedTemplates = uniqueTemplates(
+      [recommendedTemplate, selectedTemplate, ...recentTemplates].filter(Boolean),
+      model.recommendedTemplateId
+    ).slice(0, 5);
     const recentPhrases = Array.isArray(state?.ui?.workNotesRecentPhrases) ? state.ui.workNotesRecentPhrases.map(cleanText3).filter(Boolean) : [];
     const cannedPhrases = [...new Set(recentPhrases)].slice(0, 5);
     const charCount = previewText.length;
-    const templateSectionLabel = searchText ? `${displayTemplates.length} result${displayTemplates.length !== 1 ? "s" : ""}` : recentTemplates.length ? "All templates" : "Templates";
+    const initialSearchCount = searchText ? model.templates.filter((template) => matchesWorkNoteSearch(template, searchText)).length : model.templates.length;
     return `
     <div class="sn-assistant-panel sn-assistant-worknotes-panel" data-work-notes-panel="true">
       <div class="sn-assistant-panel__header">
@@ -11971,36 +12075,51 @@ ${value}` : value;
             <span class="sn-assistant-field__label">Note</span>
             <span class="sn-assistant-worknotes__char-count" data-work-notes-char-count${charCount ? "" : " hidden"}>${escapeHtml(`${charCount} char${charCount !== 1 ? "s" : ""}`)}</span>
           </div>
-          <textarea class="sn-assistant-textarea sn-assistant-worknotes__textarea" name="workNotesText" data-action="work-notes-text" rows="6" placeholder="Write or edit the note to apply to the ticket...">${escapeHtml(previewText)}</textarea>
+          <textarea class="sn-assistant-textarea sn-assistant-worknotes__textarea" name="workNotesText" data-action="work-notes-text" rows="5" placeholder="Write or edit the note to apply to the ticket...">${escapeHtml(previewText)}</textarea>
         </div>
 
         <div class="sn-assistant-worknotes__picker">
           <div class="sn-assistant-searchbar">
             <span class="sn-assistant-searchbar__icon" aria-hidden="true"></span>
-            <input class="sn-assistant-input sn-assistant-searchbar__input" name="workNotesSearch" value="${escapeHtml(searchText)}" placeholder="Search templates..." />
+            <input
+              class="sn-assistant-input sn-assistant-searchbar__input"
+              name="workNotesSearch"
+              type="search"
+              autocomplete="off"
+              spellcheck="false"
+              value="${escapeHtml(searchText)}"
+              placeholder="Search name, text or keyword..."
+            />
           </div>
-          ${recentTemplates.length ? `
-            <div class="sn-assistant-worknotes__templates" data-work-notes-recent>
-              <div class="sn-assistant-worknotes__templates-header">Recent</div>
-              <div class="sn-assistant-worknotes__chips">
-                ${recentTemplates.map((template) => renderTemplateButton(template, template.id === model.selectedTemplateId, false)).join("")}
-              </div>
+
+          <div class="sn-assistant-worknotes__templates" data-work-notes-suggested${searchText ? " hidden" : ""}>
+            <div class="sn-assistant-worknotes__templates-header">
+              <span>Suggested</span>
+              <span class="sn-assistant-worknotes__section-hint">Smart match + recent</span>
             </div>
-          ` : ""}
-          <div class="sn-assistant-worknotes__templates" data-work-notes-all-templates>
-            <div class="sn-assistant-worknotes__templates-header" data-work-notes-templates-header>
-              <span data-work-notes-templates-label>${escapeHtml(templateSectionLabel)}</span>
-            </div>
-            <div class="sn-assistant-worknotes__chips" data-work-notes-template-chips>
-              ${displayTemplates.map((template) => renderTemplateButton(template, template.id === model.selectedTemplateId, template.id === model.recommendedTemplateId)).join("")}
-              <div class="sn-assistant-note sn-assistant-note--empty" data-work-notes-empty${displayTemplates.length ? " hidden" : ""}>No templates match.</div>
+            <div class="sn-assistant-worknotes__chips sn-assistant-worknotes__chips--suggested">
+              ${suggestedTemplates.map((template) => renderTemplateButton(template, template.id === model.selectedTemplateId, template.id === model.recommendedTemplateId)).join("")}
             </div>
           </div>
+
+          <details class="sn-assistant-worknotes__browse" data-work-notes-browse${searchText ? " open" : ""}>
+            <summary class="sn-assistant-worknotes__browse-summary">
+              <span data-work-notes-templates-label>${searchText ? `${initialSearchCount} result${initialSearchCount !== 1 ? "s" : ""}` : "Browse all templates"}</span>
+              <span class="sn-assistant-worknotes__browse-count" data-work-notes-template-count>${initialSearchCount}</span>
+            </summary>
+            <div class="sn-assistant-worknotes__chips sn-assistant-worknotes__chips--browse" data-work-notes-template-chips>
+              ${model.templates.map((template) => renderTemplateButton(template, template.id === model.selectedTemplateId, template.id === model.recommendedTemplateId)).join("")}
+              <div class="sn-assistant-note sn-assistant-note--empty" data-work-notes-empty hidden>No templates match.</div>
+            </div>
+          </details>
         </div>
 
         ${cannedPhrases.length ? `
-          <div class="sn-assistant-worknotes__canned">
-            <div class="sn-assistant-worknotes__templates-header">Quick phrases</div>
+          <details class="sn-assistant-worknotes__quick" data-work-notes-quick>
+            <summary class="sn-assistant-worknotes__browse-summary">
+              <span>Quick phrases</span>
+              <span class="sn-assistant-worknotes__browse-count">${cannedPhrases.length}</span>
+            </summary>
             <div class="sn-assistant-worknotes__chips sn-assistant-worknotes__canned-chips">
               ${cannedPhrases.map((phrase) => `
                 <span class="sn-assistant-worknotes__chip sn-assistant-worknotes__canned-chip" title="${escapeHtml(phrase)}">
@@ -12009,13 +12128,13 @@ ${value}` : value;
                 </span>
               `).join("")}
             </div>
-          </div>
+          </details>
         ` : ""}
 
         <div class="sn-assistant-panel__footer sn-assistant-worknotes__footer">
           <div class="sn-assistant-worknotes__footer-actions">
             <button type="button" class="sn-assistant-button sn-assistant-button--primary" data-action="work-notes-append" title="Append below existing work notes">Append</button>
-            <button type="button" class="sn-assistant-button sn-assistant-button--secondary" data-action="work-notes-write" title="Replace all work notes">Replace</button>
+            <button type="button" class="sn-assistant-button sn-assistant-button--secondary" data-action="work-notes-write" title="Replace all work notes">Replace all</button>
           </div>
           <div class="sn-assistant-worknotes__footer-tools">
             <button type="button" class="sn-assistant-mini-button" data-action="work-notes-copy" title="Copy note" aria-label="Copy note">
@@ -12043,21 +12162,33 @@ ${value}` : value;
     counter.textContent = `${length} char${length !== 1 ? "s" : ""}`;
   }
   function filterWorkNotesTemplates(root, searchValue) {
-    const needle = normalizeSearchText(searchValue);
-    const recentSection = root.querySelector("[data-work-notes-recent]");
-    if (recentSection) recentSection.hidden = Boolean(needle);
-    const chips = root.querySelectorAll('[data-work-notes-all-templates] [data-action="work-notes-select-template"]');
+    const hasSearch = getSearchTokens(searchValue).length > 0;
+    const suggestedSection = root.querySelector("[data-work-notes-suggested]");
+    const quickSection = root.querySelector("[data-work-notes-quick]");
+    const browseSection = root.querySelector("[data-work-notes-browse]");
+    if (suggestedSection) suggestedSection.hidden = hasSearch;
+    if (quickSection) quickSection.hidden = hasSearch;
+    if (browseSection && hasSearch && !browseSection.open) {
+      browseSection.open = true;
+      browseSection.dataset.searchExpanded = "true";
+    } else if (browseSection && !hasSearch && browseSection.dataset.searchExpanded === "true") {
+      browseSection.open = false;
+      delete browseSection.dataset.searchExpanded;
+    }
+    const chips = root.querySelectorAll('[data-work-notes-browse] [data-action="work-notes-select-template"]');
     let visibleCount = 0;
     chips.forEach((chip) => {
       const haystack = chip.dataset.templateSearch || "";
-      const visible = !needle || haystack.includes(needle);
+      const visible = matchesSearchCorpus(haystack, searchValue);
       chip.hidden = !visible;
       if (visible) visibleCount += 1;
     });
     const label = root.querySelector("[data-work-notes-templates-label]");
     if (label) {
-      label.textContent = needle ? `${visibleCount} result${visibleCount !== 1 ? "s" : ""}` : recentSection ? "All templates" : "Templates";
+      label.textContent = hasSearch ? `${visibleCount} result${visibleCount !== 1 ? "s" : ""}` : "Browse all templates";
     }
+    const count = root.querySelector("[data-work-notes-template-count]");
+    if (count) count.textContent = String(visibleCount);
     const emptyNote = root.querySelector("[data-work-notes-empty]");
     if (emptyNote) emptyNote.hidden = visibleCount > 0;
   }
@@ -12279,37 +12410,10 @@ ${value}` : value;
         </div>
       </div>
       <div class="sn-assistant-ci-item__actions">
-        <button
-          type="button"
-          class="sn-assistant-button sn-assistant-button--primary sn-assistant-button--compact sn-assistant-ci-item__copy"
-          data-action="find-ci-select"
-          data-sys-id="${escapeHtml(ci.sys_id)}"
-          data-name="${escapeHtml(ci.name || "")}"
-          title="Insert this CI"
-        >Insert</button>
-        <button
-          type="button"
-          class="sn-assistant-button sn-assistant-button--secondary sn-assistant-button--compact sn-assistant-ci-item__copy"
-          data-action="find-ci-copy"
-          data-sys-id="${escapeHtml(ci.sys_id)}"
-          data-name="${escapeHtml(ci.name || "")}"
-          title="Copy name"
-        >Copy</button>
-        <button
-          type="button"
-          class="sn-assistant-button sn-assistant-button--secondary sn-assistant-button--compact sn-assistant-ci-item__copy"
-          data-action="find-ci-open"
-          data-href="${escapeHtml(ci.href || "")}"
-          title="Open record"
-        >Open</button>
-        <button
-          type="button"
-          class="sn-assistant-button sn-assistant-button--secondary sn-assistant-button--compact sn-assistant-ci-item__copy sn-assistant-ci-item__pdf"
-          data-action="find-ci-pdf"
-          data-sys-id="${escapeHtml(ci.sys_id)}"
-          data-name="${escapeHtml(ci.name || "")}"
-          title="Generate PDF"
-        >PDF</button>
+        <button type="button" class="sn-assistant-button sn-assistant-button--primary sn-assistant-button--compact sn-assistant-ci-item__copy" data-action="find-ci-select" data-sys-id="${escapeHtml(ci.sys_id)}" data-name="${escapeHtml(ci.name || "")}" title="Insert this CI">Insert</button>
+        <button type="button" class="sn-assistant-button sn-assistant-button--secondary sn-assistant-button--compact sn-assistant-ci-item__copy" data-action="find-ci-copy" data-sys-id="${escapeHtml(ci.sys_id)}" data-name="${escapeHtml(ci.name || "")}" title="Copy name">Copy</button>
+        <button type="button" class="sn-assistant-button sn-assistant-button--secondary sn-assistant-button--compact sn-assistant-ci-item__copy" data-action="find-ci-open" data-href="${escapeHtml(ci.href || "")}" title="Open record">Open</button>
+        <button type="button" class="sn-assistant-button sn-assistant-button--secondary sn-assistant-button--compact sn-assistant-ci-item__copy sn-assistant-ci-item__pdf" data-action="find-ci-pdf" data-sys-id="${escapeHtml(ci.sys_id)}" data-name="${escapeHtml(ci.name || "")}" title="Generate PDF">PDF</button>
       </div>
     </div>
   `;
@@ -12373,20 +12477,10 @@ ${value}` : value;
           ${userName ? `<div class="sn-assistant-panel__subheading">${escapeHtml(userName)}</div>` : ""}
         </div>
         <div class="sn-assistant-panel__header-actions">
-          <button
-            type="button"
-            class="sn-assistant-mini-button sn-assistant-mini-button--danger"
-            data-action="find-ci-close"
-            title="Close"
-            aria-label="Close"
-          >
-            <span class="sn-assistant-icon sn-assistant-icon--close" aria-hidden="true"></span>
-          </button>
+          <button type="button" class="sn-assistant-mini-button sn-assistant-mini-button--danger" data-action="find-ci-close" title="Close" aria-label="Close"><span class="sn-assistant-icon sn-assistant-icon--close" aria-hidden="true"></span></button>
         </div>
       </div>
-      <div class="sn-assistant-panel__body sn-assistant-panel__body--flush">
-        ${bodyContent}
-      </div>
+      <div class="sn-assistant-panel__body sn-assistant-panel__body--flush">${bodyContent}</div>
     </div>
   `;
   }
@@ -12428,9 +12522,10 @@ ${value}` : value;
         event.stopPropagation();
         return;
       }
-      if (event.key !== "Enter") return;
-      const infoRow = event.target.closest('[data-action="find-ci-select"]');
+      if (event.key !== "Enter" && event.key !== " ") return;
+      const infoRow = event.target.closest('[role="button"][data-action="find-ci-select"]');
       if (!infoRow || !root.contains(infoRow)) return;
+      event.preventDefault();
       infoRow.click();
     });
   }
@@ -12530,6 +12625,18 @@ ${value}` : value;
       if (action === "open-dapr2l-user") handlers.onOpenDapr2lUser?.(target.dataset.userId || "");
       if (action === "open-mdm") handlers.onOpenMdm?.(target.dataset.userId || "");
     });
+    root.addEventListener("keydown", (event) => {
+      if (event.key === "Escape" || event.key === "Esc") {
+        event.preventDefault();
+        handlers.onCloseUserInfo?.();
+        return;
+      }
+      if (event.key !== "Enter" && event.key !== " ") return;
+      const target = event.target.closest('[role="button"][data-action]');
+      if (!target || !root.contains(target)) return;
+      event.preventDefault();
+      target.click();
+    });
   }
   function removeUserInfoPanel(hostDocument) {
     hostDocument.getElementById(UI_IDS.userInfo)?.remove();
@@ -12542,17 +12649,12 @@ ${value}` : value;
       const d = new Date(dateStr);
       if (isNaN(d.getTime())) return String(dateStr).split(" ")[0] || "";
       return d.toLocaleDateString("en-GB", { day: "2-digit", month: "short" });
-    } catch (error2) {
+    } catch {
       return String(dateStr).split(" ")[0] || "";
     }
   }
   function getTableBadge(table) {
-    const map = {
-      incident: "INC",
-      sc_req_item: "RITM",
-      sc_request: "REQ",
-      sc_task: "TASK"
-    };
+    const map = { incident: "INC", sc_req_item: "RITM", sc_request: "REQ", sc_task: "TASK" };
     return map[table] || String(table).toUpperCase().slice(0, 6);
   }
   function getStateClass(state) {
@@ -12580,6 +12682,7 @@ ${value}` : value;
       data-sys-id="${escapeHtml(ticket.sysId)}"
       data-table="${escapeHtml(ticket.table)}"
       title="${escapeHtml(descTooltip)}"
+      role="button"
       tabindex="0"
     >
       <td class="sn-assistant-tickets-table__number">
@@ -12587,9 +12690,7 @@ ${value}` : value;
         <span class="sn-assistant-tickets-table__num-val">${escapeHtml(ticket.number)}</span>
       </td>
       <td class="sn-assistant-tickets-table__type">${escapeHtml(ticket.type || "-")}</td>
-      <td class="sn-assistant-tickets-table__state">
-        <span class="sn-assistant-tickets-table__state-pill sn-assistant-tickets-table__state-pill--${stateKey}">${escapeHtml(ticket.state || "-")}</span>
-      </td>
+      <td class="sn-assistant-tickets-table__state"><span class="sn-assistant-tickets-table__state-pill sn-assistant-tickets-table__state-pill--${stateKey}">${escapeHtml(ticket.state || "-")}</span></td>
       <td class="sn-assistant-tickets-table__assigned" title="${escapeHtml(fullAssignment || "-")}">${escapeHtml(assignmentText)}</td>
       <td class="sn-assistant-tickets-table__date">${escapeHtml(dateText)}</td>
     </tr>
@@ -12610,17 +12711,7 @@ ${value}` : value;
     <div class="sn-assistant-tickets-filters" role="tablist" aria-label="Filter tickets by type">
       ${filterChips.map((chip) => {
       const isActive = chip.id === activeFilter;
-      return `
-            <button type="button"
-              class="sn-assistant-tickets-filter ${isActive ? "is-active" : ""}"
-              data-action="user-tickets-filter"
-              data-filter="${escapeHtml(chip.id)}"
-              role="tab"
-              aria-selected="${isActive ? "true" : "false"}">
-              ${escapeHtml(chip.label)}
-              <span class="sn-assistant-tickets-filter__count">${chip.count}</span>
-            </button>
-          `;
+      return `<button type="button" class="sn-assistant-tickets-filter ${isActive ? "is-active" : ""}" data-action="user-tickets-filter" data-filter="${escapeHtml(chip.id)}" role="tab" aria-selected="${isActive ? "true" : "false"}">${escapeHtml(chip.label)}<span class="sn-assistant-tickets-filter__count">${chip.count}</span></button>`;
     }).join("")}
     </div>
   `;
@@ -12629,27 +12720,14 @@ ${value}` : value;
       bodyContent = `<div class="sn-assistant-note sn-assistant-tickets-loading">Searching open tickets...</div>`;
     } else if (!results.length) {
       const emptyLabel = activeFilter ? `No open ${activeFilter === "incident" ? "incidents" : "SCTASKs"} found for this user.` : "No open tickets found for this user.";
-      bodyContent = `
-      ${filterChipsMarkup}
-      <div class="sn-assistant-note sn-assistant-note--empty">${escapeHtml(emptyLabel)}</div>
-    `;
+      bodyContent = `${filterChipsMarkup}<div class="sn-assistant-note sn-assistant-note--empty">${escapeHtml(emptyLabel)}</div>`;
     } else {
       bodyContent = `
       ${filterChipsMarkup}
       <div class="sn-assistant-tickets-table-wrapper">
         <table class="sn-assistant-tickets-table">
-          <thead>
-            <tr>
-              <th>Number</th>
-              <th>Type</th>
-              <th>State</th>
-              <th>Assigned</th>
-              <th>Date</th>
-            </tr>
-          </thead>
-          <tbody>
-            ${results.map(renderTicketRow).join("")}
-          </tbody>
+          <thead><tr><th>Number</th><th>Type</th><th>State</th><th>Assigned</th><th>Date</th></tr></thead>
+          <tbody>${results.map(renderTicketRow).join("")}</tbody>
         </table>
       </div>
     `;
@@ -12664,20 +12742,10 @@ ${value}` : value;
           <div class="sn-assistant-panel__subheading">${escapeHtml(countLabel)}</div>
         </div>
         <div class="sn-assistant-panel__header-actions">
-          <button
-            type="button"
-            class="sn-assistant-mini-button sn-assistant-mini-button--danger"
-            data-action="user-tickets-close"
-            title="Close"
-            aria-label="Close"
-          >
-            <span class="sn-assistant-icon sn-assistant-icon--close" aria-hidden="true"></span>
-          </button>
+          <button type="button" class="sn-assistant-mini-button sn-assistant-mini-button--danger" data-action="user-tickets-close" title="Close" aria-label="Close"><span class="sn-assistant-icon sn-assistant-icon--close" aria-hidden="true"></span></button>
         </div>
       </div>
-      <div class="sn-assistant-panel__body sn-assistant-panel__body--flush">
-        ${bodyContent}
-      </div>
+      <div class="sn-assistant-panel__body sn-assistant-panel__body--flush">${bodyContent}</div>
     </div>
   `;
   }
@@ -12699,10 +12767,10 @@ ${value}` : value;
       if (action === "user-tickets-open" && sysId && table) {
         try {
           window.top.location.href = `/nav_to.do?uri=/${table}.do?sys_id=${sysId}`;
-        } catch (error2) {
+        } catch {
           try {
             window.open(`/${table}.do?sys_id=${sysId}`, "_blank");
-          } catch (e2) {
+          } catch {
           }
         }
       }
@@ -12714,9 +12782,10 @@ ${value}` : value;
         event.stopPropagation();
         return;
       }
-      if (event.key !== "Enter") return;
-      const row = event.target.closest('[data-action="user-tickets-open"]');
+      if (event.key !== "Enter" && event.key !== " ") return;
+      const row = event.target.closest('[role="button"][data-action="user-tickets-open"]');
       if (!row || !root.contains(row)) return;
+      event.preventDefault();
       row.click();
     });
   }
@@ -12726,42 +12795,24 @@ ${value}` : value;
 
   // Assistant/ui/launcher.js
   var ICON = {
-    // Work Notes: lined page + pencil
     notes: `<svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5.5 3h6.5l3 3v10.5a.5.5 0 0 1-.5.5h-9a.5.5 0 0 1-.5-.5V3.5a.5.5 0 0 1 .5-.5z"/><path d="M12 3v3h3"/><line x1="7.5" y1="9" x2="12.5" y2="9"/><line x1="7.5" y1="12" x2="11" y2="12"/><path d="M11.5 14.5l2.5-2.5 1.5 1.5-2.5 2.5h-1.5z"/><line x1="12.5" y1="13" x2="14" y2="14.5"/></svg>`,
-    // Prepare Draft: page + lightning bolt
     draft: `<svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5.5 3h5l3 3v10.5a.5.5 0 0 1-.5.5h-9a.5.5 0 0 1-.5-.5V3.5a.5.5 0 0 1 .5-.5z"/><path d="M10.5 3v3h3"/><path d="M12 8.5l-3.5 4.5h3.5l-3 5"/></svg>`,
-    // Reminder: bell with notification dot
     bell: `<svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 2.5a1 1 0 0 1 1 1v.6a5 5 0 0 1 4 4.9v3l1.5 2.5h-13L5 12v-3a5 5 0 0 1 4-4.9V3.5a1 1 0 0 1 1-1z"/><path d="M8.5 15.5a1.6 1.6 0 0 0 3 0"/><circle cx="15" cy="4" r="2.5" fill="currentColor" stroke="none"/></svg>`,
-    // Agenda / Calendar: calendar grid
     calendar: `<svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="2.5" y="4" width="15" height="13" rx="1.5"/><path d="M2.5 8.5h15M7 2v4M13 2v4"/><rect x="6" y="11" width="2.5" height="2.5" rx=".4"/></svg>`,
-    // Export PDF: page with upward arrow
     export: `<svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5.5 3h6.5l3 3v4.5"/><path d="M12 3v3h3"/><path d="M3 14.5h8M3 17.5h5.5"/><path d="M14 12v6M11.5 14.5l2.5-2.5 2.5 2.5"/></svg>`,
-    // Settings: 3 horizontal sliders at different positions
     settings: `<svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="3" y1="6" x2="17" y2="6"/><line x1="3" y1="10" x2="17" y2="10"/><line x1="3" y1="14" x2="17" y2="14"/><circle cx="7" cy="6" r="2" fill="var(--sn-assistant-panel,#fff)" stroke="currentColor"/><circle cx="13" cy="10" r="2" fill="var(--sn-assistant-panel,#fff)" stroke="currentColor"/><circle cx="9" cy="14" r="2" fill="var(--sn-assistant-panel,#fff)" stroke="currentColor"/></svg>`,
-    // Close: ×
     close: `<svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><line x1="5" y1="5" x2="15" y2="15"/><line x1="15" y1="5" x2="5" y2="15"/></svg>`,
-    // Customize / Brush (replace old edit/hide icon)
     brush: `<svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 3l3 3-8 8-3.5.5.5-3.5z"/><line x1="11.5" y1="5.5" x2="14.5" y2="8.5"/><path d="M3.5 16.5c1-2 2-2.5 3-1.5"/></svg>`,
-    // Hide button (eye-slash)
     hide: `<svg width="14" height="14" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2 10s3-5.5 8-5.5 8 5.5 8 5.5-3 5.5-8 5.5-8-5.5-8-5.5z"/><circle cx="10" cy="10" r="2.5"/><line x1="3" y1="17" x2="17" y2="3"/></svg>`,
-    // Chevron (collapsed tab)
     chevron: `<svg class="sn-ep__chevron" width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="4 2 8 6 4 10"/></svg>`,
-    // User Tickets: person + tag
     tickets: `<svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="8" cy="6.5" r="3"/><path d="M2.5 17c0-3 2.5-5 5.5-5"/><path d="M13 11.5h4a1 1 0 0 1 1 1v4a1 1 0 0 1-1 1h-4l-2-3z"/><line x1="14" y1="14" x2="16" y2="14"/></svg>`,
-    // User Info: ID / contact card with a portrait and detail lines
     userInfo: `<svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="2.5" y="4" width="15" height="12" rx="2"/><circle cx="7" cy="8.5" r="2"/><path d="M3.8 14c0-1.8 1.4-3 3.2-3s3.2 1.2 3.2 3"/><line x1="12" y1="8" x2="15" y2="8"/><line x1="12" y1="11" x2="15" y2="11"/></svg>`,
-    // Assign: person + checkmark
     assign: `<svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="8" cy="6.5" r="3"/><path d="M2.5 16.5c0-3 2.5-5 5.5-5"/><path d="M11 14l2 2 4-4.5"/></svg>`,
-    // Find CI: cube wireframe + node connector
     findCi: `<svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 3l6 3v5l-6 3-6-3V6z"/><path d="M10 3v8M4 6l6 3 6-3"/><circle cx="15.5" cy="15.5" r="2" /><line x1="14" y1="14" x2="11" y2="11.5"/></svg>`,
-    // EP Links: chain links
     links: `<svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8.5 11.5a4.5 4.5 0 0 0 6.4 0l1.8-1.8a4.5 4.5 0 0 0-6.4-6.4l-1 1"/><path d="M11.5 8.5a4.5 4.5 0 0 0-6.4 0l-1.8 1.8a4.5 4.5 0 0 0 6.4 6.4l1-1"/></svg>`,
-    // Position picker (3×3 dot grid)
     position: `<svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" aria-hidden="true"><circle cx="3" cy="3" r="1.2" fill="currentColor" stroke="none"/><circle cx="8" cy="3" r="1.2" fill="currentColor" stroke="none"/><circle cx="13" cy="3" r="1.2" fill="currentColor" stroke="none"/><circle cx="3" cy="8" r="1.2" fill="currentColor" stroke="none"/><circle cx="8" cy="8" r="1.5" stroke="currentColor" fill="none" stroke-width="1.6"/><circle cx="13" cy="8" r="1.2" fill="currentColor" stroke="none"/><circle cx="3" cy="13" r="1.2" fill="currentColor" stroke="none"/><circle cx="8" cy="13" r="1.2" fill="currentColor" stroke="none"/><circle cx="13" cy="13" r="1.2" fill="currentColor" stroke="none"/></svg>`,
-    // Pin / Keep button (push pin) — outlined when inactive
     iconsOnly: `<svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="4" y="4" width="4.5" height="4.5" rx="1"/><rect x="11.5" y="4" width="4.5" height="4.5" rx="1"/><rect x="4" y="11.5" width="4.5" height="4.5" rx="1"/><rect x="11.5" y="11.5" width="4.5" height="4.5" rx="1"/></svg>`,
     pin: `<svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10.5 2.5c0 0 .5 3 .5 6v.5c0 .5.5 1 1 1h.5c3 0 6 .5 6 .5s-1-2-2-3-1-1-2-2-3-1-3-2c-1.5 0-2.5 0-2.5 0z"/><path d="M7.5 12c-1 1-2.5 2.5-4 4.5-1.5 2-1 3-1 3s1 .5 3-1c2-1.5 3.5-3 4.5-4"/></svg>`,
-    // Filled variant — used when the pin is active (panel locked open)
     pinFilled: `<svg width="20" height="20" viewBox="0 0 20 20" fill="currentColor" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10.5 2.5c0 0 .5 3 .5 6v.5c0 .5.5 1 1 1h.5c3 0 6 .5 6 .5s-1-2-2-3-1-1-2-2-3-1-3-2c-1.5 0-2.5 0-2.5 0z"/><path fill="none" d="M7.5 12c-1 1-2.5 2.5-4 4.5-1.5 2-1 3-1 3s1 .5 3-1c2-1.5 3.5-3 4.5-4"/></svg>`
   };
   function resolveLauncherButtonDef(buttonId) {
@@ -12784,11 +12835,7 @@ ${value}` : value;
       [LAUNCHER_BUTTON_IDS.generateWorkNotes]: "sn-ep__action--work-notes",
       [LAUNCHER_BUTTON_IDS.generateAllNotes]: "sn-ep__action--draft"
     };
-    return {
-      ...spec,
-      icon: ICON[spec.iconKey] || ICON.settings,
-      semanticClass: semanticClassMap[buttonId] || ""
-    };
+    return { ...spec, icon: ICON[spec.iconKey] || ICON.settings, semanticClass: semanticClassMap[buttonId] || "" };
   }
   function isCalendarReady(context) {
     const stateValue = String(context?.state || "").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/\s+/g, " ").trim();
@@ -12804,7 +12851,7 @@ ${value}` : value;
       today.setHours(0, 0, 0, 0);
       due.setHours(0, 0, 0, 0);
       return due.getTime() <= today.getTime();
-    } catch (error2) {
+    } catch {
       return false;
     }
   }
@@ -12862,15 +12909,7 @@ ${value}` : value;
       const shell = root.querySelector(".sn-ep");
       if (!shell) return;
       const rect = shell.getBoundingClientRect();
-      drag = {
-        startX: event.clientX,
-        startY: event.clientY,
-        offsetX: event.clientX - rect.left,
-        offsetY: event.clientY - rect.top,
-        width: rect.width,
-        height: rect.height,
-        moved: false
-      };
+      drag = { startX: event.clientX, startY: event.clientY, offsetX: event.clientX - rect.left, offsetY: event.clientY - rect.top, width: rect.width, height: rect.height, moved: false };
       ownerWindow.addEventListener("pointermove", onMove, { passive: false });
       ownerWindow.addEventListener("pointerup", onUp);
     });
@@ -12903,11 +12942,10 @@ ${value}` : value;
         const shell = root.querySelector(".sn-ep");
         if (shell) {
           const rect = shell.getBoundingClientRect();
-          const leftDist = rect.left;
-          const rightDist = ownerWindow.innerWidth - rect.right;
-          const newEdge = leftDist <= rightDist ? "left" : "right";
+          const newEdge = rect.left <= ownerWindow.innerWidth - rect.right ? "left" : "right";
           state.ui.edgePanelEdge = newEdge;
           state.ui.edgePanelTop = clamp(rect.top, 8, ownerWindow.innerHeight - rect.height - 8);
+          savePanelPosition(ownerWindow, { edge: newEdge, top: state.ui.edgePanelTop });
           shell.style.left = "";
           shell.style.right = "";
           shell.classList.toggle("sn-ep--left", newEdge === "left");
@@ -12915,16 +12953,12 @@ ${value}` : value;
       }
       drag = null;
     }
-    root.addEventListener(
-      "click",
-      (event) => {
-        if (Date.now() < suppressClickUntil) {
-          event.preventDefault();
-          event.stopPropagation();
-        }
-      },
-      true
-    );
+    root.addEventListener("click", (event) => {
+      if (Date.now() < suppressClickUntil) {
+        event.preventDefault();
+        event.stopPropagation();
+      }
+    }, true);
   }
   function renderLauncherButton(buttonId, { draftLabel, calendarReady, context, buttonColor = "", editMode = false }) {
     const def = resolveLauncherButtonDef(buttonId);
@@ -12935,38 +12969,29 @@ ${value}` : value;
     const title = sub && sub !== label ? `${baseTitle} \u2014 ${sub}` : baseTitle;
     const className = typeof def.className === "function" ? def.className(calendarReady, context) : def.className || "";
     const semanticClass = def.semanticClass || "";
-    const iconOnly = false;
     const badge = def.badge ? `<span class="sn-ep__badge">${escapeHtml(def.badge)}</span>` : "";
-    const canHide = ![
-      LAUNCHER_BUTTON_IDS.openSettings,
-      LAUNCHER_BUTTON_IDS.openReminder,
-      LAUNCHER_BUTTON_IDS.findCi
-    ].includes(buttonId);
+    const canHide = HIDEABLE_BUTTON_IDS.includes(buttonId);
     const colorStyle = buttonColor ? ` style="--btn-color:${escapeHtml(buttonColor)};"` : "";
-    let editOverlay = "";
-    if (editMode) {
-      const hideBtn = canHide ? `<button type="button" class="sn-ep__edit-hide" data-action="ep-hide-button" data-button-id="${escapeHtml(buttonId)}" title="Hide">${ICON.hide}</button>` : "";
-      const currentColor = buttonColor || "#2563eb";
-      const colorPicker = `<label class="sn-ep__edit-color" title="Pick colour">
-        <input type="color" class="sn-ep__color-input" data-action="ep-btn-color" data-button-id="${escapeHtml(buttonId)}" value="${escapeHtml(currentColor)}" title="Button colour"/>
-      </label>`;
-      editOverlay = `<div class="sn-ep__edit-overlay">${colorPicker}${hideBtn}</div>`;
-    }
-    return `
+    const actionButton = `
     <button
       type="button"
-      draggable="true"
       class="sn-ep__action${semanticClass ? ` ${semanticClass}` : ""}${className ? ` ${className}` : ""}${editMode ? " sn-ep__action--edit" : ""}"
       data-action="${escapeHtml(buttonId)}"
-      data-button-id="${escapeHtml(buttonId)}"
       title="${escapeHtml(title)}"${colorStyle}
     >
       <span class="sn-ep__icon">${def.icon}</span>
       <span class="sn-ep__text"><span class="sn-ep__label">${escapeHtml(label)}</span></span>
       ${badge}
-      ${editOverlay}
     </button>
   `;
+    let editOverlay = "";
+    if (editMode) {
+      const hideBtn = canHide ? `<button type="button" class="sn-ep__edit-hide" data-action="ep-hide-button" data-button-id="${escapeHtml(buttonId)}" title="Hide" aria-label="Hide ${escapeHtml(label)}">${ICON.hide}</button>` : "";
+      const currentColor = buttonColor || "#2563eb";
+      const colorPicker = `<label class="sn-ep__edit-color" title="Pick colour"><input type="color" class="sn-ep__color-input" data-action="ep-btn-color" data-button-id="${escapeHtml(buttonId)}" value="${escapeHtml(currentColor)}" title="Button colour"/></label>`;
+      editOverlay = `<div class="sn-ep__edit-overlay">${colorPicker}${hideBtn}</div>`;
+    }
+    return `<div class="sn-ep-editable-wrap" draggable="true" data-button-id="${escapeHtml(buttonId)}">${actionButton}${editOverlay}</div>`;
   }
   function renderLauncherActions(rootWindow, context, draftLabel, calendarReady, hiddenButtons = [], buttonColors = {}, editMode = false, topWorkNoteTemplates = []) {
     const order = loadAssistantButtonOrder(rootWindow);
@@ -12978,9 +13003,7 @@ ${value}` : value;
       return true;
     });
     const buckets = /* @__PURE__ */ new Map();
-    for (const groupDef of LAUNCHER_GROUPS) {
-      buckets.set(groupDef.id, []);
-    }
+    for (const groupDef of LAUNCHER_GROUPS) buckets.set(groupDef.id, []);
     for (const buttonId of visibleIds) {
       const groupId = getLauncherButtonGroup(buttonId);
       if (!buckets.has(groupId)) buckets.set(groupId, []);
@@ -12991,71 +13014,39 @@ ${value}` : value;
       if (!ids.length) return "";
       const buttonsHtml = ids.map((buttonId) => {
         if (buttonId === LAUNCHER_BUTTON_IDS.quickDraftTop3) return "";
-        if (buttonId === LAUNCHER_BUTTON_IDS.generateEmailDraft || buttonId === LAUNCHER_BUTTON_IDS.generateCloseNotes || buttonId === LAUNCHER_BUTTON_IDS.generateWorkNotes || buttonId === LAUNCHER_BUTTON_IDS.generateAllNotes) return "";
+        if ([LAUNCHER_BUTTON_IDS.generateEmailDraft, LAUNCHER_BUTTON_IDS.generateCloseNotes, LAUNCHER_BUTTON_IDS.generateWorkNotes, LAUNCHER_BUTTON_IDS.generateAllNotes].includes(buttonId)) return "";
         if (buttonId === LAUNCHER_BUTTON_IDS.openWorkNotes) {
           const workNotesBtn = renderLauncherButton(buttonId, { draftLabel, calendarReady, context, buttonColor: colors[buttonId] || "", editMode });
           const boltBtn = `<button type="button" class="sn-ep__action sn-ep__action--mini-bolt sn-ep__action--work-notes" data-action="generate-menu-toggle" title="Quick write / generate" aria-haspopup="menu" aria-expanded="false"><span class="sn-ep__icon">${ICON.draft}</span></button>`;
-          const quickWriteItems = Array.isArray(topWorkNoteTemplates) && topWorkNoteTemplates.length ? [
-            `<div class="sn-ep__generate-section-label">Quick write</div>`,
-            ...topWorkNoteTemplates.map(
-              (t) => `<button type="button" class="sn-ep__generate-item sn-ep__generate-item--template" data-action="quick-write-work-note" data-template-id="${escapeHtml(t.id)}" title="${escapeHtml(t.label)}"><span class="sn-ep__icon">${ICON.notes}</span><span>${escapeHtml(t.label)}</span></button>`
-            ),
-            `<div class="sn-ep__generate-divider"></div>`,
-            `<div class="sn-ep__generate-section-label">AI generate</div>`
-          ].join("") : "";
+          const quickWriteItems = Array.isArray(topWorkNoteTemplates) && topWorkNoteTemplates.length ? [`<div class="sn-ep__generate-section-label">Quick write</div>`, ...topWorkNoteTemplates.map((t) => `<button type="button" class="sn-ep__generate-item sn-ep__generate-item--template" data-action="quick-write-work-note" data-template-id="${escapeHtml(t.id)}" title="${escapeHtml(t.label)}"><span class="sn-ep__icon">${ICON.notes}</span><span>${escapeHtml(t.label)}</span></button>`), `<div class="sn-ep__generate-divider"></div>`, `<div class="sn-ep__generate-section-label">AI generate</div>`].join("") : "";
           const generateItems = [
             { action: LAUNCHER_BUTTON_IDS.generateEmailDraft, icon: ICON.draft, label: "Generate Email Draft" },
             { action: LAUNCHER_BUTTON_IDS.generateCloseNotes, icon: ICON.notes, label: "Generate Close Notes" },
             { action: LAUNCHER_BUTTON_IDS.generateWorkNotes, icon: ICON.notes, label: "Generate Work Notes" },
             { action: LAUNCHER_BUTTON_IDS.generateAllNotes, icon: ICON.draft, label: "Generate All" }
-          ].map(
-            (item) => `<button type="button" class="sn-ep__generate-item" data-action="${escapeHtml(item.action)}" title="${escapeHtml(item.label)}"><span class="sn-ep__icon">${item.icon}</span><span>${escapeHtml(item.label)}</span></button>`
-          ).join("");
+          ].map((item) => `<button type="button" class="sn-ep__generate-item" data-action="${escapeHtml(item.action)}" title="${escapeHtml(item.label)}"><span class="sn-ep__icon">${item.icon}</span><span>${escapeHtml(item.label)}</span></button>`).join("");
           return `<div class="sn-ep__action-row">${workNotesBtn}${boltBtn}</div><div class="sn-ep__generate-menu" data-generate-menu>${quickWriteItems}${generateItems}</div>`;
         }
         if (buttonId === LAUNCHER_BUTTON_IDS.quickDraft) {
-          const draftBtn = renderLauncherButton(buttonId, {
-            draftLabel,
-            calendarReady,
-            context,
-            buttonColor: colors[buttonId] || "",
-            editMode
-          });
-          const boltBtn = renderLauncherButton(LAUNCHER_BUTTON_IDS.quickDraftTop3, {
+          const draftBtn = renderLauncherButton(buttonId, { draftLabel, calendarReady, context, buttonColor: colors[buttonId] || "", editMode });
+          const boltBtn = hidden.includes(LAUNCHER_BUTTON_IDS.quickDraftTop3) ? "" : renderLauncherButton(LAUNCHER_BUTTON_IDS.quickDraftTop3, {
             draftLabel,
             calendarReady,
             context,
             buttonColor: colors[LAUNCHER_BUTTON_IDS.quickDraftTop3] || colors[buttonId] || "",
             editMode
-          }).replace("sn-ep__action", "sn-ep__action sn-ep__action--mini-bolt");
-          return `<div class="sn-ep__action-row">${draftBtn}${boltBtn}</div>`;
+          }).replace('class="sn-ep__action', 'class="sn-ep__action sn-ep__action--mini-bolt');
+          return boltBtn ? `<div class="sn-ep__action-row">${draftBtn}${boltBtn}</div>` : draftBtn;
         }
         if (buttonId === LAUNCHER_BUTTON_IDS.assignToMyGroup) {
-          const assignBtn = renderLauncherButton(buttonId, {
-            draftLabel,
-            calendarReady,
-            context,
-            buttonColor: colors[buttonId] || "",
-            editMode
-          });
+          const assignBtn = renderLauncherButton(buttonId, { draftLabel, calendarReady, context, buttonColor: colors[buttonId] || "", editMode });
           const configBtn = `<button type="button" class="sn-ep__action sn-ep__action--mini-bolt" data-action="configure-assign-group" title="Choose your assignment group" aria-label="Choose your assignment group"><span class="sn-ep__icon">${ICON.settings}</span></button>`;
           return `<div class="sn-ep__action-row">${assignBtn}${configBtn}</div>`;
         }
-        return renderLauncherButton(buttonId, {
-          draftLabel,
-          calendarReady,
-          context,
-          buttonColor: colors[buttonId] || "",
-          editMode
-        });
+        return renderLauncherButton(buttonId, { draftLabel, calendarReady, context, buttonColor: colors[buttonId] || "", editMode });
       }).filter(Boolean).join("");
       if (!buttonsHtml) return "";
-      return `
-        <div class="sn-ep__group" data-group="${escapeHtml(groupDef.id)}">
-          <div class="sn-ep__group-header">${escapeHtml(groupDef.label)}</div>
-          <div class="sn-ep__group-buttons">${buttonsHtml}</div>
-        </div>
-      `;
+      return `<div class="sn-ep__group" data-group="${escapeHtml(groupDef.id)}"><div class="sn-ep__group-header">${escapeHtml(groupDef.label)}</div><div class="sn-ep__group-buttons">${buttonsHtml}</div></div>`;
     }).filter(Boolean).join("");
   }
   function getActiveEmbeddedView(state) {
@@ -13139,11 +13130,7 @@ ${value}` : value;
           button.setAttribute("aria-pressed", state.ui.edgePanelPinned ? "true" : "false");
           button.innerHTML = state.ui.edgePanelPinned ? ICON.pinFilled : ICON.pin;
         }
-        savePinState(ownerWindow, {
-          pinned: state.ui.edgePanelPinned,
-          lastOpenState: state.ui.edgePanelMode !== "tab",
-          mode: state.ui.edgePanelMode === "tab" ? "icons" : state.ui.edgePanelMode || "icons"
-        });
+        savePinState(ownerWindow, { pinned: state.ui.edgePanelPinned, lastOpenState: state.ui.edgePanelMode !== "tab", mode: state.ui.edgePanelMode === "tab" ? "icons" : state.ui.edgePanelMode || "icons" });
         handlers.onToggleEdgePanelPinned?.(state.ui.edgePanelPinned);
         return;
       }
@@ -13156,8 +13143,7 @@ ${value}` : value;
         return;
       }
       if (action === "ep-hide-button") {
-        const buttonId = button.dataset.buttonId || "";
-        handlers.onHideLauncherButton?.(buttonId);
+        handlers.onHideLauncherButton?.(button.dataset.buttonId || "");
         return;
       }
       if (action === LAUNCHER_BUTTON_IDS.quickDraft) handlers.onQuickDraft();
@@ -13197,8 +13183,7 @@ ${value}` : value;
     });
     root.addEventListener("contextmenu", (event) => {
       const button = event.target.closest("[data-action]");
-      if (!button) return;
-      if (button.dataset.action !== LAUNCHER_BUTTON_IDS.assignToMyGroup) return;
+      if (!button || button.dataset.action !== LAUNCHER_BUTTON_IDS.assignToMyGroup) return;
       event.preventDefault();
       clearAssignPressTimer();
       assignPressTriggered = true;
@@ -13206,8 +13191,7 @@ ${value}` : value;
     });
     root.addEventListener("pointerdown", (event) => {
       const button = event.target.closest("[data-action]");
-      if (!button) return;
-      if (button.dataset.action !== LAUNCHER_BUTTON_IDS.assignToMyGroup) return;
+      if (!button || button.dataset.action !== LAUNCHER_BUTTON_IDS.assignToMyGroup) return;
       clearAssignPressTimer();
       assignPressTriggered = false;
       assignPressTimer = ownerWindow.setTimeout(() => {
@@ -13215,56 +13199,57 @@ ${value}` : value;
         handlers.onConfigureAssignGroup?.();
       }, 600);
     });
+    root.addEventListener("pointermove", (event) => {
+      if (!assignPressTimer) return;
+      const current = event.target.closest(`[data-action="${LAUNCHER_BUTTON_IDS.assignToMyGroup}"]`);
+      if (!current) clearAssignPressTimer();
+    });
     root.addEventListener("pointerup", clearAssignPressTimer);
     root.addEventListener("pointerleave", clearAssignPressTimer);
     root.addEventListener("pointercancel", clearAssignPressTimer);
     const persistLauncherOrder = () => {
       const actions = root.querySelector(".sn-ep__actions");
       if (!actions) return;
-      const nextOrder = Array.from(actions.querySelectorAll("[data-button-id]")).map((item) => item.dataset.buttonId || "").filter((buttonId) => buttonId && buttonId !== LAUNCHER_BUTTON_IDS.openReminder);
+      const nextOrder = Array.from(actions.querySelectorAll(".sn-ep-editable-wrap[data-button-id]")).map((item) => item.dataset.buttonId || "").filter((buttonId) => buttonId && buttonId !== LAUNCHER_BUTTON_IDS.openReminder);
       saveAssistantButtonOrder(ownerWindow, nextOrder);
     };
     root.addEventListener("dragstart", (event) => {
-      const item = event.target.closest("[data-button-id]");
+      const item = event.target.closest(".sn-ep-editable-wrap[data-button-id]");
       if (!item || item.dataset.buttonId === LAUNCHER_BUTTON_IDS.openReminder) return;
       draggedButtonId = item.dataset.buttonId || "";
       item.classList.add("is-dragging");
       try {
         event.dataTransfer.effectAllowed = "move";
         event.dataTransfer.setData("text/plain", draggedButtonId);
-      } catch (error2) {
+      } catch {
       }
     });
     root.addEventListener("dragover", (event) => {
-      const target = event.target.closest("[data-button-id]");
-      if (!target || !draggedButtonId || target.dataset.buttonId === draggedButtonId || target.dataset.buttonId === LAUNCHER_BUTTON_IDS.openReminder) {
-        return;
-      }
+      const target = event.target.closest(".sn-ep-editable-wrap[data-button-id]");
+      if (!target || !draggedButtonId || target.dataset.buttonId === draggedButtonId || target.dataset.buttonId === LAUNCHER_BUTTON_IDS.openReminder) return;
       event.preventDefault();
       const groupContainer = target.closest(".sn-ep__group-buttons") || root.querySelector(".sn-ep__actions");
-      const dragged = root.querySelector(".sn-ep__action.is-dragging");
+      const dragged = root.querySelector(".sn-ep-editable-wrap.is-dragging");
       if (!groupContainer || !dragged || dragged === target) return;
       const rect = target.getBoundingClientRect();
       const before = event.clientY < rect.top + rect.height / 2;
       groupContainer.insertBefore(dragged, before ? target : target.nextElementSibling);
     });
     root.addEventListener("drop", (event) => {
-      const target = event.target.closest("[data-button-id]");
+      const target = event.target.closest(".sn-ep-editable-wrap[data-button-id]");
       if (!target || !draggedButtonId) return;
       event.preventDefault();
       persistLauncherOrder();
     });
     root.addEventListener("dragend", () => {
-      root.querySelectorAll(".sn-ep__action.is-dragging").forEach((item) => item.classList.remove("is-dragging"));
+      root.querySelectorAll(".sn-ep-editable-wrap.is-dragging").forEach((item) => item.classList.remove("is-dragging"));
       draggedButtonId = "";
     });
     root.addEventListener("input", (event) => {
       const colorInput = event.target.closest('[data-action="ep-btn-color"]');
       if (!colorInput) return;
       event.stopPropagation();
-      const buttonId = colorInput.dataset.buttonId || "";
-      const color = colorInput.value || "";
-      handlers.onSetButtonColor?.(buttonId, color);
+      handlers.onSetButtonColor?.(colorInput.dataset.buttonId || "", colorInput.value || "");
     });
   }
   function ensureLauncher({ hostDocument, state, context, settings = {}, handlers, topWorkNoteTemplates = [] }) {
@@ -13281,6 +13266,13 @@ ${value}` : value;
       if (restored.pinned) {
         state.ui.edgePanelPinned = true;
         state.ui.edgePanelMode = restored.mode === "tab" ? "icons" : restored.mode || (restored.lastOpenState ? "expanded" : "icons");
+      }
+    }
+    if (state.ui.edgePanelTop === null || state.ui.edgePanelTop === void 0) {
+      const restoredPosition = loadPanelPosition(ownerWin);
+      if (restoredPosition) {
+        state.ui.edgePanelEdge = restoredPosition.edge;
+        state.ui.edgePanelTop = restoredPosition.top;
       }
     }
     const edgeMode = state.ui.edgePanelMode || "icons";
@@ -13305,55 +13297,21 @@ ${value}` : value;
     root.innerHTML = `
     <div class="sn-ep sn-ep--${escapeHtml(state.ui.edgePanelEdge || "right")}${snapPos ? ` sn-ep--snap-${escapeHtml(snapPos)}` : ""}" data-ep-mode="${escapeHtml(edgeMode)}" data-ep-view="${escapeHtml(activeView)}" data-button-theme="${escapeHtml(buttonTheme)}" data-ep-theme="${escapeHtml(state.ui.edgePanelTheme || "light")}"${state.ui.edgePanelPinned ? ' data-ep-pinned="true"' : ""} style="${panelStyle}">
       ${slaWarn ? '<div class="sn-ep__tab sn-ep__tab--sla-warn sn-ep__tab--indicator" aria-label="SLA warning"><span class="sn-ep__sla-dot"></span></div>' : ""}
-      <button
-        type="button"
-        class="sn-ep__tab"
-        data-action="ep-toggle"
-        title="${escapeHtml(tabTitle)}"
-        aria-label="${escapeHtml(tabTitle)}"
-        aria-expanded="${panelIsOpen ? "true" : "false"}"
-      >
-        <span class="sn-ep__tab-dot" aria-hidden="true"></span>
-        <span class="sn-ep__tab-text">SN</span>
-        ${ICON.chevron}
+      <button type="button" class="sn-ep__tab" data-action="ep-toggle" title="${escapeHtml(tabTitle)}" aria-label="${escapeHtml(tabTitle)}" aria-expanded="${panelIsOpen ? "true" : "false"}">
+        <span class="sn-ep__tab-dot" aria-hidden="true"></span><span class="sn-ep__tab-text">SN</span>${ICON.chevron}
       </button>
-
       <div class="sn-ep__panel">
         <div class="sn-ep__header">
           <div class="sn-ep__header-main">
             <div class="sn-ep__title">SN Assistant${slaWarn ? ' <span class="sn-ep__sla-badge" title="Due date reached or overdue">SLA</span>' : ""}</div>
             <div class="sn-assistant-header-counts" aria-label="My assigned work">
-              <button type="button"
-                class="sn-assistant-header-counts__badge sn-assistant-header-counts__badge--inc"
-                data-action="open-my-assigned-list"
-                data-filter="incident"
-                data-loading="${headerCounts.loading ? "true" : "false"}"
-                data-ready="${headerCounts.ready ? "true" : "false"}"
-                ${incDisabled ? 'disabled aria-disabled="true"' : ""}
-                title="${incDisabled ? "No open incidents assigned to me" : "Show my open incidents"}">
-                INC ${headerCounts.loading && !headerCounts.ready ? "..." : headerCounts.error ? "!" : escapeHtml(String(headerCounts.inc))}
-              </button>
-              <button type="button"
-                class="sn-assistant-header-counts__badge sn-assistant-header-counts__badge--task"
-                data-action="open-my-assigned-list"
-                data-filter="sc_task"
-                data-loading="${headerCounts.loading ? "true" : "false"}"
-                data-ready="${headerCounts.ready ? "true" : "false"}"
-                ${taskDisabled ? 'disabled aria-disabled="true"' : ""}
-                title="${taskDisabled ? "No open tasks assigned to me" : "Show my open tasks"}">
-                TASK ${headerCounts.loading && !headerCounts.ready ? "..." : headerCounts.error ? "!" : escapeHtml(String(headerCounts.task))}
-              </button>
+              <button type="button" class="sn-assistant-header-counts__badge sn-assistant-header-counts__badge--inc" data-action="open-my-assigned-list" data-filter="incident" data-loading="${headerCounts.loading ? "true" : "false"}" data-ready="${headerCounts.ready ? "true" : "false"}" ${incDisabled ? 'disabled aria-disabled="true"' : ""} title="${incDisabled ? "No open incidents assigned to me" : "Show my open incidents"}">INC ${headerCounts.loading && !headerCounts.ready ? "..." : headerCounts.error ? "!" : escapeHtml(String(headerCounts.inc))}</button>
+              <button type="button" class="sn-assistant-header-counts__badge sn-assistant-header-counts__badge--task" data-action="open-my-assigned-list" data-filter="sc_task" data-loading="${headerCounts.loading ? "true" : "false"}" data-ready="${headerCounts.ready ? "true" : "false"}" ${taskDisabled ? 'disabled aria-disabled="true"' : ""} title="${taskDisabled ? "No open tasks assigned to me" : "Show my open tasks"}">TASK ${headerCounts.loading && !headerCounts.ready ? "..." : headerCounts.error ? "!" : escapeHtml(String(headerCounts.task))}</button>
             </div>
           </div>
-          <div class="sn-ep__header-actions">
-            <button type="button" class="sn-ep__icon-btn sn-ep__icon-btn--header" data-action="ep-close" title="${state.ui.edgePanelPinned ? "Unpin and close" : "Close"}">${ICON.close}</button>
-          </div>
+          <div class="sn-ep__header-actions"><button type="button" class="sn-ep__icon-btn sn-ep__icon-btn--header" data-action="ep-close" title="${state.ui.edgePanelPinned ? "Unpin and close" : "Close"}">${ICON.close}</button></div>
         </div>
-
-        <div class="sn-ep__actions">
-          ${actionsMarkup}
-        </div>
-
+        <div class="sn-ep__actions">${actionsMarkup}</div>
         <div class="sn-ep__footer">
           <span class="sn-ep__version">${escapeHtml(`v${VERSION}`)}</span>
           <div class="sn-ep__footer-actions">
@@ -13364,8 +13322,7 @@ ${value}` : value;
           </div>
         </div>
       </div>
-    </div>
-  `;
+    </div>`;
     bindLauncher(root, state, handlers);
     bindEmbeddedView(root, activeView, state, handlers);
     applyEdgePanelPosition(root, state);
@@ -15391,13 +15348,12 @@ ${value}` : value;
       inset: 0;
       z-index: 2147483250;
       pointer-events: auto;
-      background: transparent;
+      background: rgba(15, 23, 42, 0.08);
     }
-
     .sn-assistant-pdf-selector__card {
       position: fixed;
       min-width: 168px;
-      max-width: 212px;
+      max-width: 260px;
       padding: 10px;
       border-radius: 14px;
       border: 1px solid rgba(22, 33, 43, 0.12);
@@ -15406,30 +15362,24 @@ ${value}` : value;
       pointer-events: auto;
       -webkit-backdrop-filter: blur(12px);
       backdrop-filter: blur(12px);
+      font-family: var(--sn-assistant-font, "Aptos", "Segoe UI", sans-serif);
     }
-
     .sn-assistant-pdf-selector__title {
       margin: 0 0 8px;
-      font-family: var(--sn-assistant-font, "Aptos", "Segoe UI", sans-serif);
       font-size: 10px;
       font-weight: 800;
       letter-spacing: 0.08em;
       text-transform: uppercase;
       color: var(--sn-assistant-muted, #5a6873);
     }
-
-    .sn-assistant-pdf-selector__buttons {
-      display: grid;
-      gap: 6px;
-    }
-
+    .sn-assistant-pdf-selector__buttons { display: grid; gap: 6px; }
     .sn-assistant-pdf-selector__button {
       appearance: none;
       border: 0;
       border-radius: 10px;
       min-height: 30px;
       padding: 0 10px;
-      font-family: var(--sn-assistant-font, "Aptos", "Segoe UI", sans-serif);
+      font-family: inherit;
       font-size: 10px;
       font-weight: 800;
       cursor: pointer;
@@ -15439,29 +15389,19 @@ ${value}` : value;
       box-shadow: inset 0 0 0 1px rgba(22, 33, 43, 0.08);
       transition: transform 140ms ease, box-shadow 140ms ease, background 140ms ease;
     }
-
     .sn-assistant-pdf-selector__button:hover {
       transform: translateY(-1px);
       background: rgba(255, 255, 255, 0.98);
       box-shadow: inset 0 0 0 1px rgba(10, 99, 120, 0.18), 0 8px 16px rgba(15, 23, 42, 0.08);
     }
-
-    .sn-assistant-pdf-selector__button--reception {
-      border-left: 3px solid rgba(10, 99, 120, 0.9);
-    }
-
-    .sn-assistant-pdf-selector__button--return {
-      border-left: 3px solid rgba(199, 122, 25, 0.9);
-    }
-
+    .sn-assistant-pdf-selector__button--reception { border-left: 3px solid rgba(10, 99, 120, 0.9); }
+    .sn-assistant-pdf-selector__button--return { border-left: 3px solid rgba(199, 122, 25, 0.9); }
     .sn-assistant-pdf-selector__hint {
       margin-top: 8px;
-      font-family: var(--sn-assistant-font, "Aptos", "Segoe UI", sans-serif);
       font-size: 9px;
       line-height: 1.4;
       color: var(--sn-assistant-muted, #5a6873);
     }
-
     .sn-assistant-pdf-selector__close {
       appearance: none;
       border: 0;
@@ -15479,46 +15419,68 @@ ${value}` : value;
       align-items: center;
       justify-content: center;
     }
-
     .sn-assistant-pdf-selector__close:hover {
       background: rgba(22, 33, 43, 0.08);
       color: var(--sn-assistant-ink, #16212b);
+    }
+    .sn-assistant-pdf-selector__field {
+      width: 100%;
+      box-sizing: border-box;
+      min-height: 34px;
+      border-radius: 9px;
+      border: 1px solid rgba(22, 33, 43, 0.16);
+      background: #fff;
+      color: var(--sn-assistant-ink, #16212b);
+      padding: 7px 9px;
+      font: inherit;
+      font-size: 11px;
+      outline: none;
+    }
+    .sn-assistant-pdf-selector__field:focus {
+      border-color: rgba(10, 99, 120, 0.72);
+      box-shadow: 0 0 0 3px rgba(10, 99, 120, 0.12);
+    }
+    .sn-assistant-pdf-selector__prompt-actions {
+      display: flex;
+      justify-content: flex-end;
+      gap: 6px;
+      margin-top: 9px;
     }
   `;
     (hostDocument.head || hostDocument.documentElement).appendChild(styleTag);
   }
   function removeExisting(hostDocument) {
-    const root = hostDocument?.getElementById(PDF_UI_ID);
-    if (root) root.remove();
+    hostDocument?.getElementById(PDF_UI_ID)?.remove();
+  }
+  function cancelActive() {
+    if (typeof activePdfSelectorResolve === "function") activePdfSelectorResolve("");
+    if (typeof activePdfSelectorCleanup === "function") activePdfSelectorCleanup();
   }
   function positionCard(card, anchorElement, hostDocument) {
     const ownerWindow = hostDocument?.defaultView || window;
     const rect = anchorElement?.getBoundingClientRect?.();
-    const width = 176;
-    const left = rect ? Math.min(Math.max(rect.left + rect.width - width, 10), Math.max(ownerWindow.innerWidth - width - 10, 10)) : Math.max(ownerWindow.innerWidth - width - 16, 10);
-    const top = rect ? Math.min(rect.bottom + 10, Math.max(ownerWindow.innerHeight - 160, 10)) : 82;
-    Object.assign(card.style, {
-      left: `${left}px`,
-      top: `${top}px`
-    });
+    const width = 220;
+    const left = rect ? Math.min(Math.max(rect.left + rect.width - width, 10), Math.max(ownerWindow.innerWidth - width - 10, 10)) : Math.max((ownerWindow.innerWidth - width) / 2, 10);
+    const top = rect ? Math.min(rect.bottom + 10, Math.max(ownerWindow.innerHeight - 180, 10)) : Math.max((ownerWindow.innerHeight - 150) / 2, 30);
+    Object.assign(card.style, { left: `${left}px`, top: `${top}px` });
+  }
+  function createRoot(hostDocument) {
+    ensureStyles(hostDocument);
+    removeExisting(hostDocument);
+    const root = hostDocument.createElement("div");
+    root.id = PDF_UI_ID;
+    root.setAttribute(ROOT_ATTRIBUTE, ROOT_VALUE);
+    root.className = "sn-assistant-pdf-selector";
+    (hostDocument.body || hostDocument.documentElement).appendChild(root);
+    return root;
   }
   function removePdfSelection(hostDocument) {
     removeExisting(hostDocument);
   }
   function openPdfSelection({ hostDocument = document, anchorElement = null } = {}) {
     return new Promise((resolve) => {
-      if (typeof activePdfSelectorResolve === "function") {
-        activePdfSelectorResolve("");
-      }
-      if (typeof activePdfSelectorCleanup === "function") {
-        activePdfSelectorCleanup();
-      }
-      ensureStyles(hostDocument);
-      removeExisting(hostDocument);
-      const root = hostDocument.createElement("div");
-      root.id = PDF_UI_ID;
-      root.setAttribute(ROOT_ATTRIBUTE, ROOT_VALUE);
-      root.className = "sn-assistant-pdf-selector";
+      cancelActive();
+      const root = createRoot(hostDocument);
       const card = hostDocument.createElement("div");
       card.className = "sn-assistant-pdf-selector__card";
       const title = hostDocument.createElement("div");
@@ -15532,6 +15494,13 @@ ${value}` : value;
       closeButton.textContent = "\xD7";
       const buttons = hostDocument.createElement("div");
       buttons.className = "sn-assistant-pdf-selector__buttons";
+      let settled = false;
+      const finish = (value = "") => {
+        if (settled) return;
+        settled = true;
+        cleanup();
+        resolve(value);
+      };
       const createButton = (label, value, className) => {
         const button = hostDocument.createElement("button");
         button.type = "button";
@@ -15554,15 +15523,7 @@ ${value}` : value;
       card.appendChild(buttons);
       card.appendChild(hint);
       root.appendChild(card);
-      (hostDocument.body || hostDocument.documentElement).appendChild(root);
       positionCard(card, anchorElement, hostDocument);
-      let settled = false;
-      const finish = (value = "") => {
-        if (settled) return;
-        settled = true;
-        cleanup();
-        resolve(value);
-      };
       const onKeyDown = (event) => {
         if (event.key === "Escape") {
           event.preventDefault();
@@ -15570,9 +15531,12 @@ ${value}` : value;
         }
       };
       const onRootMouseDown = (event) => {
-        if (!card.contains(event.target)) {
-          finish("");
-        }
+        if (!card.contains(event.target)) finish("");
+      };
+      const onCloseClick = (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        finish("");
       };
       const cleanup = () => {
         hostDocument.removeEventListener("keydown", onKeyDown, true);
@@ -15582,16 +15546,86 @@ ${value}` : value;
         activePdfSelectorCleanup = null;
         activePdfSelectorResolve = null;
       };
-      const onCloseClick = (event) => {
-        event.preventDefault();
-        event.stopPropagation();
-        finish("");
-      };
       activePdfSelectorCleanup = cleanup;
       activePdfSelectorResolve = finish;
       hostDocument.addEventListener("keydown", onKeyDown, true);
       root.addEventListener("mousedown", onRootMouseDown);
       closeButton.addEventListener("click", onCloseClick);
+    });
+  }
+  function openPdfConfigurationPrompt({ hostDocument = document, currentValue = "" } = {}) {
+    return new Promise((resolve) => {
+      cancelActive();
+      const root = createRoot(hostDocument);
+      const card = hostDocument.createElement("div");
+      card.className = "sn-assistant-pdf-selector__card";
+      card.setAttribute("role", "dialog");
+      card.setAttribute("aria-modal", "true");
+      card.setAttribute("aria-label", "Configuration item required");
+      const title = hostDocument.createElement("div");
+      title.className = "sn-assistant-pdf-selector__title";
+      title.textContent = "Configuration item required";
+      const input = hostDocument.createElement("input");
+      input.type = "text";
+      input.className = "sn-assistant-pdf-selector__field";
+      input.value = String(currentValue || "");
+      input.placeholder = "PI / CI name";
+      input.autocomplete = "off";
+      const hint = hostDocument.createElement("div");
+      hint.className = "sn-assistant-pdf-selector__hint";
+      hint.textContent = "Enter the PI/CI that should be written into the PDF.";
+      const actions = hostDocument.createElement("div");
+      actions.className = "sn-assistant-pdf-selector__prompt-actions";
+      const cancel = hostDocument.createElement("button");
+      cancel.type = "button";
+      cancel.className = "sn-assistant-pdf-selector__button";
+      cancel.textContent = "Cancel";
+      const confirm = hostDocument.createElement("button");
+      confirm.type = "button";
+      confirm.className = "sn-assistant-pdf-selector__button sn-assistant-pdf-selector__button--reception";
+      confirm.textContent = "Use CI";
+      actions.append(cancel, confirm);
+      card.append(title, input, hint, actions);
+      root.appendChild(card);
+      positionCard(card, null, hostDocument);
+      let settled = false;
+      const finish = (value = "") => {
+        if (settled) return;
+        settled = true;
+        cleanup();
+        resolve(String(value || "").trim());
+      };
+      const onKeyDown = (event) => {
+        if (event.key === "Escape") {
+          event.preventDefault();
+          finish("");
+        } else if (event.key === "Enter") {
+          event.preventDefault();
+          finish(input.value);
+        }
+      };
+      const onRootMouseDown = (event) => {
+        if (!card.contains(event.target)) finish("");
+      };
+      const onCancel = () => finish("");
+      const onConfirm = () => finish(input.value);
+      const cleanup = () => {
+        hostDocument.removeEventListener("keydown", onKeyDown, true);
+        root.removeEventListener("mousedown", onRootMouseDown);
+        cancel.removeEventListener("click", onCancel);
+        confirm.removeEventListener("click", onConfirm);
+        removeExisting(hostDocument);
+        activePdfSelectorCleanup = null;
+        activePdfSelectorResolve = null;
+      };
+      activePdfSelectorCleanup = cleanup;
+      activePdfSelectorResolve = finish;
+      hostDocument.addEventListener("keydown", onKeyDown, true);
+      root.addEventListener("mousedown", onRootMouseDown);
+      cancel.addEventListener("click", onCancel);
+      confirm.addEventListener("click", onConfirm);
+      input.focus();
+      input.select();
     });
   }
 
@@ -15921,37 +15955,177 @@ ${value}` : value;
     }
     return merged;
   }
+  function normalizeMatchText(value = "") {
+    return cleanText(value).normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/[\s_-]+/g, " ").replace(/\s{2,}/g, " ").trim();
+  }
+  function escapeRegex(value = "") {
+    return String(value || "").replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  }
+  function normalizeKeywordList(value) {
+    if (Array.isArray(value)) {
+      return value.flatMap(normalizeKeywordList).filter(Boolean);
+    }
+    const text2 = cleanText(value);
+    if (!text2) return [];
+    return text2.split(/[|,]/).map((item) => normalizeMatchText(item)).filter(Boolean);
+  }
+  function containsKeyword(text2 = "", keyword = "") {
+    const source = normalizeMatchText(text2);
+    const needle = normalizeMatchText(keyword);
+    if (!source || !needle) return false;
+    return new RegExp(`(?:^|\\b)${escapeRegex(needle)}(?:\\b|$)`, "i").test(source);
+  }
+  function selectTemplateByStudioMetadata(templates = [], context = {}) {
+    const shortText = normalizeMatchText(context.shortDescription || context.short_description);
+    const descriptionText = normalizeMatchText(context.description);
+    const candidates = [];
+    for (const template of templates || []) {
+      if (!template?.id || template.enabled === false) continue;
+      const shortKeywords = normalizeKeywordList(template.keywords?.short_desc ?? template.keywords?.shortDescription);
+      const descriptionKeywords = normalizeKeywordList(template.keywords?.description);
+      const shortMatches = shortKeywords.filter((keyword) => containsKeyword(shortText, keyword));
+      const descriptionMatches = descriptionKeywords.filter((keyword) => containsKeyword(descriptionText, keyword));
+      const requiresShort = shortKeywords.length > 0;
+      const requiresDescription = descriptionKeywords.length > 0;
+      if (requiresShort && !shortMatches.length) continue;
+      if (requiresDescription && !descriptionMatches.length) continue;
+      if (!requiresShort && !requiresDescription) continue;
+      const exclusions = normalizeKeywordList(template.exclusions);
+      const shortExclusions = exclusions.filter((keyword) => containsKeyword(shortText, keyword));
+      const descriptionExclusions = exclusions.filter((keyword) => containsKeyword(descriptionText, keyword));
+      if (shortExclusions.length || !shortMatches.length && descriptionExclusions.length) continue;
+      const priority = Math.max(0, Math.min(100, Number(template.priority) || 0));
+      const score = shortMatches.length * 1e3 + descriptionMatches.length * 200 + priority;
+      candidates.push({
+        template,
+        templateId: template.id,
+        score,
+        priority,
+        shortMatches,
+        descriptionMatches,
+        source: shortMatches.length ? "studio-short-description" : "studio-description"
+      });
+    }
+    candidates.sort(
+      (left, right) => right.score - left.score || right.priority - left.priority || String(left.templateId).localeCompare(String(right.templateId))
+    );
+    const winner = candidates[0] || null;
+    return {
+      template: winner?.template || null,
+      templateId: winner?.templateId || "",
+      score: winner?.score || 0,
+      source: winner?.source || "",
+      candidates: candidates.map(({ templateId, score, priority, source, shortMatches, descriptionMatches }) => ({
+        templateId,
+        score,
+        priority,
+        source,
+        shortMatches,
+        descriptionMatches
+      }))
+    };
+  }
+  function getSmartSelectionSource(context = {}) {
+    const shortDescription = cleanText(context.shortDescription || context.short_description);
+    if (!shortDescription) {
+      return { ticket: context, detected: detectContext(context) };
+    }
+    const shortOnlyTicket = {
+      ...context,
+      shortDescription,
+      short_description: shortDescription,
+      description: "",
+      desc: "",
+      configurationItem: "",
+      configurationItemDisplay: "",
+      configurationItemValue: "",
+      location: "",
+      requestItem: "",
+      request_item: "",
+      followUp: "",
+      follow_up: ""
+    };
+    const shortDetected = detectContext(shortOnlyTicket);
+    if (shortDetected.confidence >= 5 && shortDetected.intent !== "generic") {
+      return { ticket: shortOnlyTicket, detected: shortDetected };
+    }
+    return { ticket: context, detected: detectContext(context) };
+  }
+  function getManualTemplate(state, templates, category) {
+    if (state.ui.templateSelectionMode?.[category] !== "manual") return null;
+    const selectedId = cleanText(state.ui.selectedTemplates?.[category]);
+    if (!selectedId) return null;
+    return templates.find((template) => template.id === selectedId) || null;
+  }
+  function getMetadataSelection(templates, context) {
+    const result = selectTemplateByStudioMetadata(templates, context);
+    return result.template ? result : null;
+  }
   function selectSmartTemplateForCategory(state, settings, requestedCategory = state.ui.activeCategory) {
     const groups = getTemplateGroups(settings);
     const categories = getCategories();
     const fallbackCategory = categories.find((category) => groups[category.id]?.length)?.id || categories[0]?.id || "email";
     const normalizedRequestedCategory = getSafeCategory(requestedCategory, groups);
     const activeCategory = groups[normalizedRequestedCategory]?.length ? normalizedRequestedCategory : fallbackCategory;
-    const ticketContext = detectContext(state.context || {});
+    const templates = groups[activeCategory] || [];
+    const manualTemplate = getManualTemplate(state, templates, activeCategory);
+    setActiveCategory(state, activeCategory);
+    if (manualTemplate) {
+      return {
+        groups,
+        categories,
+        activeCategory,
+        templates,
+        selectedTemplateId: manualTemplate.id,
+        selectedTemplate: manualTemplate,
+        emailSelection: null,
+        selectionMode: "manual",
+        selectionSource: "manual"
+      };
+    }
+    if (state.ui.templateSelectionMode?.[activeCategory] === "manual") {
+      state.ui.templateSelectionMode[activeCategory] = "auto";
+    }
+    const fullContext = state.context || {};
+    const metadataSelection = getMetadataSelection(templates, fullContext);
+    const { ticket: selectionTicket, detected: ticketContext } = getSmartSelectionSource(fullContext);
     let selectedTemplate = null;
     let selectedTemplateId = "";
     let emailSelection = null;
-    if (activeCategory === "work_note") {
-      const selection = selectWorkNoteTemplate(groups.work_note || [], state.context || {}, ticketContext);
+    let selectionSource = "intelligence";
+    if (metadataSelection) {
+      selectedTemplate = metadataSelection.template;
+      selectedTemplateId = metadataSelection.templateId;
+      selectionSource = metadataSelection.source;
+      if (activeCategory === "email") {
+        emailSelection = {
+          template: selectedTemplate,
+          templateId: selectedTemplateId,
+          score: metadataSelection.score,
+          ambiguous: false,
+          candidates: metadataSelection.candidates,
+          metadata: true
+        };
+      }
+    } else if (activeCategory === "work_note") {
+      const selection = selectWorkNoteTemplate(groups.work_note || [], selectionTicket, ticketContext);
       selectedTemplate = selection.template;
       selectedTemplateId = selection.templateId;
     } else if (activeCategory === "reminder") {
-      const templates2 = groups.reminder || [];
-      const emailSelection2 = selectEmailTemplate(groups.email || [], state.context || {}, ticketContext);
-      const suggestedReminderId = emailSelection2.templateId ? `reminder_${emailSelection2.templateId}` : "";
-      const preferredId = state.ui.selectedTemplates?.reminder || "";
-      selectedTemplateId = templates2.some((template) => template.id === preferredId) ? preferredId : templates2.some((template) => template.id === suggestedReminderId) ? suggestedReminderId : templates2[0]?.id || "";
-      selectedTemplate = templates2.find((template) => template.id === selectedTemplateId) || templates2[0] || null;
+      const reminderTemplates = groups.reminder || [];
+      const detectedEmailSelection = selectEmailTemplate(groups.email || [], selectionTicket, ticketContext);
+      const suggestedReminderId = detectedEmailSelection.templateId ? `reminder_${detectedEmailSelection.templateId}` : "";
+      selectedTemplateId = reminderTemplates.some((template) => template.id === suggestedReminderId) ? suggestedReminderId : reminderTemplates[0]?.id || "";
+      selectedTemplate = reminderTemplates.find((template) => template.id === selectedTemplateId) || reminderTemplates[0] || null;
     } else if (activeCategory === "close_note") {
-      const selection = selectCloseNoteTemplate(groups.close_note || [], state.context || {}, ticketContext);
+      const selection = selectCloseNoteTemplate(groups.close_note || [], selectionTicket, ticketContext);
       selectedTemplate = selection.template;
       selectedTemplateId = selection.templateId;
     } else if (activeCategory === "appointment") {
-      const templates2 = groups.appointment || [];
-      selectedTemplate = templates2[0] || null;
+      selectedTemplate = templates[0] || null;
       selectedTemplateId = selectedTemplate?.id || "";
     } else {
-      const selection = selectEmailTemplate(groups.email || [], state.context || {}, ticketContext);
+      const selection = selectEmailTemplate(groups.email || [], selectionTicket, ticketContext);
       emailSelection = selection;
       selectedTemplate = selection.template;
       selectedTemplateId = selection.templateId;
@@ -15959,12 +16133,11 @@ ${value}` : value;
     if (!selectedTemplateId) {
       selectedTemplateId = getFirstTemplateId(activeCategory, settings);
     }
-    const templates = groups[activeCategory] || [];
     if (!templates.some((template) => template.id === selectedTemplateId)) {
       selectedTemplateId = getFirstTemplateId(activeCategory, settings);
+      selectionSource = "fallback";
     }
-    setActiveCategory(state, activeCategory);
-    setSelectedTemplate(state, activeCategory, selectedTemplateId);
+    setSelectedTemplate(state, activeCategory, selectedTemplateId, "auto");
     selectedTemplate = templates.find((template) => template.id === selectedTemplateId) || selectedTemplate || null;
     return {
       groups,
@@ -15973,7 +16146,9 @@ ${value}` : value;
       templates,
       selectedTemplateId,
       selectedTemplate,
-      emailSelection
+      emailSelection,
+      selectionMode: "auto",
+      selectionSource
     };
   }
   function ensureTemplateSelection(state, settings) {
@@ -15990,6 +16165,54 @@ ${value}` : value;
   function looksLikeTicket(value) {
     return TICKET_NUMBER_PATTERN.test(cleanText(value));
   }
+  function readLiveTextField(rootWindow, fieldName) {
+    const escaped = String(fieldName || "").replace(/"/g, '\\"');
+    const selectors = [
+      `#${fieldName}`,
+      `[name="${escaped}"]`,
+      `input[id$=".${escaped}"]`,
+      `textarea[id$=".${escaped}"]`,
+      `[data-field-name="${escaped}"]`,
+      `[data-field="${escaped}"]`
+    ];
+    for (const documentRef of getAccessibleDocuments(rootWindow)) {
+      for (const selector of selectors) {
+        try {
+          const element = documentRef.querySelector(selector);
+          const value = cleanText(element?.value || element?.textContent || element?.innerText);
+          if (value) return value;
+        } catch {
+        }
+      }
+    }
+    return "";
+  }
+  function mergeLiveContext(cachedContext = {}, liveContext = {}, rootWindow = null) {
+    const liveUser = liveContext?.user || {};
+    const cachedUser = cachedContext?.user || {};
+    const user = {
+      ...cachedUser,
+      ...Object.fromEntries(
+        Object.entries(liveUser).filter(([, value]) => cleanText(value))
+      )
+    };
+    const shortDescription = cleanText(
+      liveContext?.shortDescription || liveContext?.short_description || readLiveTextField(rootWindow, "short_description") || cachedContext?.shortDescription || cachedContext?.short_description
+    );
+    const description = cleanText(
+      liveContext?.description || readLiveTextField(rootWindow, "description") || cachedContext?.description
+    );
+    return {
+      ...cachedContext || {},
+      ...liveContext || {},
+      user,
+      // Keep both aliases populated because legacy/custom integrations may still
+      // provide the ServiceNow snake_case field name.
+      shortDescription,
+      short_description: shortDescription,
+      description
+    };
+  }
   async function getRenderedSelection({
     state,
     settings,
@@ -15998,7 +16221,9 @@ ${value}` : value;
     hydrateUser = false,
     categoryOverride
   }) {
-    const baseContext = state.context || getCurrentContext(rootWindow);
+    const cachedContext = state.context || {};
+    const liveContext = getCurrentContext(rootWindow);
+    const baseContext = liveContext?.supported ? mergeLiveContext(cachedContext, liveContext, rootWindow) : mergeLiveContext({}, cachedContext, rootWindow);
     if (!baseContext?.supported) {
       return {
         renderedTemplate: null,
@@ -16006,30 +16231,35 @@ ${value}` : value;
         emailSuggestions: []
       };
     }
+    state.context = baseContext;
     const currentCi = getCurrentCmdbCi(rootWindow);
     let context = {
       ...baseContext,
-      configurationItem: !looksLikeTicket(currentCi.display) ? currentCi.display || currentCi.value || "" : "",
-      configurationItemDisplay: !looksLikeTicket(currentCi.display) ? currentCi.display || currentCi.value || "" : "",
-      configurationItemValue: !looksLikeTicket(currentCi.value) ? currentCi.value || currentCi.display || "" : ""
+      configurationItem: !looksLikeTicket(currentCi.display) ? currentCi.display || currentCi.value || baseContext.configurationItem || "" : baseContext.configurationItem || "",
+      configurationItemDisplay: !looksLikeTicket(currentCi.display) ? currentCi.display || currentCi.value || baseContext.configurationItemDisplay || "" : baseContext.configurationItemDisplay || "",
+      configurationItemValue: !looksLikeTicket(currentCi.value) ? currentCi.value || currentCi.display || baseContext.configurationItemValue || "" : baseContext.configurationItemValue || ""
     };
     if (hydrateUser) {
       const resolvedUser = await resolveUserForContext(context, state, settings, logger);
       const mergedUser = mergeResolvedUser(context?.user, resolvedUser);
       if (mergedUser.email !== context?.user?.email || mergedUser.fullName !== context?.user?.fullName || mergedUser.firstName !== context?.user?.firstName || mergedUser.lastName !== context?.user?.lastName) {
         context = { ...context, user: mergedUser };
-        state.context = context;
       }
     }
-    if (context.configurationItem && !looksLikeTicket(context.configurationItem)) {
-      state.context = {
-        ...state.context || {},
-        configurationItem: context.configurationItem,
-        configurationItemDisplay: context.configurationItemDisplay || context.configurationItem,
-        configurationItemValue: context.configurationItemValue || context.configurationItem
-      };
-    }
+    state.context = context;
     const selection = resolveTemplateSelection(state, settings, categoryOverride);
+    const diagnosticSource = cleanText(
+      selection.selectionSource || (selection.emailSelection?.metadata ? "studio-metadata" : "intelligence")
+    );
+    logger?.info?.("template-selection", {
+      recordKey: cleanText(context.recordKey),
+      category: cleanText(selection.activeCategory),
+      templateId: cleanText(selection.selectedTemplateId),
+      selectionMode: cleanText(selection.selectionMode || "auto"),
+      selectionSource: diagnosticSource,
+      shortDescription: cleanText(context.shortDescription),
+      hasDescription: Boolean(cleanText(context.description))
+    });
     const renderedTemplate = selection.selectedTemplate ? renderTemplate(selection.selectedTemplate, { context, settings }) : null;
     const emailSuggestions = selection.activeCategory === "email" && selection.emailSelection?.ambiguous ? (selection.emailSelection.candidates || []).slice(0, 3).map((candidate) => {
       const template = selection.templates.find((item) => item.id === candidate.templateId);
@@ -16048,6 +16278,7 @@ ${value}` : value;
 
   // Assistant/templates/validators.js
   var PLACEHOLDER_PATTERN = /\{\{[^}]+\}\}/g;
+  var MAILTO_SAFE_LENGTH = 1900;
   function validateCloseNotes(closeNotesText) {
     const issues = [];
     const text2 = cleanText(closeNotesText || "");
@@ -16061,6 +16292,12 @@ ${value}` : value;
       );
     }
     return issues;
+  }
+  function estimateMailtoLength(renderedTemplate = {}) {
+    const recipient = String(renderedTemplate?.recipient || "").trim();
+    const subject = String(renderedTemplate?.subject || "").trim();
+    const body = String(renderedTemplate?.body || "").trim();
+    return `mailto:${encodeURIComponent(recipient)}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`.length;
   }
   function validateDraftComposeTemplate(renderedTemplate) {
     const issues = [];
@@ -16076,6 +16313,12 @@ ${value}` : value;
     PLACEHOLDER_PATTERN.lastIndex = 0;
     if (unresolvedSubject || unresolvedBody) {
       issues.push("Some placeholders were not resolved (check {{...}} in red)");
+    }
+    const mailtoLength = estimateMailtoLength({ recipient, subject, body });
+    if (body && mailtoLength > MAILTO_SAFE_LENGTH) {
+      issues.push(
+        `Email draft is long (${mailtoLength} encoded characters). The browser/Outlook mailto hand-off may truncate it; verify the copied content before continuing.`
+      );
     }
     return issues;
   }
@@ -16512,748 +16755,1032 @@ ${value}` : value;
   }
 
   // Assistant/ui/styles/variables.css
-  var variables_default = '/* =============================================================\n   Assistant UI \u2014 Design System v2\n   Style: Apple \xB7 Linear \xB7 Notion\n   Font: Inter \u2192 SF Pro Display \u2192 Segoe UI\n   ============================================================= */\n\n/* \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\n   DESIGN TOKENS \u2014 LIGHT (DEFAULT)\n   \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500 */\n:root {\n  /* \u2500\u2500 COLORS \u2500\u2500 */\n  --sn-assistant-surface:        #F4F6FA;\n  --sn-assistant-panel:          #FFFFFF;\n  --sn-assistant-ink:            #111827;\n  --sn-assistant-muted:          #6B7280;\n  --sn-assistant-soft:           rgba(255, 255, 255, 0.72);\n  --sn-assistant-accent:         #2563EB;\n  --sn-assistant-accent-strong:  #1D4ED8;\n  --sn-assistant-accent-soft:    rgba(37, 99, 235, 0.10);\n  --sn-assistant-accent-warm:    #2563EB;\n  --sn-assistant-border:         #E2E8F0;\n  --sn-assistant-border-strong:  rgba(37, 99, 235, 0.22);\n  --sn-assistant-shadow:         0 1px 3px rgba(0,0,0,0.08), 0 4px 14px rgba(0,0,0,0.07);\n  --sn-assistant-shadow-strong:  0 2px 8px rgba(0,0,0,0.08), 0 8px 28px rgba(0,0,0,0.10);\n  --sn-assistant-danger:         #DC2626;\n  --sn-assistant-danger-soft:    rgba(220, 38, 38, 0.08);\n  --sn-assistant-radius:         14px;\n  --sn-assistant-font:           "Inter", "SF Pro Display", "Segoe UI", system-ui, sans-serif;\n  --sn-assistant-skin-bg:        linear-gradient(160deg, #FAFBFD 0%, #EEF2FB 100%);\n\n  /* \u2500\u2500 SIZING (COMPACT MODE) \u2500\u2500 */\n  --sn-assistant-font-size:      14px;\n  --sn-assistant-panel-width:    236px;\n  --sn-assistant-panel-max-height: calc(100vh - 32px);\n  --sn-assistant-button-height:  22px;\n  --sn-assistant-button-padding: 0 8px;\n  --sn-assistant-icon-size:      22px;\n  --sn-assistant-header-padding: 6px 8px 5px;\n  --sn-assistant-body-padding:   8px;\n  --sn-assistant-gap-xs:         3px;\n  --sn-assistant-gap-sm:         4px;\n  --sn-assistant-gap-md:         6px;\n  --sn-assistant-font-size-xs:   8px;\n  --sn-assistant-font-size-sm:   9px;\n  --sn-assistant-font-size-md:   11px;\n  --sn-assistant-font-size-lg:   12px;\n}\n\n/* \u2500\u2500 Dark \u2014 GitHub Dark style \u2500\u2500 */\n:root[data-sn-assistant-theme="dark"] {\n  --sn-assistant-surface:        #0D1117;\n  --sn-assistant-panel:          #161B22;\n  --sn-assistant-ink:            #E6EDF3;\n  --sn-assistant-muted:          #8B949E;\n  --sn-assistant-soft:           rgba(22, 27, 34, 0.88);\n  --sn-assistant-accent:         #E6A817;\n  --sn-assistant-accent-strong:  #C98D10;\n  --sn-assistant-accent-soft:    rgba(230, 168, 23, 0.12);\n  --sn-assistant-accent-warm:    #E6A817;\n  --sn-assistant-border:         #30363D;\n  --sn-assistant-border-strong:  rgba(230, 168, 23, 0.28);\n  --sn-assistant-skin-bg:        linear-gradient(160deg, #0D1117 0%, #090D14 100%);\n}\n\n/* \u2500\u2500 Midnight Steel \u2500\u2500 */\n:root[data-sn-assistant-theme="midnightSteel"] {\n  --sn-assistant-surface:        #060C18;\n  --sn-assistant-panel:          #0C1828;\n  --sn-assistant-ink:            #D8EEFA;\n  --sn-assistant-muted:          #5A8BAA;\n  --sn-assistant-soft:           rgba(10, 22, 40, 0.88);\n  --sn-assistant-accent:         #38A8CC;\n  --sn-assistant-accent-strong:  #2088AA;\n  --sn-assistant-accent-soft:    rgba(56, 168, 204, 0.12);\n  --sn-assistant-accent-warm:    #38A8CC;\n  --sn-assistant-border:         #152A3C;\n  --sn-assistant-border-strong:  rgba(56, 168, 204, 0.24);\n  --sn-assistant-skin-bg:        linear-gradient(160deg, #060C18 0%, #040A14 100%);\n}\n\n/* \u2500\u2500 EU Blue \u2500\u2500 */\n:root[data-sn-assistant-theme="eu_blue"] {\n  --sn-assistant-surface:        #03123A;\n  --sn-assistant-panel:          #071E60;\n  --sn-assistant-ink:            #EDF3FF;\n  --sn-assistant-muted:          #7A9FCE;\n  --sn-assistant-soft:           rgba(7, 30, 96, 0.88);\n  --sn-assistant-accent:         #FFCC00;\n  --sn-assistant-accent-strong:  #DEB000;\n  --sn-assistant-accent-soft:    rgba(255, 204, 0, 0.14);\n  --sn-assistant-accent-warm:    #5C9AFF;\n  --sn-assistant-border:         #183B8E;\n  --sn-assistant-border-strong:  rgba(255, 204, 0, 0.30);\n  --sn-assistant-skin-bg:        linear-gradient(160deg, #03123A 0%, #020D2C 100%);\n}\n\n/* \u2500\u2500 Azure / Custom \u2500\u2500 */\n:root[data-sn-assistant-theme="custom"] {\n  --sn-assistant-surface:        #060D1C;\n  --sn-assistant-panel:          #0B1A34;\n  --sn-assistant-ink:            #E4F2FF;\n  --sn-assistant-muted:          #547CA0;\n  --sn-assistant-soft:           rgba(10, 24, 50, 0.90);\n  --sn-assistant-accent:         #38AAEE;\n  --sn-assistant-accent-strong:  #1A86C4;\n  --sn-assistant-accent-soft:    rgba(56, 170, 238, 0.12);\n  --sn-assistant-accent-warm:    #38AAEE;\n  --sn-assistant-border:         #152E4E;\n  --sn-assistant-border-strong:  rgba(56, 170, 238, 0.24);\n  --sn-assistant-skin-bg:        linear-gradient(160deg, #060D1C 0%, #040A18 100%);\n}\n\n/* \u2500\u2500 Parliament \u2500\u2500 */\n:root[data-sn-assistant-theme="parliament"] {\n  --sn-assistant-surface:        #0E0620;\n  --sn-assistant-panel:          #180B38;\n  --sn-assistant-ink:            #EDE8FF;\n  --sn-assistant-muted:          #9878CC;\n  --sn-assistant-soft:           rgba(24, 11, 56, 0.90);\n  --sn-assistant-accent:         #D8B840;\n  --sn-assistant-accent-strong:  #B89820;\n  --sn-assistant-accent-soft:    rgba(216, 184, 64, 0.14);\n  --sn-assistant-accent-warm:    #D8B840;\n  --sn-assistant-border:         #38226A;\n  --sn-assistant-border-strong:  rgba(216, 184, 64, 0.26);\n  --sn-assistant-skin-bg:        linear-gradient(160deg, #0E0620 0%, #08041A 100%);\n}\n\n/* \u2500\u2500 Noir Graphite \u2500\u2500 */\n:root[data-sn-assistant-theme="noirGraphite"] {\n  --sn-assistant-surface:        #0C0C0E;\n  --sn-assistant-panel:          #131315;\n  --sn-assistant-ink:            #E8E6E2;\n  --sn-assistant-muted:          #80807C;\n  --sn-assistant-soft:           rgba(18, 18, 20, 0.90);\n  --sn-assistant-accent:         #D47028;\n  --sn-assistant-accent-strong:  #B45818;\n  --sn-assistant-accent-soft:    rgba(212, 112, 40, 0.12);\n  --sn-assistant-accent-warm:    #D47028;\n  --sn-assistant-border:         #242424;\n  --sn-assistant-border-strong:  rgba(212, 112, 40, 0.22);\n  --sn-assistant-skin-bg:        linear-gradient(160deg, #0C0C0E 0%, #080809 100%);\n}\n\n/* \u2500\u2500 Obsidian Gold \u2500\u2500 */\n:root[data-sn-assistant-theme="obsidianGold"] {\n  --sn-assistant-surface:        #020201;\n  --sn-assistant-panel:          #08070E;\n  --sn-assistant-ink:            #EDE4CC;\n  --sn-assistant-muted:          #7A6A44;\n  --sn-assistant-soft:           rgba(8, 7, 14, 0.92);\n  --sn-assistant-accent:         #C8A030;\n  --sn-assistant-accent-strong:  #A88020;\n  --sn-assistant-accent-soft:    rgba(200, 160, 48, 0.12);\n  --sn-assistant-accent-warm:    #C8A030;\n  --sn-assistant-border:         #181610;\n  --sn-assistant-border-strong:  rgba(200, 160, 48, 0.22);\n  --sn-assistant-skin-bg:        linear-gradient(160deg, #080706 0%, #020201 100%);\n}\n\n/* \u2500\u2500 Skin OFF override \u2500\u2500 */\n:root[data-sn-assistant-skin="off"] {\n  --sn-assistant-skin-bg: #FAFBFC;\n}\n\n/* \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\n   BASE \u2014 ISOLATION & RESET\n   \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500 */\n/* Root containers: establish independent CSS context */\n#sn-assistant-launcher,\n#sn-assistant-panel,\n#sn-assistant-settings,\n#sn-assistant-work-notes,\n#sn-assistant-toasts {\n  /* Ensure consistent font sizing across all environments */\n  font-size: var(--sn-assistant-font-size);\n  font-family: var(--sn-assistant-font);\n  font-weight: 600;\n  color: var(--sn-assistant-ink);\n  color-scheme: light;\n  -webkit-font-smoothing: antialiased;\n  -moz-osx-font-smoothing: grayscale;\n\n  /* Reset box model to prevent overflow from padding/border */\n  box-sizing: border-box;\n}\n\n/* Apply box-sizing to all assistant descendants */\n#sn-assistant-launcher *,\n#sn-assistant-launcher *::before,\n#sn-assistant-launcher *::after,\n#sn-assistant-panel *,\n#sn-assistant-panel *::before,\n#sn-assistant-panel *::after,\n#sn-assistant-settings *,\n#sn-assistant-settings *::before,\n#sn-assistant-settings *::after,\n#sn-assistant-work-notes *,\n#sn-assistant-work-notes *::before,\n#sn-assistant-work-notes *::after,\n#sn-assistant-toasts *,\n#sn-assistant-toasts *::before,\n#sn-assistant-toasts *::after {\n  box-sizing: border-box;\n}\n\n:root[data-sn-assistant-theme="dark"] #sn-assistant-launcher,\n:root[data-sn-assistant-theme="dark"] #sn-assistant-panel,\n:root[data-sn-assistant-theme="dark"] #sn-assistant-settings,\n:root[data-sn-assistant-theme="dark"] #sn-assistant-work-notes,\n:root[data-sn-assistant-theme="dark"] #sn-assistant-toasts,\n:root[data-sn-assistant-theme="eu_blue"] #sn-assistant-launcher,\n:root[data-sn-assistant-theme="eu_blue"] #sn-assistant-panel,\n:root[data-sn-assistant-theme="eu_blue"] #sn-assistant-settings,\n:root[data-sn-assistant-theme="eu_blue"] #sn-assistant-work-notes,\n:root[data-sn-assistant-theme="eu_blue"] #sn-assistant-toasts,\n:root[data-sn-assistant-theme="custom"] #sn-assistant-launcher,\n:root[data-sn-assistant-theme="custom"] #sn-assistant-panel,\n:root[data-sn-assistant-theme="custom"] #sn-assistant-settings,\n:root[data-sn-assistant-theme="custom"] #sn-assistant-work-notes,\n:root[data-sn-assistant-theme="custom"] #sn-assistant-toasts,\n:root[data-sn-assistant-theme="parliament"] #sn-assistant-launcher,\n:root[data-sn-assistant-theme="parliament"] #sn-assistant-panel,\n:root[data-sn-assistant-theme="parliament"] #sn-assistant-settings,\n:root[data-sn-assistant-theme="parliament"] #sn-assistant-work-notes,\n:root[data-sn-assistant-theme="parliament"] #sn-assistant-toasts,\n:root[data-sn-assistant-theme="noirGraphite"] #sn-assistant-launcher,\n:root[data-sn-assistant-theme="noirGraphite"] #sn-assistant-panel,\n:root[data-sn-assistant-theme="noirGraphite"] #sn-assistant-settings,\n:root[data-sn-assistant-theme="noirGraphite"] #sn-assistant-work-notes,\n:root[data-sn-assistant-theme="noirGraphite"] #sn-assistant-toasts,\n:root[data-sn-assistant-theme="midnightSteel"] #sn-assistant-launcher,\n:root[data-sn-assistant-theme="midnightSteel"] #sn-assistant-panel,\n:root[data-sn-assistant-theme="midnightSteel"] #sn-assistant-settings,\n:root[data-sn-assistant-theme="midnightSteel"] #sn-assistant-work-notes,\n:root[data-sn-assistant-theme="midnightSteel"] #sn-assistant-toasts,\n:root[data-sn-assistant-theme="obsidianGold"] #sn-assistant-launcher,\n:root[data-sn-assistant-theme="obsidianGold"] #sn-assistant-panel,\n:root[data-sn-assistant-theme="obsidianGold"] #sn-assistant-settings,\n:root[data-sn-assistant-theme="obsidianGold"] #sn-assistant-work-notes,\n:root[data-sn-assistant-theme="obsidianGold"] #sn-assistant-toasts {\n  color-scheme: dark;\n}\n\n.sn-assistant-floating {\n  position: fixed;\n  z-index: 2147483000;\n  user-select: none;\n  pointer-events: auto;\n}\n\n.sn-assistant-is-hidden {\n  display: none !important;\n}\n';
+  var variables_default = '/* =============================================================\r\n   Assistant UI \u2014 Design System v2\r\n   Style: Apple \xB7 Linear \xB7 Notion\r\n   Font: Inter \u2192 SF Pro Display \u2192 Segoe UI\r\n   ============================================================= */\r\n\r\n/* \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\r\n   DESIGN TOKENS \u2014 LIGHT (DEFAULT)\r\n   \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500 */\r\n:root {\r\n  /* \u2500\u2500 COLORS \u2500\u2500 */\r\n  --sn-assistant-surface:        #F4F6FA;\r\n  --sn-assistant-panel:          #FFFFFF;\r\n  --sn-assistant-ink:            #111827;\r\n  --sn-assistant-muted:          #6B7280;\r\n  --sn-assistant-soft:           rgba(255, 255, 255, 0.72);\r\n  --sn-assistant-accent:         #2563EB;\r\n  --sn-assistant-accent-strong:  #1D4ED8;\r\n  --sn-assistant-accent-soft:    rgba(37, 99, 235, 0.10);\r\n  --sn-assistant-accent-warm:    #2563EB;\r\n  --sn-assistant-border:         #E2E8F0;\r\n  --sn-assistant-border-strong:  rgba(37, 99, 235, 0.22);\r\n  --sn-assistant-shadow:         0 1px 3px rgba(0,0,0,0.08), 0 4px 14px rgba(0,0,0,0.07);\r\n  --sn-assistant-shadow-strong:  0 2px 8px rgba(0,0,0,0.08), 0 8px 28px rgba(0,0,0,0.10);\r\n  --sn-assistant-danger:         #DC2626;\r\n  --sn-assistant-danger-soft:    rgba(220, 38, 38, 0.08);\r\n  --sn-assistant-radius:         14px;\r\n  --sn-assistant-font:           "Inter", "SF Pro Display", "Segoe UI", system-ui, sans-serif;\r\n  --sn-assistant-skin-bg:        linear-gradient(160deg, #FAFBFD 0%, #EEF2FB 100%);\r\n\r\n  /* \u2500\u2500 SIZING (COMPACT MODE) \u2500\u2500 */\r\n  --sn-assistant-font-size:      14px;\r\n  --sn-assistant-panel-width:    236px;\r\n  --sn-assistant-panel-max-height: calc(100vh - 32px);\r\n  --sn-assistant-button-height:  22px;\r\n  --sn-assistant-button-padding: 0 8px;\r\n  --sn-assistant-icon-size:      22px;\r\n  --sn-assistant-header-padding: 6px 8px 5px;\r\n  --sn-assistant-body-padding:   8px;\r\n  --sn-assistant-gap-xs:         3px;\r\n  --sn-assistant-gap-sm:         4px;\r\n  --sn-assistant-gap-md:         6px;\r\n  --sn-assistant-font-size-xs:   8px;\r\n  --sn-assistant-font-size-sm:   9px;\r\n  --sn-assistant-font-size-md:   11px;\r\n  --sn-assistant-font-size-lg:   12px;\r\n}\r\n\r\n/* \u2500\u2500 Dark \u2014 GitHub Dark style \u2500\u2500 */\r\n:root[data-sn-assistant-theme="dark"] {\r\n  --sn-assistant-surface:        #0D1117;\r\n  --sn-assistant-panel:          #161B22;\r\n  --sn-assistant-ink:            #E6EDF3;\r\n  --sn-assistant-muted:          #8B949E;\r\n  --sn-assistant-soft:           rgba(22, 27, 34, 0.88);\r\n  --sn-assistant-accent:         #E6A817;\r\n  --sn-assistant-accent-strong:  #C98D10;\r\n  --sn-assistant-accent-soft:    rgba(230, 168, 23, 0.12);\r\n  --sn-assistant-accent-warm:    #E6A817;\r\n  --sn-assistant-border:         #30363D;\r\n  --sn-assistant-border-strong:  rgba(230, 168, 23, 0.28);\r\n  --sn-assistant-skin-bg:        linear-gradient(160deg, #0D1117 0%, #090D14 100%);\r\n}\r\n\r\n/* \u2500\u2500 Midnight Steel \u2500\u2500 */\r\n:root[data-sn-assistant-theme="midnightSteel"] {\r\n  --sn-assistant-surface:        #060C18;\r\n  --sn-assistant-panel:          #0C1828;\r\n  --sn-assistant-ink:            #D8EEFA;\r\n  --sn-assistant-muted:          #5A8BAA;\r\n  --sn-assistant-soft:           rgba(10, 22, 40, 0.88);\r\n  --sn-assistant-accent:         #38A8CC;\r\n  --sn-assistant-accent-strong:  #2088AA;\r\n  --sn-assistant-accent-soft:    rgba(56, 168, 204, 0.12);\r\n  --sn-assistant-accent-warm:    #38A8CC;\r\n  --sn-assistant-border:         #152A3C;\r\n  --sn-assistant-border-strong:  rgba(56, 168, 204, 0.24);\r\n  --sn-assistant-skin-bg:        linear-gradient(160deg, #060C18 0%, #040A14 100%);\r\n}\r\n\r\n/* \u2500\u2500 EU Blue \u2500\u2500 */\r\n:root[data-sn-assistant-theme="eu_blue"] {\r\n  --sn-assistant-surface:        #03123A;\r\n  --sn-assistant-panel:          #071E60;\r\n  --sn-assistant-ink:            #EDF3FF;\r\n  --sn-assistant-muted:          #7A9FCE;\r\n  --sn-assistant-soft:           rgba(7, 30, 96, 0.88);\r\n  --sn-assistant-accent:         #FFCC00;\r\n  --sn-assistant-accent-strong:  #DEB000;\r\n  --sn-assistant-accent-soft:    rgba(255, 204, 0, 0.14);\r\n  --sn-assistant-accent-warm:    #5C9AFF;\r\n  --sn-assistant-border:         #183B8E;\r\n  --sn-assistant-border-strong:  rgba(255, 204, 0, 0.30);\r\n  --sn-assistant-skin-bg:        linear-gradient(160deg, #03123A 0%, #020D2C 100%);\r\n}\r\n\r\n/* \u2500\u2500 Azure / Custom \u2500\u2500 */\r\n:root[data-sn-assistant-theme="custom"] {\r\n  --sn-assistant-surface:        #060D1C;\r\n  --sn-assistant-panel:          #0B1A34;\r\n  --sn-assistant-ink:            #E4F2FF;\r\n  --sn-assistant-muted:          #547CA0;\r\n  --sn-assistant-soft:           rgba(10, 24, 50, 0.90);\r\n  --sn-assistant-accent:         #38AAEE;\r\n  --sn-assistant-accent-strong:  #1A86C4;\r\n  --sn-assistant-accent-soft:    rgba(56, 170, 238, 0.12);\r\n  --sn-assistant-accent-warm:    #38AAEE;\r\n  --sn-assistant-border:         #152E4E;\r\n  --sn-assistant-border-strong:  rgba(56, 170, 238, 0.24);\r\n  --sn-assistant-skin-bg:        linear-gradient(160deg, #060D1C 0%, #040A18 100%);\r\n}\r\n\r\n/* \u2500\u2500 Parliament \u2500\u2500 */\r\n:root[data-sn-assistant-theme="parliament"] {\r\n  --sn-assistant-surface:        #0E0620;\r\n  --sn-assistant-panel:          #180B38;\r\n  --sn-assistant-ink:            #EDE8FF;\r\n  --sn-assistant-muted:          #9878CC;\r\n  --sn-assistant-soft:           rgba(24, 11, 56, 0.90);\r\n  --sn-assistant-accent:         #D8B840;\r\n  --sn-assistant-accent-strong:  #B89820;\r\n  --sn-assistant-accent-soft:    rgba(216, 184, 64, 0.14);\r\n  --sn-assistant-accent-warm:    #D8B840;\r\n  --sn-assistant-border:         #38226A;\r\n  --sn-assistant-border-strong:  rgba(216, 184, 64, 0.26);\r\n  --sn-assistant-skin-bg:        linear-gradient(160deg, #0E0620 0%, #08041A 100%);\r\n}\r\n\r\n/* \u2500\u2500 Noir Graphite \u2500\u2500 */\r\n:root[data-sn-assistant-theme="noirGraphite"] {\r\n  --sn-assistant-surface:        #0C0C0E;\r\n  --sn-assistant-panel:          #131315;\r\n  --sn-assistant-ink:            #E8E6E2;\r\n  --sn-assistant-muted:          #80807C;\r\n  --sn-assistant-soft:           rgba(18, 18, 20, 0.90);\r\n  --sn-assistant-accent:         #D47028;\r\n  --sn-assistant-accent-strong:  #B45818;\r\n  --sn-assistant-accent-soft:    rgba(212, 112, 40, 0.12);\r\n  --sn-assistant-accent-warm:    #D47028;\r\n  --sn-assistant-border:         #242424;\r\n  --sn-assistant-border-strong:  rgba(212, 112, 40, 0.22);\r\n  --sn-assistant-skin-bg:        linear-gradient(160deg, #0C0C0E 0%, #080809 100%);\r\n}\r\n\r\n/* \u2500\u2500 Obsidian Gold \u2500\u2500 */\r\n:root[data-sn-assistant-theme="obsidianGold"] {\r\n  --sn-assistant-surface:        #020201;\r\n  --sn-assistant-panel:          #08070E;\r\n  --sn-assistant-ink:            #EDE4CC;\r\n  --sn-assistant-muted:          #7A6A44;\r\n  --sn-assistant-soft:           rgba(8, 7, 14, 0.92);\r\n  --sn-assistant-accent:         #C8A030;\r\n  --sn-assistant-accent-strong:  #A88020;\r\n  --sn-assistant-accent-soft:    rgba(200, 160, 48, 0.12);\r\n  --sn-assistant-accent-warm:    #C8A030;\r\n  --sn-assistant-border:         #181610;\r\n  --sn-assistant-border-strong:  rgba(200, 160, 48, 0.22);\r\n  --sn-assistant-skin-bg:        linear-gradient(160deg, #080706 0%, #020201 100%);\r\n}\r\n\r\n/* \u2500\u2500 Skin OFF override \u2500\u2500 */\r\n:root[data-sn-assistant-skin="off"] {\r\n  --sn-assistant-skin-bg: #FAFBFC;\r\n}\r\n\r\n/* \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\r\n   BASE \u2014 ISOLATION & RESET\r\n   \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500 */\r\n/* Root containers: establish independent CSS context */\r\n#sn-assistant-launcher,\r\n#sn-assistant-panel,\r\n#sn-assistant-settings,\r\n#sn-assistant-work-notes,\r\n#sn-assistant-toasts {\r\n  /* Ensure consistent font sizing across all environments */\r\n  font-size: var(--sn-assistant-font-size);\r\n  font-family: var(--sn-assistant-font);\r\n  font-weight: 600;\r\n  color: var(--sn-assistant-ink);\r\n  color-scheme: light;\r\n  -webkit-font-smoothing: antialiased;\r\n  -moz-osx-font-smoothing: grayscale;\r\n\r\n  /* Reset box model to prevent overflow from padding/border */\r\n  box-sizing: border-box;\r\n}\r\n\r\n/* Apply box-sizing to all assistant descendants */\r\n#sn-assistant-launcher *,\r\n#sn-assistant-launcher *::before,\r\n#sn-assistant-launcher *::after,\r\n#sn-assistant-panel *,\r\n#sn-assistant-panel *::before,\r\n#sn-assistant-panel *::after,\r\n#sn-assistant-settings *,\r\n#sn-assistant-settings *::before,\r\n#sn-assistant-settings *::after,\r\n#sn-assistant-work-notes *,\r\n#sn-assistant-work-notes *::before,\r\n#sn-assistant-work-notes *::after,\r\n#sn-assistant-toasts *,\r\n#sn-assistant-toasts *::before,\r\n#sn-assistant-toasts *::after {\r\n  box-sizing: border-box;\r\n}\r\n\r\n:root[data-sn-assistant-theme="dark"] #sn-assistant-launcher,\r\n:root[data-sn-assistant-theme="dark"] #sn-assistant-panel,\r\n:root[data-sn-assistant-theme="dark"] #sn-assistant-settings,\r\n:root[data-sn-assistant-theme="dark"] #sn-assistant-work-notes,\r\n:root[data-sn-assistant-theme="dark"] #sn-assistant-toasts,\r\n:root[data-sn-assistant-theme="eu_blue"] #sn-assistant-launcher,\r\n:root[data-sn-assistant-theme="eu_blue"] #sn-assistant-panel,\r\n:root[data-sn-assistant-theme="eu_blue"] #sn-assistant-settings,\r\n:root[data-sn-assistant-theme="eu_blue"] #sn-assistant-work-notes,\r\n:root[data-sn-assistant-theme="eu_blue"] #sn-assistant-toasts,\r\n:root[data-sn-assistant-theme="custom"] #sn-assistant-launcher,\r\n:root[data-sn-assistant-theme="custom"] #sn-assistant-panel,\r\n:root[data-sn-assistant-theme="custom"] #sn-assistant-settings,\r\n:root[data-sn-assistant-theme="custom"] #sn-assistant-work-notes,\r\n:root[data-sn-assistant-theme="custom"] #sn-assistant-toasts,\r\n:root[data-sn-assistant-theme="parliament"] #sn-assistant-launcher,\r\n:root[data-sn-assistant-theme="parliament"] #sn-assistant-panel,\r\n:root[data-sn-assistant-theme="parliament"] #sn-assistant-settings,\r\n:root[data-sn-assistant-theme="parliament"] #sn-assistant-work-notes,\r\n:root[data-sn-assistant-theme="parliament"] #sn-assistant-toasts,\r\n:root[data-sn-assistant-theme="noirGraphite"] #sn-assistant-launcher,\r\n:root[data-sn-assistant-theme="noirGraphite"] #sn-assistant-panel,\r\n:root[data-sn-assistant-theme="noirGraphite"] #sn-assistant-settings,\r\n:root[data-sn-assistant-theme="noirGraphite"] #sn-assistant-work-notes,\r\n:root[data-sn-assistant-theme="noirGraphite"] #sn-assistant-toasts,\r\n:root[data-sn-assistant-theme="midnightSteel"] #sn-assistant-launcher,\r\n:root[data-sn-assistant-theme="midnightSteel"] #sn-assistant-panel,\r\n:root[data-sn-assistant-theme="midnightSteel"] #sn-assistant-settings,\r\n:root[data-sn-assistant-theme="midnightSteel"] #sn-assistant-work-notes,\r\n:root[data-sn-assistant-theme="midnightSteel"] #sn-assistant-toasts,\r\n:root[data-sn-assistant-theme="obsidianGold"] #sn-assistant-launcher,\r\n:root[data-sn-assistant-theme="obsidianGold"] #sn-assistant-panel,\r\n:root[data-sn-assistant-theme="obsidianGold"] #sn-assistant-settings,\r\n:root[data-sn-assistant-theme="obsidianGold"] #sn-assistant-work-notes,\r\n:root[data-sn-assistant-theme="obsidianGold"] #sn-assistant-toasts {\r\n  color-scheme: dark;\r\n}\r\n\r\n.sn-assistant-floating {\r\n  position: fixed;\r\n  z-index: 2147483000;\r\n  user-select: none;\r\n  pointer-events: auto;\r\n}\r\n\r\n.sn-assistant-is-hidden {\r\n  display: none !important;\r\n}\r\n';
 
   // Assistant/ui/styles/launcher.css
-  var launcher_default = `/* \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
-   LAUNCHER
-   \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500 */
-.sn-assistant-launcher__shell {
-  position: relative;
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 4px;
-  padding: 4px;
-  border-radius: 999px;
-  background: var(--sn-assistant-panel);
-  border: 1px solid var(--sn-assistant-border);
-  box-shadow: var(--sn-assistant-shadow-strong);
-  animation: sn-assistant-launcher-float 5.2s ease-in-out infinite;
-  transition: background 200ms ease, border-color 200ms ease, box-shadow 200ms ease;
-}
-
-.sn-assistant-launcher__shell::before {
-  content: "";
-  position: absolute;
-  inset: 1px;
-  border-radius: inherit;
-  pointer-events: none;
-  background: linear-gradient(135deg, rgba(255,255,255,0.60), transparent 50%);
-  opacity: 0.7;
-}
-
-.sn-assistant-launcher__shell::after {
-  content: "";
-  position: absolute;
-  inset: 0;
-  border-radius: inherit;
-  pointer-events: none;
-  box-shadow: inset 0 1px 0 rgba(255,255,255,0.80);
-}
-
-/* \u2500\u2500 Shared interactive base \u2500\u2500 */
-.sn-assistant-launcher__primary,
-.sn-assistant-launcher__icon,
-.sn-assistant-button,
-.sn-assistant-tab,
-.sn-assistant-mini-button {
-  border: 0;
-  cursor: pointer;
-  font-family: inherit;
-  transition:
-    transform 120ms ease,
-    box-shadow 120ms ease,
-    background 160ms ease,
-    color 160ms ease,
-    opacity 160ms ease,
-    border-color 160ms ease;
-}
-
-.sn-assistant-launcher__primary {
-  position: relative;
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
-  min-width: 76px;
-  height: var(--sn-assistant-button-height);
-  padding: var(--sn-assistant-button-padding);
-  border-radius: 999px;
-  background: var(--sn-assistant-accent);
-  color: #FFFFFF;
-  font-family: inherit;
-  font-size: var(--sn-assistant-font-size-sm);
-  font-weight: 700;
-  letter-spacing: 0.03em;
-  box-shadow: 0 2px 8px rgba(37, 99, 235, 0.28);
-  overflow: hidden;
-}
-
-.sn-assistant-launcher__primary::after {
-  content: "";
-  position: absolute;
-  inset: 0;
-  background: linear-gradient(180deg, rgba(255,255,255,0.16), transparent);
-  pointer-events: none;
-}
-
-.sn-assistant-launcher__primary--calendar {
-  min-width: 22px;
-  padding: 0 5px;
-  background: #8B5E14;
-  box-shadow: 0 2px 8px rgba(139, 94, 20, 0.28);
-  transition: background 200ms ease, box-shadow 200ms ease, opacity 200ms ease;
-}
-
-.sn-assistant-launcher__primary--calendar.is-ready {
-  background: #166B46;
-  box-shadow: 0 2px 8px rgba(22, 107, 70, 0.28);
-}
-
-.sn-assistant-launcher__primary--calendar.is-disabled {
-  opacity: 0.45;
-  box-shadow: none;
-}
-
-.sn-assistant-launcher__primary:hover,
-.sn-assistant-launcher__icon:hover,
-.sn-assistant-button:hover,
-.sn-assistant-tab:hover,
-.sn-assistant-mini-button:hover {
-  transform: translateY(-1px);
-}
-
-.sn-assistant-launcher__primary:active,
-.sn-assistant-launcher__icon:active,
-.sn-assistant-button:active,
-.sn-assistant-tab:active,
-.sn-assistant-mini-button:active {
-  transform: translateY(0);
-}
-
-.sn-assistant-launcher__dot {
-  width: 5px;
-  height: 5px;
-  border-radius: 999px;
-  background: rgba(255, 255, 255, 0.88);
-  animation: sn-assistant-launcher-dot 1.8s ease-in-out infinite;
-}
-
-.sn-assistant-launcher__icon {
-  display: inline-grid;
-  place-items: center;
-  width: var(--sn-assistant-icon-size);
-  height: var(--sn-assistant-icon-size);
-  border-radius: 999px;
-  background: var(--sn-assistant-surface);
-  color: var(--sn-assistant-accent-strong);
-  border: 1px solid var(--sn-assistant-border);
-  transition: background 200ms ease, border-color 200ms ease, color 200ms ease;
-}
-
-.sn-assistant-launcher__icon--danger {
-  color: var(--sn-assistant-danger);
-  background: var(--sn-assistant-danger-soft);
-  border-color: rgba(220, 38, 38, 0.18);
-}
-
-/* \u2500\u2500 Icon sprites \u2500\u2500 */
-.sn-assistant-icon {
-  display: inline-block;
-  width: 11px;
-  height: 11px;
-  background-position: center;
-  background-repeat: no-repeat;
-  background-size: contain;
-}
-
-.sn-assistant-icon--gear {
-  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23084557' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'%3E%3Ccircle cx='12' cy='12' r='3.2'/%3E%3Cpath d='M19.4 15a1.7 1.7 0 0 0 .34 1.83l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.7 1.7 0 0 0-1.83-.34 1.7 1.7 0 0 0-1.03 1.52V21a2 2 0 1 1-4 0v-.09a1.7 1.7 0 0 0-1.03-1.52 1.7 1.7 0 0 0-1.83.34l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.7 1.7 0 0 0 .34-1.83 1.7 1.7 0 0 0-1.52-1.03H3a2 2 0 1 1 0-4h.09A1.7 1.7 0 0 0 4.61 9a1.7 1.7 0 0 0-.34-1.83l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.7 1.7 0 0 0 8.93 4h.08a1.7 1.7 0 0 0 1.03-1.52V2a2 2 0 1 1 4 0v.09A1.7 1.7 0 0 0 15.07 3.6a1.7 1.7 0 0 0 1.83-.34l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.7 1.7 0 0 0 19.39 9v.08A1.7 1.7 0 0 0 20.91 10H21a2 2 0 1 1 0 4h-.09A1.7 1.7 0 0 0 19.4 15z'/%3E%3C/svg%3E");
-}
-
-.sn-assistant-icon--calendar {
-  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23ffffff' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'%3E%3Crect x='3' y='4.5' width='18' height='16' rx='2'/%3E%3Cpath d='M8 3v3M16 3v3M3 9h18'/%3E%3Cpath d='M8 13h4M8 17h6'/%3E%3C/svg%3E");
-}
-
-.sn-assistant-icon--pdf {
-  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23084557' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M7 3.5h7l5 5v12A1.5 1.5 0 0 1 17.5 22h-10A1.5 1.5 0 0 1 6 20.5v-15A2 2 0 0 1 8 3.5z'/%3E%3Cpath d='M14 3.5V9h5'/%3E%3Cpath d='M9 13h6M9 16h6M9 19h3'/%3E%3C/svg%3E");
-}
-
-.sn-assistant-icon--search {
-  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%235a6873' stroke-width='1.9' stroke-linecap='round' stroke-linejoin='round'%3E%3Ccircle cx='11' cy='11' r='6.5'/%3E%3Cpath d='M16.2 16.2L20 20'/%3E%3C/svg%3E");
-}
-
-.sn-assistant-icon--spark {
-  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%235a6873' stroke-width='1.9' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M13 2L4.5 13.5h6.5L11 22l8.5-11.5H13z'/%3E%3C/svg%3E");
-}
-
-.sn-assistant-icon--copy {
-  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%235a6873' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'%3E%3Crect x='8.5' y='8.5' width='11' height='11' rx='1.5'/%3E%3Cpath d='M6.5 15.5h-1a1.5 1.5 0 0 1-1.5-1.5v-10A1.5 1.5 0 0 1 5.5 2.5h10a1.5 1.5 0 0 1 1.5 1.5v1'/%3E%3C/svg%3E");
-}
-
-.sn-assistant-icon--clear {
-  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%235a6873' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M5 7h14M9.5 7V5.5h5V7M8 7l.7 12h6.6L16 7'/%3E%3C/svg%3E");
-}
-
-.sn-assistant-icon--close {
-  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23b5473f' stroke-width='2.1' stroke-linecap='round'%3E%3Cpath d='M6 6l12 12M18 6L6 18'/%3E%3C/svg%3E");
-}
-
-/* Power glyph \u2014 used for the "shut down the assistant" force-close button so
-   it is visually distinct from the plain "close panel" X. */
-.sn-assistant-icon--power {
-  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23b5473f' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M12 3v9'/%3E%3Cpath d='M6.6 7.6a7.5 7.5 0 1 0 10.8 0'/%3E%3C/svg%3E");
-}
-
-/* Launcher colour-palette picker cards (Settings > Buttons). */
-.sn-assistant-palette-card {
-  display: flex;
-  flex-direction: column;
-  align-items: flex-start;
-  gap: 8px;
-  padding: 12px;
-  border: 2px solid var(--sn-assistant-border);
-  border-radius: 10px;
-  background: var(--sn-assistant-panel);
-  cursor: pointer;
-  transition: border-color 160ms ease, background 160ms ease;
-}
-
-.sn-assistant-palette-card:hover {
-  border-color: var(--sn-assistant-accent);
-  background: var(--sn-assistant-accent-soft);
-}
+  var launcher_default = `/* \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\r
+   LAUNCHER\r
+   \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500 */\r
+.sn-assistant-launcher__shell {\r
+  position: relative;\r
+  display: flex;\r
+  flex-wrap: wrap;\r
+  align-items: center;\r
+  gap: 4px;\r
+  padding: 4px;\r
+  border-radius: 999px;\r
+  background: var(--sn-assistant-panel);\r
+  border: 1px solid var(--sn-assistant-border);\r
+  box-shadow: var(--sn-assistant-shadow-strong);\r
+  animation: sn-assistant-launcher-float 5.2s ease-in-out infinite;\r
+  transition: background 200ms ease, border-color 200ms ease, box-shadow 200ms ease;\r
+}\r
+\r
+.sn-assistant-launcher__shell::before {\r
+  content: "";\r
+  position: absolute;\r
+  inset: 1px;\r
+  border-radius: inherit;\r
+  pointer-events: none;\r
+  background: linear-gradient(135deg, rgba(255,255,255,0.60), transparent 50%);\r
+  opacity: 0.7;\r
+}\r
+\r
+.sn-assistant-launcher__shell::after {\r
+  content: "";\r
+  position: absolute;\r
+  inset: 0;\r
+  border-radius: inherit;\r
+  pointer-events: none;\r
+  box-shadow: inset 0 1px 0 rgba(255,255,255,0.80);\r
+}\r
+\r
+/* \u2500\u2500 Shared interactive base \u2500\u2500 */\r
+.sn-assistant-launcher__primary,\r
+.sn-assistant-launcher__icon,\r
+.sn-assistant-button,\r
+.sn-assistant-tab,\r
+.sn-assistant-mini-button {\r
+  border: 0;\r
+  cursor: pointer;\r
+  font-family: inherit;\r
+  transition:\r
+    transform 120ms ease,\r
+    box-shadow 120ms ease,\r
+    background 160ms ease,\r
+    color 160ms ease,\r
+    opacity 160ms ease,\r
+    border-color 160ms ease;\r
+}\r
+\r
+.sn-assistant-launcher__primary {\r
+  position: relative;\r
+  display: inline-flex;\r
+  align-items: center;\r
+  gap: 5px;\r
+  min-width: 76px;\r
+  height: var(--sn-assistant-button-height);\r
+  padding: var(--sn-assistant-button-padding);\r
+  border-radius: 999px;\r
+  background: var(--sn-assistant-accent);\r
+  color: #FFFFFF;\r
+  font-family: inherit;\r
+  font-size: var(--sn-assistant-font-size-sm);\r
+  font-weight: 700;\r
+  letter-spacing: 0.03em;\r
+  box-shadow: 0 2px 8px rgba(37, 99, 235, 0.28);\r
+  overflow: hidden;\r
+}\r
+\r
+.sn-assistant-launcher__primary::after {\r
+  content: "";\r
+  position: absolute;\r
+  inset: 0;\r
+  background: linear-gradient(180deg, rgba(255,255,255,0.16), transparent);\r
+  pointer-events: none;\r
+}\r
+\r
+.sn-assistant-launcher__primary--calendar {\r
+  min-width: 22px;\r
+  padding: 0 5px;\r
+  background: #8B5E14;\r
+  box-shadow: 0 2px 8px rgba(139, 94, 20, 0.28);\r
+  transition: background 200ms ease, box-shadow 200ms ease, opacity 200ms ease;\r
+}\r
+\r
+.sn-assistant-launcher__primary--calendar.is-ready {\r
+  background: #166B46;\r
+  box-shadow: 0 2px 8px rgba(22, 107, 70, 0.28);\r
+}\r
+\r
+.sn-assistant-launcher__primary--calendar.is-disabled {\r
+  opacity: 0.45;\r
+  box-shadow: none;\r
+}\r
+\r
+.sn-assistant-launcher__primary:hover,\r
+.sn-assistant-launcher__icon:hover,\r
+.sn-assistant-button:hover,\r
+.sn-assistant-tab:hover,\r
+.sn-assistant-mini-button:hover {\r
+  transform: translateY(-1px);\r
+}\r
+\r
+.sn-assistant-launcher__primary:active,\r
+.sn-assistant-launcher__icon:active,\r
+.sn-assistant-button:active,\r
+.sn-assistant-tab:active,\r
+.sn-assistant-mini-button:active {\r
+  transform: translateY(0);\r
+}\r
+\r
+.sn-assistant-launcher__dot {\r
+  width: 5px;\r
+  height: 5px;\r
+  border-radius: 999px;\r
+  background: rgba(255, 255, 255, 0.88);\r
+  animation: sn-assistant-launcher-dot 1.8s ease-in-out infinite;\r
+}\r
+\r
+.sn-assistant-launcher__icon {\r
+  display: inline-grid;\r
+  place-items: center;\r
+  width: var(--sn-assistant-icon-size);\r
+  height: var(--sn-assistant-icon-size);\r
+  border-radius: 999px;\r
+  background: var(--sn-assistant-surface);\r
+  color: var(--sn-assistant-accent-strong);\r
+  border: 1px solid var(--sn-assistant-border);\r
+  transition: background 200ms ease, border-color 200ms ease, color 200ms ease;\r
+}\r
+\r
+.sn-assistant-launcher__icon--danger {\r
+  color: var(--sn-assistant-danger);\r
+  background: var(--sn-assistant-danger-soft);\r
+  border-color: rgba(220, 38, 38, 0.18);\r
+}\r
+\r
+/* \u2500\u2500 Icon sprites \u2500\u2500 */\r
+.sn-assistant-icon {\r
+  display: inline-block;\r
+  width: 11px;\r
+  height: 11px;\r
+  background-position: center;\r
+  background-repeat: no-repeat;\r
+  background-size: contain;\r
+}\r
+\r
+.sn-assistant-icon--gear {\r
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23084557' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'%3E%3Ccircle cx='12' cy='12' r='3.2'/%3E%3Cpath d='M19.4 15a1.7 1.7 0 0 0 .34 1.83l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.7 1.7 0 0 0-1.83-.34 1.7 1.7 0 0 0-1.03 1.52V21a2 2 0 1 1-4 0v-.09a1.7 1.7 0 0 0-1.03-1.52 1.7 1.7 0 0 0-1.83.34l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.7 1.7 0 0 0 .34-1.83 1.7 1.7 0 0 0-1.52-1.03H3a2 2 0 1 1 0-4h.09A1.7 1.7 0 0 0 4.61 9a1.7 1.7 0 0 0-.34-1.83l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.7 1.7 0 0 0 8.93 4h.08a1.7 1.7 0 0 0 1.03-1.52V2a2 2 0 1 1 4 0v.09A1.7 1.7 0 0 0 15.07 3.6a1.7 1.7 0 0 0 1.83-.34l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.7 1.7 0 0 0 19.39 9v.08A1.7 1.7 0 0 0 20.91 10H21a2 2 0 1 1 0 4h-.09A1.7 1.7 0 0 0 19.4 15z'/%3E%3C/svg%3E");\r
+}\r
+\r
+.sn-assistant-icon--calendar {\r
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23ffffff' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'%3E%3Crect x='3' y='4.5' width='18' height='16' rx='2'/%3E%3Cpath d='M8 3v3M16 3v3M3 9h18'/%3E%3Cpath d='M8 13h4M8 17h6'/%3E%3C/svg%3E");\r
+}\r
+\r
+.sn-assistant-icon--pdf {\r
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23084557' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M7 3.5h7l5 5v12A1.5 1.5 0 0 1 17.5 22h-10A1.5 1.5 0 0 1 6 20.5v-15A2 2 0 0 1 8 3.5z'/%3E%3Cpath d='M14 3.5V9h5'/%3E%3Cpath d='M9 13h6M9 16h6M9 19h3'/%3E%3C/svg%3E");\r
+}\r
+\r
+.sn-assistant-icon--search {\r
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%235a6873' stroke-width='1.9' stroke-linecap='round' stroke-linejoin='round'%3E%3Ccircle cx='11' cy='11' r='6.5'/%3E%3Cpath d='M16.2 16.2L20 20'/%3E%3C/svg%3E");\r
+}\r
+\r
+.sn-assistant-icon--spark {\r
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%235a6873' stroke-width='1.9' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M13 2L4.5 13.5h6.5L11 22l8.5-11.5H13z'/%3E%3C/svg%3E");\r
+}\r
+\r
+.sn-assistant-icon--copy {\r
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%235a6873' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'%3E%3Crect x='8.5' y='8.5' width='11' height='11' rx='1.5'/%3E%3Cpath d='M6.5 15.5h-1a1.5 1.5 0 0 1-1.5-1.5v-10A1.5 1.5 0 0 1 5.5 2.5h10a1.5 1.5 0 0 1 1.5 1.5v1'/%3E%3C/svg%3E");\r
+}\r
+\r
+.sn-assistant-icon--clear {\r
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%235a6873' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M5 7h14M9.5 7V5.5h5V7M8 7l.7 12h6.6L16 7'/%3E%3C/svg%3E");\r
+}\r
+\r
+.sn-assistant-icon--close {\r
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23b5473f' stroke-width='2.1' stroke-linecap='round'%3E%3Cpath d='M6 6l12 12M18 6L6 18'/%3E%3C/svg%3E");\r
+}\r
+\r
+/* Power glyph \u2014 used for the "shut down the assistant" force-close button so\r
+   it is visually distinct from the plain "close panel" X. */\r
+.sn-assistant-icon--power {\r
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23b5473f' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M12 3v9'/%3E%3Cpath d='M6.6 7.6a7.5 7.5 0 1 0 10.8 0'/%3E%3C/svg%3E");\r
+}\r
+\r
+/* Launcher colour-palette picker cards (Settings > Buttons). */\r
+.sn-assistant-palette-card {\r
+  display: flex;\r
+  flex-direction: column;\r
+  align-items: flex-start;\r
+  gap: 8px;\r
+  padding: 12px;\r
+  border: 2px solid var(--sn-assistant-border);\r
+  border-radius: 10px;\r
+  background: var(--sn-assistant-panel);\r
+  cursor: pointer;\r
+  transition: border-color 160ms ease, background 160ms ease;\r
+}\r
+\r
+.sn-assistant-palette-card:hover {\r
+  border-color: var(--sn-assistant-accent);\r
+  background: var(--sn-assistant-accent-soft);\r
+}\r
 `;
 
   // Assistant/ui/styles/panel.css
-  var panel_default = '/* \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\n   PANEL\n   \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500 */\n.sn-assistant-panel {\n  position: relative;\n  width: var(--sn-assistant-panel-width);\n  max-width: calc(100vw - 24px);\n  max-height: var(--sn-assistant-panel-max-height);\n  border-radius: var(--sn-assistant-radius);\n  background: var(--sn-assistant-panel);\n  border: 1px solid var(--sn-assistant-border);\n  box-shadow: var(--sn-assistant-shadow-strong);\n  overflow: hidden;\n  overflow-y: auto;\n  display: flex;\n  flex-direction: column;\n  transition: background 200ms ease, border-color 200ms ease, box-shadow 200ms ease;\n}\n\n/* Prevent overflow on small screens */\n@media (max-width: 400px) {\n  .sn-assistant-panel {\n    width: calc(100vw - 24px);\n    max-height: calc(100vh - 32px);\n  }\n}\n\n.sn-assistant-panel::before {\n  content: "";\n  position: absolute;\n  inset: 0 0 auto;\n  height: 2px;\n  background: linear-gradient(90deg, var(--sn-assistant-accent), var(--sn-assistant-accent-warm));\n  pointer-events: none;\n  opacity: 0.9;\n}\n\n.sn-assistant-panel__header {\n  display: flex;\n  align-items: flex-start;\n  justify-content: space-between;\n  gap: var(--sn-assistant-gap-sm);\n  padding: var(--sn-assistant-header-padding);\n  cursor: grab;\n  background: rgba(255, 255, 255, 0.60);\n  border-bottom: 1px solid var(--sn-assistant-border);\n  flex-shrink: 0;\n}\n\n.sn-assistant-panel__title {\n  display: flex;\n  flex-direction: column;\n  gap: 1px;\n  min-width: 0;\n}\n\n.sn-assistant-panel__eyebrow {\n  display: inline-flex;\n  align-items: center;\n  align-self: flex-start;\n  gap: 4px;\n  padding: 3px 7px;\n  border-radius: 999px;\n  background: var(--sn-assistant-accent-soft);\n  font-size: 8px;\n  font-weight: 800;\n  color: var(--sn-assistant-accent);\n  letter-spacing: 0.12em;\n  text-transform: uppercase;\n}\n\n.sn-assistant-panel__version {\n  display: inline-flex;\n  align-items: center;\n  align-self: flex-start;\n  margin-top: -1px;\n  margin-bottom: 2px;\n  padding: 2px 7px;\n  border-radius: 999px;\n  background: var(--sn-assistant-accent-soft);\n  color: var(--sn-assistant-accent-strong);\n  font-size: 9px;\n  font-weight: 700;\n  letter-spacing: 0.03em;\n  text-transform: none;\n}\n\n.sn-assistant-panel__generator {\n  position: relative;\n  display: inline-flex;\n  align-items: center;\n  gap: 6px;\n  align-self: flex-start;\n  margin-top: 2px;\n  margin-bottom: 2px;\n  padding: 3px 9px;\n  border-radius: 999px;\n  background:\n    linear-gradient(180deg, rgba(255,255,255,0.42), rgba(255,255,255,0.06)),\n    var(--sn-assistant-accent-soft);\n  color: var(--sn-assistant-accent-strong);\n  font-size: 10px;\n  font-weight: 700;\n  letter-spacing: 0.01em;\n  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--sn-assistant-accent) 20%, transparent);\n  overflow: hidden;\n}\n\n.sn-assistant-panel__generator::after {\n  content: "";\n  position: absolute;\n  inset: 0;\n  border-radius: inherit;\n  padding: 1px;\n  background: linear-gradient(90deg, transparent, rgba(14, 165, 233, 0.5), transparent);\n  mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);\n  mask-composite: exclude;\n  opacity: 0.7;\n  animation: sn-assistant-pill-border 3.6s ease-in-out infinite;\n  pointer-events: none;\n}\n\n.sn-assistant-panel__generator-icon,\n.sn-assistant-panel__generator-label {\n  display: inline-flex;\n  align-items: center;\n  line-height: 1;\n}\n\n@keyframes sn-assistant-pill-border {\n  0%, 100% {\n    transform: translateX(-45%);\n    opacity: 0.35;\n  }\n  50% {\n    transform: translateX(45%);\n    opacity: 0.9;\n  }\n}\n\n.sn-assistant-panel__heading {\n  font-size: var(--sn-assistant-font-size-md);\n  font-weight: 800;\n  line-height: 1.25;\n  letter-spacing: -0.02em;\n  color: var(--sn-assistant-ink);\n  word-break: break-word;\n}\n\n.sn-assistant-panel__subheading {\n  font-size: var(--sn-assistant-font-size-xs);\n  font-weight: 500;\n  line-height: 1.25;\n  color: var(--sn-assistant-muted);\n  word-break: break-word;\n}\n\n/* Header badges: open INC + SCTASK counters assigned to the logged-in IT agent */\n.sn-assistant-header-counts {\n  display: flex;\n  align-items: center;\n  gap: 6px;\n  margin-top: 2px;\n}\n\n.sn-assistant-header-counts__badge {\n  display: inline-flex;\n  align-items: center;\n  gap: 2px;\n  padding: 2px 6px;\n  border-radius: 999px;\n  font-size: 9px;\n  font-weight: 700;\n  letter-spacing: 0.02em;\n  line-height: 1.2;\n  background: var(--sn-assistant-chip-bg, rgba(37, 99, 235, 0.08));\n  color: var(--sn-assistant-ink, #1e293b);\n  border: 1px solid var(--sn-assistant-chip-border, rgba(37, 99, 235, 0.25));\n  white-space: nowrap;\n  cursor: pointer;\n  transition: transform 0.08s ease-out, box-shadow 0.08s ease-out, filter 0.08s ease-out;\n}\n\n.sn-assistant-header-counts__badge:hover:not([disabled]) {\n  filter: brightness(0.96);\n  box-shadow: 0 1px 3px rgba(15, 23, 42, 0.15);\n  transform: translateY(-1px);\n}\n\n.sn-assistant-header-counts__badge:active:not([disabled]) {\n  transform: translateY(0);\n  box-shadow: none;\n}\n\n.sn-assistant-header-counts__badge:focus-visible {\n  outline: 2px solid #2563eb;\n  outline-offset: 2px;\n}\n\n.sn-assistant-header-counts__badge[disabled] {\n  cursor: not-allowed;\n  opacity: 0.45;\n  filter: grayscale(0.4);\n}\n\n.sn-assistant-header-counts__badge--inc {\n  background: rgba(220, 38, 38, 0.16);\n  color: #b91c1c;\n  border-color: rgba(220, 38, 38, 0.55);\n}\n\n.sn-assistant-header-counts__badge--task {\n  background: rgba(5, 150, 105, 0.16);\n  color: #047857;\n  border-color: rgba(5, 150, 105, 0.55);\n}\n\n.sn-assistant-header-counts__badge[data-loading="true"][data-ready="false"] {\n  opacity: 0.6;\n}\n\n/* User Tickets filter chips (All / INC / TASK toggles inside the panel) */\n.sn-assistant-tickets-filters {\n  display: flex;\n  align-items: center;\n  gap: 6px;\n  padding: 8px 12px 4px 12px;\n}\n\n.sn-assistant-tickets-filter {\n  display: inline-flex;\n  align-items: center;\n  gap: 4px;\n  padding: 4px 10px;\n  border-radius: 999px;\n  font-size: 11px;\n  font-weight: 600;\n  line-height: 1.3;\n  background: rgba(15, 23, 42, 0.04);\n  color: #475569;\n  border: 1px solid rgba(15, 23, 42, 0.12);\n  cursor: pointer;\n  transition: background 0.08s ease-out, color 0.08s ease-out, border-color 0.08s ease-out;\n}\n\n.sn-assistant-tickets-filter:hover {\n  background: rgba(15, 23, 42, 0.08);\n}\n\n.sn-assistant-tickets-filter:focus-visible {\n  outline: 2px solid #2563eb;\n  outline-offset: 2px;\n}\n\n.sn-assistant-tickets-filter.is-active {\n  background: #2563eb;\n  border-color: #2563eb;\n  color: #fff;\n}\n\n.sn-assistant-tickets-filter__count {\n  font-weight: 700;\n  font-size: 10px;\n  padding: 0 6px;\n  border-radius: 999px;\n  background: rgba(15, 23, 42, 0.08);\n  color: inherit;\n}\n\n.sn-assistant-tickets-filter.is-active .sn-assistant-tickets-filter__count {\n  background: rgba(255, 255, 255, 0.22);\n}\n\n.sn-assistant-panel__header-actions,\n.sn-assistant-panel__footer,\n.sn-assistant-row {\n  display: flex;\n  align-items: center;\n  gap: 3px;\n}\n\n.sn-assistant-panel__footer,\n.sn-assistant-row--wrap,\n.sn-assistant-modal__footer {\n  flex-wrap: wrap;\n}\n\n.sn-assistant-panel__body {\n  display: flex;\n  flex-direction: column;\n  gap: var(--sn-assistant-gap-sm);\n  padding: var(--sn-assistant-body-padding);\n  min-height: 0;\n  flex: 1 1 auto;\n  overflow-y: auto;\n  overflow-x: hidden;\n}\n';
+  var panel_default = '/* \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\r\n   PANEL\r\n   \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500 */\r\n.sn-assistant-panel {\r\n  position: relative;\r\n  width: var(--sn-assistant-panel-width);\r\n  max-width: calc(100vw - 24px);\r\n  max-height: var(--sn-assistant-panel-max-height);\r\n  border-radius: var(--sn-assistant-radius);\r\n  background: var(--sn-assistant-panel);\r\n  border: 1px solid var(--sn-assistant-border);\r\n  box-shadow: var(--sn-assistant-shadow-strong);\r\n  overflow: hidden;\r\n  overflow-y: auto;\r\n  display: flex;\r\n  flex-direction: column;\r\n  transition: background 200ms ease, border-color 200ms ease, box-shadow 200ms ease;\r\n}\r\n\r\n/* Prevent overflow on small screens */\r\n@media (max-width: 400px) {\r\n  .sn-assistant-panel {\r\n    width: calc(100vw - 24px);\r\n    max-height: calc(100vh - 32px);\r\n  }\r\n}\r\n\r\n.sn-assistant-panel::before {\r\n  content: "";\r\n  position: absolute;\r\n  inset: 0 0 auto;\r\n  height: 2px;\r\n  background: linear-gradient(90deg, var(--sn-assistant-accent), var(--sn-assistant-accent-warm));\r\n  pointer-events: none;\r\n  opacity: 0.9;\r\n}\r\n\r\n.sn-assistant-panel__header {\r\n  display: flex;\r\n  align-items: flex-start;\r\n  justify-content: space-between;\r\n  gap: var(--sn-assistant-gap-sm);\r\n  padding: var(--sn-assistant-header-padding);\r\n  cursor: grab;\r\n  background: rgba(255, 255, 255, 0.60);\r\n  border-bottom: 1px solid var(--sn-assistant-border);\r\n  flex-shrink: 0;\r\n}\r\n\r\n.sn-assistant-panel__title {\r\n  display: flex;\r\n  flex-direction: column;\r\n  gap: 1px;\r\n  min-width: 0;\r\n}\r\n\r\n.sn-assistant-panel__eyebrow {\r\n  display: inline-flex;\r\n  align-items: center;\r\n  align-self: flex-start;\r\n  gap: 4px;\r\n  padding: 3px 7px;\r\n  border-radius: 999px;\r\n  background: var(--sn-assistant-accent-soft);\r\n  font-size: 8px;\r\n  font-weight: 800;\r\n  color: var(--sn-assistant-accent);\r\n  letter-spacing: 0.12em;\r\n  text-transform: uppercase;\r\n}\r\n\r\n.sn-assistant-panel__version {\r\n  display: inline-flex;\r\n  align-items: center;\r\n  align-self: flex-start;\r\n  margin-top: -1px;\r\n  margin-bottom: 2px;\r\n  padding: 2px 7px;\r\n  border-radius: 999px;\r\n  background: var(--sn-assistant-accent-soft);\r\n  color: var(--sn-assistant-accent-strong);\r\n  font-size: 9px;\r\n  font-weight: 700;\r\n  letter-spacing: 0.03em;\r\n  text-transform: none;\r\n}\r\n\r\n.sn-assistant-panel__generator {\r\n  position: relative;\r\n  display: inline-flex;\r\n  align-items: center;\r\n  gap: 6px;\r\n  align-self: flex-start;\r\n  margin-top: 2px;\r\n  margin-bottom: 2px;\r\n  padding: 3px 9px;\r\n  border-radius: 999px;\r\n  background:\r\n    linear-gradient(180deg, rgba(255,255,255,0.42), rgba(255,255,255,0.06)),\r\n    var(--sn-assistant-accent-soft);\r\n  color: var(--sn-assistant-accent-strong);\r\n  font-size: 10px;\r\n  font-weight: 700;\r\n  letter-spacing: 0.01em;\r\n  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--sn-assistant-accent) 20%, transparent);\r\n  overflow: hidden;\r\n}\r\n\r\n.sn-assistant-panel__generator::after {\r\n  content: "";\r\n  position: absolute;\r\n  inset: 0;\r\n  border-radius: inherit;\r\n  padding: 1px;\r\n  background: linear-gradient(90deg, transparent, rgba(14, 165, 233, 0.5), transparent);\r\n  mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);\r\n  mask-composite: exclude;\r\n  opacity: 0.7;\r\n  animation: sn-assistant-pill-border 3.6s ease-in-out infinite;\r\n  pointer-events: none;\r\n}\r\n\r\n.sn-assistant-panel__generator-icon,\r\n.sn-assistant-panel__generator-label {\r\n  display: inline-flex;\r\n  align-items: center;\r\n  line-height: 1;\r\n}\r\n\r\n@keyframes sn-assistant-pill-border {\r\n  0%, 100% {\r\n    transform: translateX(-45%);\r\n    opacity: 0.35;\r\n  }\r\n  50% {\r\n    transform: translateX(45%);\r\n    opacity: 0.9;\r\n  }\r\n}\r\n\r\n.sn-assistant-panel__heading {\r\n  font-size: var(--sn-assistant-font-size-md);\r\n  font-weight: 800;\r\n  line-height: 1.25;\r\n  letter-spacing: -0.02em;\r\n  color: var(--sn-assistant-ink);\r\n  word-break: break-word;\r\n}\r\n\r\n.sn-assistant-panel__subheading {\r\n  font-size: var(--sn-assistant-font-size-xs);\r\n  font-weight: 500;\r\n  line-height: 1.25;\r\n  color: var(--sn-assistant-muted);\r\n  word-break: break-word;\r\n}\r\n\r\n/* Header badges: open INC + SCTASK counters assigned to the logged-in IT agent */\r\n.sn-assistant-header-counts {\r\n  display: flex;\r\n  align-items: center;\r\n  gap: 6px;\r\n  margin-top: 2px;\r\n}\r\n\r\n.sn-assistant-header-counts__badge {\r\n  display: inline-flex;\r\n  align-items: center;\r\n  gap: 2px;\r\n  padding: 2px 6px;\r\n  border-radius: 999px;\r\n  font-size: 9px;\r\n  font-weight: 700;\r\n  letter-spacing: 0.02em;\r\n  line-height: 1.2;\r\n  background: var(--sn-assistant-chip-bg, rgba(37, 99, 235, 0.08));\r\n  color: var(--sn-assistant-ink, #1e293b);\r\n  border: 1px solid var(--sn-assistant-chip-border, rgba(37, 99, 235, 0.25));\r\n  white-space: nowrap;\r\n  cursor: pointer;\r\n  transition: transform 0.08s ease-out, box-shadow 0.08s ease-out, filter 0.08s ease-out;\r\n}\r\n\r\n.sn-assistant-header-counts__badge:hover:not([disabled]) {\r\n  filter: brightness(0.96);\r\n  box-shadow: 0 1px 3px rgba(15, 23, 42, 0.15);\r\n  transform: translateY(-1px);\r\n}\r\n\r\n.sn-assistant-header-counts__badge:active:not([disabled]) {\r\n  transform: translateY(0);\r\n  box-shadow: none;\r\n}\r\n\r\n.sn-assistant-header-counts__badge:focus-visible {\r\n  outline: 2px solid #2563eb;\r\n  outline-offset: 2px;\r\n}\r\n\r\n.sn-assistant-header-counts__badge[disabled] {\r\n  cursor: not-allowed;\r\n  opacity: 0.45;\r\n  filter: grayscale(0.4);\r\n}\r\n\r\n.sn-assistant-header-counts__badge--inc {\r\n  background: rgba(220, 38, 38, 0.16);\r\n  color: #b91c1c;\r\n  border-color: rgba(220, 38, 38, 0.55);\r\n}\r\n\r\n.sn-assistant-header-counts__badge--task {\r\n  background: rgba(5, 150, 105, 0.16);\r\n  color: #047857;\r\n  border-color: rgba(5, 150, 105, 0.55);\r\n}\r\n\r\n.sn-assistant-header-counts__badge[data-loading="true"][data-ready="false"] {\r\n  opacity: 0.6;\r\n}\r\n\r\n/* User Tickets filter chips (All / INC / TASK toggles inside the panel) */\r\n.sn-assistant-tickets-filters {\r\n  display: flex;\r\n  align-items: center;\r\n  gap: 6px;\r\n  padding: 8px 12px 4px 12px;\r\n}\r\n\r\n.sn-assistant-tickets-filter {\r\n  display: inline-flex;\r\n  align-items: center;\r\n  gap: 4px;\r\n  padding: 4px 10px;\r\n  border-radius: 999px;\r\n  font-size: 11px;\r\n  font-weight: 600;\r\n  line-height: 1.3;\r\n  background: rgba(15, 23, 42, 0.04);\r\n  color: #475569;\r\n  border: 1px solid rgba(15, 23, 42, 0.12);\r\n  cursor: pointer;\r\n  transition: background 0.08s ease-out, color 0.08s ease-out, border-color 0.08s ease-out;\r\n}\r\n\r\n.sn-assistant-tickets-filter:hover {\r\n  background: rgba(15, 23, 42, 0.08);\r\n}\r\n\r\n.sn-assistant-tickets-filter:focus-visible {\r\n  outline: 2px solid #2563eb;\r\n  outline-offset: 2px;\r\n}\r\n\r\n.sn-assistant-tickets-filter.is-active {\r\n  background: #2563eb;\r\n  border-color: #2563eb;\r\n  color: #fff;\r\n}\r\n\r\n.sn-assistant-tickets-filter__count {\r\n  font-weight: 700;\r\n  font-size: 10px;\r\n  padding: 0 6px;\r\n  border-radius: 999px;\r\n  background: rgba(15, 23, 42, 0.08);\r\n  color: inherit;\r\n}\r\n\r\n.sn-assistant-tickets-filter.is-active .sn-assistant-tickets-filter__count {\r\n  background: rgba(255, 255, 255, 0.22);\r\n}\r\n\r\n.sn-assistant-panel__header-actions,\r\n.sn-assistant-panel__footer,\r\n.sn-assistant-row {\r\n  display: flex;\r\n  align-items: center;\r\n  gap: 3px;\r\n}\r\n\r\n.sn-assistant-panel__footer,\r\n.sn-assistant-row--wrap,\r\n.sn-assistant-modal__footer {\r\n  flex-wrap: wrap;\r\n}\r\n\r\n.sn-assistant-panel__body {\r\n  display: flex;\r\n  flex-direction: column;\r\n  gap: var(--sn-assistant-gap-sm);\r\n  padding: var(--sn-assistant-body-padding);\r\n  min-height: 0;\r\n  flex: 1 1 auto;\r\n  overflow-y: auto;\r\n  overflow-x: hidden;\r\n}\r\n';
 
   // Assistant/ui/styles/chips-tabs.css
-  var chips_tabs_default = "/* \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\n   CHIPS\n   \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500 */\n.sn-assistant-chip-row {\n  display: grid;\n  grid-template-columns: repeat(2, minmax(0, 1fr));\n  gap: 3px;\n}\n\n.sn-assistant-chip {\n  display: flex;\n  align-items: center;\n  gap: 3px;\n  min-height: 24px;\n  padding: 4px 6px;\n  border-radius: 10px;\n  font-size: 8px;\n  font-weight: 600;\n  line-height: 1.15;\n  color: var(--sn-assistant-muted);\n  background: var(--sn-assistant-surface);\n  border: 1px solid var(--sn-assistant-border);\n  box-shadow: 0 1px 3px rgba(0,0,0,0.04);\n}\n\n.sn-assistant-chip--person {\n  gap: 8px;\n}\n\n.sn-assistant-chip__icon {\n  display: inline-flex;\n  align-items: center;\n  justify-content: center;\n  width: 1em;\n  height: 1em;\n  font-size: 0.95em;\n  line-height: 1;\n  opacity: 0.9;\n}\n\n.sn-assistant-chip strong {\n  display: block;\n  color: var(--sn-assistant-ink);\n  font-size: 9px;\n  font-weight: 700;\n  letter-spacing: 0.06em;\n  text-transform: uppercase;\n}\n\n/* \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\n   TABS\n   \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500 */\n.sn-assistant-tabs {\n  display: inline-flex;\n  flex-wrap: wrap;\n  gap: 3px;\n  padding: 4px;\n  border-radius: 999px;\n  background: var(--sn-assistant-surface);\n  border: 1px solid var(--sn-assistant-border);\n}\n\n.sn-assistant-tab {\n  min-height: 32px;\n  padding: 6px 14px;\n  border-radius: 999px;\n  background: transparent;\n  color: var(--sn-assistant-muted);\n  font-size: 12px;\n  font-weight: 600;\n  letter-spacing: 0.01em;\n}\n\n.sn-assistant-tab.is-active {\n  background: var(--sn-assistant-accent);\n  color: #FFFFFF;\n  box-shadow: 0 2px 8px rgba(37, 99, 235, 0.24);\n}\n";
+  var chips_tabs_default = "/* \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\r\n   CHIPS\r\n   \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500 */\r\n.sn-assistant-chip-row {\r\n  display: grid;\r\n  grid-template-columns: repeat(2, minmax(0, 1fr));\r\n  gap: 3px;\r\n}\r\n\r\n.sn-assistant-chip {\r\n  display: flex;\r\n  align-items: center;\r\n  gap: 3px;\r\n  min-height: 24px;\r\n  padding: 4px 6px;\r\n  border-radius: 10px;\r\n  font-size: 8px;\r\n  font-weight: 600;\r\n  line-height: 1.15;\r\n  color: var(--sn-assistant-muted);\r\n  background: var(--sn-assistant-surface);\r\n  border: 1px solid var(--sn-assistant-border);\r\n  box-shadow: 0 1px 3px rgba(0,0,0,0.04);\r\n}\r\n\r\n.sn-assistant-chip--person {\r\n  gap: 8px;\r\n}\r\n\r\n.sn-assistant-chip__icon {\r\n  display: inline-flex;\r\n  align-items: center;\r\n  justify-content: center;\r\n  width: 1em;\r\n  height: 1em;\r\n  font-size: 0.95em;\r\n  line-height: 1;\r\n  opacity: 0.9;\r\n}\r\n\r\n.sn-assistant-chip strong {\r\n  display: block;\r\n  color: var(--sn-assistant-ink);\r\n  font-size: 9px;\r\n  font-weight: 700;\r\n  letter-spacing: 0.06em;\r\n  text-transform: uppercase;\r\n}\r\n\r\n/* \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\r\n   TABS\r\n   \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500 */\r\n.sn-assistant-tabs {\r\n  display: inline-flex;\r\n  flex-wrap: wrap;\r\n  gap: 3px;\r\n  padding: 4px;\r\n  border-radius: 999px;\r\n  background: var(--sn-assistant-surface);\r\n  border: 1px solid var(--sn-assistant-border);\r\n}\r\n\r\n.sn-assistant-tab {\r\n  min-height: 32px;\r\n  padding: 6px 14px;\r\n  border-radius: 999px;\r\n  background: transparent;\r\n  color: var(--sn-assistant-muted);\r\n  font-size: 12px;\r\n  font-weight: 600;\r\n  letter-spacing: 0.01em;\r\n}\r\n\r\n.sn-assistant-tab.is-active {\r\n  background: var(--sn-assistant-accent);\r\n  color: #FFFFFF;\r\n  box-shadow: 0 2px 8px rgba(37, 99, 235, 0.24);\r\n}\r\n";
 
   // Assistant/ui/styles/theme-settings.css
-  var theme_settings_default = `/* \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
-   THEME PICKER & CARDS
-   \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500 */
-.sn-assistant-theme-picker {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 10px;
-}
-
-.sn-assistant-theme-card {
-  appearance: none;
-  position: relative;
-  border: 1px solid rgba(0, 0, 0, 0.08);
-  border-radius: 14px;
-  min-height: 78px;
-  padding: 12px 14px;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  gap: 8px;
-  background:
-    radial-gradient(circle at 18% 16%, rgba(255,255,255,0.18), transparent 24%),
-    linear-gradient(180deg, rgba(255,255,255,0.04), rgba(255,255,255,0)),
-    var(--theme-bg, var(--sn-assistant-panel));
-  color: var(--theme-fg, var(--sn-assistant-ink));
-  box-shadow: 0 2px 8px rgba(0,0,0,0.06);
-  cursor: pointer;
-  transition: transform 160ms ease, box-shadow 160ms ease, border-color 160ms ease;
-}
-
-.sn-assistant-theme-card::before {
-  content: "";
-  position: absolute;
-  inset: 0;
-  border-radius: inherit;
-  background: linear-gradient(120deg, rgba(255,255,255,0.20), transparent 36%);
-  transform: translateX(-140%);
-  opacity: 0;
-}
-
-.sn-assistant-theme-card:hover::before,
-.sn-assistant-theme-card:focus-visible::before {
-  opacity: 1;
-  animation: sn-assistant-theme-sheen 680ms ease;
-}
-
-.sn-assistant-theme-card:hover {
-  transform: translateY(-2px);
-  box-shadow: 0 4px 16px rgba(0,0,0,0.10);
-}
-
-.sn-assistant-theme-card.is-active {
-  border-width: 2px;
-  border-color: var(--theme-accent, var(--sn-assistant-accent));
-  box-shadow:
-    0 0 0 3px color-mix(in srgb, var(--theme-accent, #2563EB) 20%, transparent),
-    0 4px 16px rgba(0,0,0,0.10);
-  transform: translateY(-1px) scale(1.01);
-  animation: sn-assistant-theme-pop 240ms ease;
-}
-
-.sn-assistant-theme-card__dot {
-  width: 28px;
-  height: 28px;
-  border-radius: 999px;
-  background: var(--theme-accent, var(--sn-assistant-accent));
-  box-shadow: 0 2px 8px rgba(0,0,0,0.14);
-}
-
-.sn-assistant-theme-card__label {
-  font-size: 11px;
-  font-weight: 700;
-  line-height: 1.2;
-  text-align: center;
-}
-
-.sn-assistant-theme-card__state {
-  position: absolute;
-  top: 8px;
-  right: 8px;
-  font-size: 9px;
-  font-weight: 800;
-  color: var(--theme-accent, var(--sn-assistant-accent));
-  text-transform: uppercase;
-  letter-spacing: 0.08em;
-}
-
-/* \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
-   THEME PREVIEW
-   \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500 */
-.sn-assistant-theme-preview {
-  position: relative;
-  border-radius: 12px;
-  overflow: hidden;
-  border: 1px solid var(--sn-assistant-border);
-  background: var(--sn-assistant-panel);
-}
-
-.sn-assistant-theme-preview__surface {
-  padding: 16px;
-  background: var(--sn-assistant-skin-bg);
-  min-height: 152px;
-}
-
-.sn-assistant-theme-preview__label {
-  font-size: 12px;
-  font-weight: 700;
-  color: var(--sn-assistant-ink);
-}
-
-.sn-assistant-theme-preview__hint,
-.sn-assistant-theme-preview__caption {
-  font-size: 11px;
-  font-weight: 500;
-  line-height: 1.5;
-  color: var(--sn-assistant-muted);
-}
-
-.sn-assistant-theme-preview__dock {
-  display: flex;
-  justify-content: flex-end;
-  padding: 14px 0 10px;
-}
-
-.sn-assistant-theme-preview__shell {
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
-  padding: 5px;
-  border-radius: 999px;
-  background: #FFFFFF;
-  border: 1px solid rgba(0, 0, 0, 0.10);
-  box-shadow: 0 2px 8px rgba(0,0,0,0.10), 0 8px 20px rgba(0,0,0,0.07);
-  animation: sn-assistant-launcher-float 5.2s ease-in-out infinite;
-}
-
-.sn-assistant-theme-preview__primary,
-.sn-assistant-theme-preview__icon {
-  border: 0;
-  pointer-events: none;
-}
-
-.sn-assistant-theme-preview__primary {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  height: 24px;
-  padding: 0 10px;
-  border-radius: 999px;
-  background: var(--sn-assistant-accent);
-  color: #FFFFFF;
-  font-size: 10px;
-  font-weight: 700;
-  box-shadow: 0 2px 8px rgba(37, 99, 235, 0.22);
-}
-
-.sn-assistant-theme-preview__dot {
-  width: 6px;
-  height: 6px;
-  border-radius: 999px;
-  background: rgba(255, 255, 255, 0.80);
-}
-
-.sn-assistant-theme-preview__icon {
-  display: inline-grid;
-  place-items: center;
-  width: 24px;
-  height: 24px;
-  border-radius: 999px;
-  background: #F4F6FA;
-  color: var(--sn-assistant-accent-strong);
-  border: 1px solid rgba(0, 0, 0, 0.06);
-}
-
-.sn-assistant-theme-preview__mini {
-  display: inline-block;
-  width: 12px;
-  height: 12px;
-  background-position: center;
-  background-repeat: no-repeat;
-  background-size: contain;
-}
-
-.sn-assistant-theme-preview__mini--calendar {
-  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23084557' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'%3E%3Crect x='3' y='4.5' width='18' height='16' rx='2'/%3E%3Cpath d='M8 3v3M16 3v3M3 9h18'/%3E%3Cpath d='M8 13h4M8 17h6'/%3E%3C/svg%3E");
-}
-
-.sn-assistant-theme-preview__mini--gear {
-  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23084557' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'%3E%3Ccircle cx='12' cy='12' r='3.2'/%3E%3Cpath d='M19.4 15a1.7 1.7 0 0 0 .34 1.83l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.7 1.7 0 0 0-1.83-.34 1.7 1.7 0 0 0-1.03 1.52V21a2 2 0 1 1-4 0v-.09a1.7 1.7 0 0 0-1.03-1.52 1.7 1.7 0 0 0-1.83.34l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.7 1.7 0 0 0 .34-1.83 1.7 1.7 0 0 0-1.52-1.03H3a2 2 0 1 1 0-4h.09A1.7 1.7 0 0 0 4.61 9a1.7 1.7 0 0 0-.34-1.83l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.7 1.7 0 0 0 8.93 4h.08a1.7 1.7 0 0 0 1.03-1.52V2a2 2 0 1 1 4 0v.09A1.7 1.7 0 0 0 15.07 3.6a1.7 1.7 0 0 0 1.83-.34l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.7 1.7 0 0 0 19.39 9v.08A1.7 1.7 0 0 0 20.91 10H21a2 2 0 1 1 0 4h-.09A1.7 1.7 0 0 0 19.4 15z'/%3E%3C/svg%3E");
-}
-
-/* Dark theme preview surface overrides */
-.sn-assistant-theme-preview[data-sn-assistant-theme="dark"],
-.sn-assistant-theme-preview[data-sn-assistant-theme="midnightSteel"],
-.sn-assistant-theme-preview[data-sn-assistant-theme="eu_blue"],
-.sn-assistant-theme-preview[data-sn-assistant-theme="custom"],
-.sn-assistant-theme-preview[data-sn-assistant-theme="parliament"],
-.sn-assistant-theme-preview[data-sn-assistant-theme="noirGraphite"],
-.sn-assistant-theme-preview[data-sn-assistant-theme="obsidianGold"] {
-  color-scheme: dark;
-}
-
-.sn-assistant-theme-preview[data-sn-assistant-theme="dark"] .sn-assistant-theme-preview__surface {
-  background: linear-gradient(160deg, #0D1117, #090D14);
-  color: #E6EDF3;
-}
-
-.sn-assistant-theme-preview[data-sn-assistant-theme="midnightSteel"] .sn-assistant-theme-preview__surface {
-  background: linear-gradient(160deg, #060C18, #040A14);
-  color: #D8EEFA;
-}
-
-.sn-assistant-theme-preview[data-sn-assistant-theme="eu_blue"] .sn-assistant-theme-preview__surface {
-  background: linear-gradient(160deg, #03123A, #020D2C);
-  color: #EDF3FF;
-}
-
-.sn-assistant-theme-preview[data-sn-assistant-theme="custom"] .sn-assistant-theme-preview__surface {
-  background: linear-gradient(160deg, #060D1C, #040A18);
-  color: #E4F2FF;
-}
-
-.sn-assistant-theme-preview[data-sn-assistant-theme="parliament"] .sn-assistant-theme-preview__surface {
-  background: linear-gradient(160deg, #0E0620, #08041A);
-  color: #EDE8FF;
-}
-
-.sn-assistant-theme-preview[data-sn-assistant-theme="noirGraphite"] .sn-assistant-theme-preview__surface {
-  background: linear-gradient(160deg, #0C0C0E, #080809);
-  color: #E8E6E2;
-}
-
-.sn-assistant-theme-preview[data-sn-assistant-theme="obsidianGold"] .sn-assistant-theme-preview__surface {
-  background: linear-gradient(160deg, #080706, #020201);
-  color: #EDE4CC;
-}
-
-.sn-assistant-theme-preview[data-sn-assistant-skin="off"] .sn-assistant-theme-preview__surface {
-  background: #FAFBFC;
-  color: var(--sn-assistant-ink);
-}
-
-.sn-assistant-theme-preview[data-sn-assistant-skin="off"][data-sn-assistant-theme="dark"] .sn-assistant-theme-preview__surface,
-.sn-assistant-theme-preview[data-sn-assistant-skin="off"][data-sn-assistant-theme="midnightSteel"] .sn-assistant-theme-preview__surface,
-.sn-assistant-theme-preview[data-sn-assistant-skin="off"][data-sn-assistant-theme="eu_blue"] .sn-assistant-theme-preview__surface,
-.sn-assistant-theme-preview[data-sn-assistant-skin="off"][data-sn-assistant-theme="custom"] .sn-assistant-theme-preview__surface,
-.sn-assistant-theme-preview[data-sn-assistant-skin="off"][data-sn-assistant-theme="parliament"] .sn-assistant-theme-preview__surface,
-.sn-assistant-theme-preview[data-sn-assistant-skin="off"][data-sn-assistant-theme="noirGraphite"] .sn-assistant-theme-preview__surface,
-.sn-assistant-theme-preview[data-sn-assistant-skin="off"][data-sn-assistant-theme="obsidianGold"] .sn-assistant-theme-preview__surface {
-  background: #13171E;
-  color: #F0F4FA;
-}
+  var theme_settings_default = `/* \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\r
+   THEME PICKER & CARDS\r
+   \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500 */\r
+.sn-assistant-theme-picker {\r
+  display: grid;\r
+  grid-template-columns: repeat(3, minmax(0, 1fr));\r
+  gap: 10px;\r
+}\r
+\r
+.sn-assistant-theme-card {\r
+  appearance: none;\r
+  position: relative;\r
+  border: 1px solid rgba(0, 0, 0, 0.08);\r
+  border-radius: 14px;\r
+  min-height: 78px;\r
+  padding: 12px 14px;\r
+  display: flex;\r
+  flex-direction: column;\r
+  align-items: center;\r
+  justify-content: center;\r
+  gap: 8px;\r
+  background:\r
+    radial-gradient(circle at 18% 16%, rgba(255,255,255,0.18), transparent 24%),\r
+    linear-gradient(180deg, rgba(255,255,255,0.04), rgba(255,255,255,0)),\r
+    var(--theme-bg, var(--sn-assistant-panel));\r
+  color: var(--theme-fg, var(--sn-assistant-ink));\r
+  box-shadow: 0 2px 8px rgba(0,0,0,0.06);\r
+  cursor: pointer;\r
+  transition: transform 160ms ease, box-shadow 160ms ease, border-color 160ms ease;\r
+}\r
+\r
+.sn-assistant-theme-card::before {\r
+  content: "";\r
+  position: absolute;\r
+  inset: 0;\r
+  border-radius: inherit;\r
+  background: linear-gradient(120deg, rgba(255,255,255,0.20), transparent 36%);\r
+  transform: translateX(-140%);\r
+  opacity: 0;\r
+}\r
+\r
+.sn-assistant-theme-card:hover::before,\r
+.sn-assistant-theme-card:focus-visible::before {\r
+  opacity: 1;\r
+  animation: sn-assistant-theme-sheen 680ms ease;\r
+}\r
+\r
+.sn-assistant-theme-card:hover {\r
+  transform: translateY(-2px);\r
+  box-shadow: 0 4px 16px rgba(0,0,0,0.10);\r
+}\r
+\r
+.sn-assistant-theme-card.is-active {\r
+  border-width: 2px;\r
+  border-color: var(--theme-accent, var(--sn-assistant-accent));\r
+  box-shadow:\r
+    0 0 0 3px color-mix(in srgb, var(--theme-accent, #2563EB) 20%, transparent),\r
+    0 4px 16px rgba(0,0,0,0.10);\r
+  transform: translateY(-1px) scale(1.01);\r
+  animation: sn-assistant-theme-pop 240ms ease;\r
+}\r
+\r
+.sn-assistant-theme-card__dot {\r
+  width: 28px;\r
+  height: 28px;\r
+  border-radius: 999px;\r
+  background: var(--theme-accent, var(--sn-assistant-accent));\r
+  box-shadow: 0 2px 8px rgba(0,0,0,0.14);\r
+}\r
+\r
+.sn-assistant-theme-card__label {\r
+  font-size: 11px;\r
+  font-weight: 700;\r
+  line-height: 1.2;\r
+  text-align: center;\r
+}\r
+\r
+.sn-assistant-theme-card__state {\r
+  position: absolute;\r
+  top: 8px;\r
+  right: 8px;\r
+  font-size: 9px;\r
+  font-weight: 800;\r
+  color: var(--theme-accent, var(--sn-assistant-accent));\r
+  text-transform: uppercase;\r
+  letter-spacing: 0.08em;\r
+}\r
+\r
+/* \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\r
+   THEME PREVIEW\r
+   \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500 */\r
+.sn-assistant-theme-preview {\r
+  position: relative;\r
+  border-radius: 12px;\r
+  overflow: hidden;\r
+  border: 1px solid var(--sn-assistant-border);\r
+  background: var(--sn-assistant-panel);\r
+}\r
+\r
+.sn-assistant-theme-preview__surface {\r
+  padding: 16px;\r
+  background: var(--sn-assistant-skin-bg);\r
+  min-height: 152px;\r
+}\r
+\r
+.sn-assistant-theme-preview__label {\r
+  font-size: 12px;\r
+  font-weight: 700;\r
+  color: var(--sn-assistant-ink);\r
+}\r
+\r
+.sn-assistant-theme-preview__hint,\r
+.sn-assistant-theme-preview__caption {\r
+  font-size: 11px;\r
+  font-weight: 500;\r
+  line-height: 1.5;\r
+  color: var(--sn-assistant-muted);\r
+}\r
+\r
+.sn-assistant-theme-preview__dock {\r
+  display: flex;\r
+  justify-content: flex-end;\r
+  padding: 14px 0 10px;\r
+}\r
+\r
+.sn-assistant-theme-preview__shell {\r
+  display: inline-flex;\r
+  align-items: center;\r
+  gap: 5px;\r
+  padding: 5px;\r
+  border-radius: 999px;\r
+  background: #FFFFFF;\r
+  border: 1px solid rgba(0, 0, 0, 0.10);\r
+  box-shadow: 0 2px 8px rgba(0,0,0,0.10), 0 8px 20px rgba(0,0,0,0.07);\r
+  animation: sn-assistant-launcher-float 5.2s ease-in-out infinite;\r
+}\r
+\r
+.sn-assistant-theme-preview__primary,\r
+.sn-assistant-theme-preview__icon {\r
+  border: 0;\r
+  pointer-events: none;\r
+}\r
+\r
+.sn-assistant-theme-preview__primary {\r
+  display: inline-flex;\r
+  align-items: center;\r
+  gap: 6px;\r
+  height: 24px;\r
+  padding: 0 10px;\r
+  border-radius: 999px;\r
+  background: var(--sn-assistant-accent);\r
+  color: #FFFFFF;\r
+  font-size: 10px;\r
+  font-weight: 700;\r
+  box-shadow: 0 2px 8px rgba(37, 99, 235, 0.22);\r
+}\r
+\r
+.sn-assistant-theme-preview__dot {\r
+  width: 6px;\r
+  height: 6px;\r
+  border-radius: 999px;\r
+  background: rgba(255, 255, 255, 0.80);\r
+}\r
+\r
+.sn-assistant-theme-preview__icon {\r
+  display: inline-grid;\r
+  place-items: center;\r
+  width: 24px;\r
+  height: 24px;\r
+  border-radius: 999px;\r
+  background: #F4F6FA;\r
+  color: var(--sn-assistant-accent-strong);\r
+  border: 1px solid rgba(0, 0, 0, 0.06);\r
+}\r
+\r
+.sn-assistant-theme-preview__mini {\r
+  display: inline-block;\r
+  width: 12px;\r
+  height: 12px;\r
+  background-position: center;\r
+  background-repeat: no-repeat;\r
+  background-size: contain;\r
+}\r
+\r
+.sn-assistant-theme-preview__mini--calendar {\r
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23084557' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'%3E%3Crect x='3' y='4.5' width='18' height='16' rx='2'/%3E%3Cpath d='M8 3v3M16 3v3M3 9h18'/%3E%3Cpath d='M8 13h4M8 17h6'/%3E%3C/svg%3E");\r
+}\r
+\r
+.sn-assistant-theme-preview__mini--gear {\r
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23084557' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'%3E%3Ccircle cx='12' cy='12' r='3.2'/%3E%3Cpath d='M19.4 15a1.7 1.7 0 0 0 .34 1.83l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.7 1.7 0 0 0-1.83-.34 1.7 1.7 0 0 0-1.03 1.52V21a2 2 0 1 1-4 0v-.09a1.7 1.7 0 0 0-1.03-1.52 1.7 1.7 0 0 0-1.83.34l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.7 1.7 0 0 0 .34-1.83 1.7 1.7 0 0 0-1.52-1.03H3a2 2 0 1 1 0-4h.09A1.7 1.7 0 0 0 4.61 9a1.7 1.7 0 0 0-.34-1.83l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.7 1.7 0 0 0 8.93 4h.08a1.7 1.7 0 0 0 1.03-1.52V2a2 2 0 1 1 4 0v.09A1.7 1.7 0 0 0 15.07 3.6a1.7 1.7 0 0 0 1.83-.34l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.7 1.7 0 0 0 19.39 9v.08A1.7 1.7 0 0 0 20.91 10H21a2 2 0 1 1 0 4h-.09A1.7 1.7 0 0 0 19.4 15z'/%3E%3C/svg%3E");\r
+}\r
+\r
+/* Dark theme preview surface overrides */\r
+.sn-assistant-theme-preview[data-sn-assistant-theme="dark"],\r
+.sn-assistant-theme-preview[data-sn-assistant-theme="midnightSteel"],\r
+.sn-assistant-theme-preview[data-sn-assistant-theme="eu_blue"],\r
+.sn-assistant-theme-preview[data-sn-assistant-theme="custom"],\r
+.sn-assistant-theme-preview[data-sn-assistant-theme="parliament"],\r
+.sn-assistant-theme-preview[data-sn-assistant-theme="noirGraphite"],\r
+.sn-assistant-theme-preview[data-sn-assistant-theme="obsidianGold"] {\r
+  color-scheme: dark;\r
+}\r
+\r
+.sn-assistant-theme-preview[data-sn-assistant-theme="dark"] .sn-assistant-theme-preview__surface {\r
+  background: linear-gradient(160deg, #0D1117, #090D14);\r
+  color: #E6EDF3;\r
+}\r
+\r
+.sn-assistant-theme-preview[data-sn-assistant-theme="midnightSteel"] .sn-assistant-theme-preview__surface {\r
+  background: linear-gradient(160deg, #060C18, #040A14);\r
+  color: #D8EEFA;\r
+}\r
+\r
+.sn-assistant-theme-preview[data-sn-assistant-theme="eu_blue"] .sn-assistant-theme-preview__surface {\r
+  background: linear-gradient(160deg, #03123A, #020D2C);\r
+  color: #EDF3FF;\r
+}\r
+\r
+.sn-assistant-theme-preview[data-sn-assistant-theme="custom"] .sn-assistant-theme-preview__surface {\r
+  background: linear-gradient(160deg, #060D1C, #040A18);\r
+  color: #E4F2FF;\r
+}\r
+\r
+.sn-assistant-theme-preview[data-sn-assistant-theme="parliament"] .sn-assistant-theme-preview__surface {\r
+  background: linear-gradient(160deg, #0E0620, #08041A);\r
+  color: #EDE8FF;\r
+}\r
+\r
+.sn-assistant-theme-preview[data-sn-assistant-theme="noirGraphite"] .sn-assistant-theme-preview__surface {\r
+  background: linear-gradient(160deg, #0C0C0E, #080809);\r
+  color: #E8E6E2;\r
+}\r
+\r
+.sn-assistant-theme-preview[data-sn-assistant-theme="obsidianGold"] .sn-assistant-theme-preview__surface {\r
+  background: linear-gradient(160deg, #080706, #020201);\r
+  color: #EDE4CC;\r
+}\r
+\r
+.sn-assistant-theme-preview[data-sn-assistant-skin="off"] .sn-assistant-theme-preview__surface {\r
+  background: #FAFBFC;\r
+  color: var(--sn-assistant-ink);\r
+}\r
+\r
+.sn-assistant-theme-preview[data-sn-assistant-skin="off"][data-sn-assistant-theme="dark"] .sn-assistant-theme-preview__surface,\r
+.sn-assistant-theme-preview[data-sn-assistant-skin="off"][data-sn-assistant-theme="midnightSteel"] .sn-assistant-theme-preview__surface,\r
+.sn-assistant-theme-preview[data-sn-assistant-skin="off"][data-sn-assistant-theme="eu_blue"] .sn-assistant-theme-preview__surface,\r
+.sn-assistant-theme-preview[data-sn-assistant-skin="off"][data-sn-assistant-theme="custom"] .sn-assistant-theme-preview__surface,\r
+.sn-assistant-theme-preview[data-sn-assistant-skin="off"][data-sn-assistant-theme="parliament"] .sn-assistant-theme-preview__surface,\r
+.sn-assistant-theme-preview[data-sn-assistant-skin="off"][data-sn-assistant-theme="noirGraphite"] .sn-assistant-theme-preview__surface,\r
+.sn-assistant-theme-preview[data-sn-assistant-skin="off"][data-sn-assistant-theme="obsidianGold"] .sn-assistant-theme-preview__surface {\r
+  background: #13171E;\r
+  color: #F0F4FA;\r
+}\r
 `;
 
   // Assistant/ui/styles/forms-preview.css
-  var forms_preview_default = '/* \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\n   FORM FIELDS\n   \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500 */\n.sn-assistant-field {\n  display: flex;\n  flex-direction: column;\n  gap: 6px;\n}\n\n.sn-assistant-field__label {\n  font-size: 12px;\n  font-weight: 700;\n  color: var(--sn-assistant-ink);\n}\n\n.sn-assistant-input,\n.sn-assistant-select,\n.sn-assistant-textarea {\n  width: 100%;\n  border-radius: 10px;\n  border: 1px solid var(--sn-assistant-border);\n  background: var(--sn-assistant-panel);\n  color: var(--sn-assistant-ink);\n  font: inherit;\n  font-weight: 600;\n  box-sizing: border-box;\n  box-shadow: 0 1px 2px rgba(0,0,0,0.04);\n  transition: border-color 160ms ease, box-shadow 160ms ease;\n}\n\n.sn-assistant-input,\n.sn-assistant-select {\n  height: 40px;\n  padding: 0 12px;\n}\n\n.sn-assistant-textarea {\n  min-height: 80px;\n  padding: 10px 12px;\n  resize: vertical;\n}\n\n.sn-assistant-input::placeholder,\n.sn-assistant-textarea::placeholder {\n  color: var(--sn-assistant-muted);\n  font-weight: 500;\n}\n\n.sn-assistant-input:focus,\n.sn-assistant-select:focus,\n.sn-assistant-textarea:focus {\n  outline: none;\n  border-color: var(--sn-assistant-accent);\n  box-shadow: 0 0 0 3px var(--sn-assistant-accent-soft);\n}\n\n/* \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\n   PREVIEW BLOCK\n   \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500 */\n.sn-assistant-preview {\n  position: relative;\n  border-radius: 12px;\n  border: 1px solid var(--sn-assistant-border);\n  background: var(--sn-assistant-surface);\n  padding: 12px;\n  overflow: hidden;\n}\n\n.sn-assistant-preview::before {\n  content: "";\n  position: absolute;\n  inset: 0 auto auto 0;\n  width: 100%;\n  height: 2px;\n  background: linear-gradient(90deg, var(--sn-assistant-accent), var(--sn-assistant-accent-warm));\n  opacity: 0.6;\n}\n\n.sn-assistant-preview__empty {\n  font-size: 10px;\n  font-weight: 500;\n  color: var(--sn-assistant-muted);\n}\n\n.sn-assistant-preview__meta {\n  display: grid;\n  grid-template-columns: repeat(2, minmax(0, 1fr));\n  gap: 8px;\n  margin-bottom: 10px;\n}\n\n.sn-assistant-preview__meta-block {\n  padding: 8px 10px;\n  border-radius: 8px;\n  background: var(--sn-assistant-panel);\n  border: 1px solid var(--sn-assistant-border);\n}\n\n.sn-assistant-preview__meta-label {\n  display: block;\n  margin-bottom: 3px;\n  font-size: 8px;\n  font-weight: 800;\n  color: var(--sn-assistant-muted);\n  letter-spacing: 0.10em;\n  text-transform: uppercase;\n}\n\n.sn-assistant-preview__meta-value {\n  font-size: 10px;\n  font-weight: 600;\n  line-height: 1.45;\n}\n\n.sn-assistant-preview__body {\n  max-height: 182px;\n  overflow: auto;\n  padding: 8px;\n  border-radius: 8px;\n  background: rgba(0,0,0,0.03);\n  font-size: 10px;\n  font-weight: 500;\n  line-height: 1.6;\n  white-space: pre-wrap;\n}\n\n.sn-assistant-preview__warn-banner {\n  font-size: 10px;\n  font-weight: 600;\n  color: #c05621;\n  background: #fff3cd;\n  border: 1px solid #f6c340;\n  border-radius: 6px;\n  padding: 5px 8px;\n  margin-bottom: 4px;\n}\n\n.sn-assistant-preview__unfilled {\n  background: #fed7d7;\n  color: #c53030;\n  border-radius: 3px;\n  padding: 0 2px;\n  font-weight: 700;\n  font-style: normal;\n}\n\n/* \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\n   SUGGESTIONS\n   \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500 */\n.sn-assistant-suggestions {\n  display: grid;\n  gap: 6px;\n  padding: 10px;\n  border-radius: 12px;\n  border: 1px solid rgba(139, 94, 20, 0.18);\n  background: rgba(253, 246, 230, 0.80);\n}\n\n.sn-assistant-suggestions__title {\n  font-size: 10px;\n  font-weight: 800;\n  color: #7A4A0A;\n  letter-spacing: 0.02em;\n}\n\n.sn-assistant-suggestions__list {\n  display: grid;\n  gap: 6px;\n}\n\n.sn-assistant-suggestions__item {\n  width: 100%;\n  text-align: left;\n  border: 1px solid var(--sn-assistant-border);\n  border-radius: 10px;\n  background: var(--sn-assistant-panel);\n  padding: 8px 10px;\n  color: var(--sn-assistant-ink);\n  cursor: pointer;\n  transition: border-color 140ms ease, box-shadow 140ms ease;\n}\n\n.sn-assistant-suggestions__item:hover {\n  border-color: var(--sn-assistant-accent);\n  box-shadow: 0 2px 8px var(--sn-assistant-accent-soft);\n}\n\n.sn-assistant-suggestions__item.is-selected {\n  border-color: var(--sn-assistant-accent);\n  box-shadow: 0 0 0 2px var(--sn-assistant-accent-soft);\n}\n\n.sn-assistant-suggestions__label {\n  font-size: 11px;\n  font-weight: 700;\n  line-height: 1.25;\n}\n\n.sn-assistant-suggestions__subject {\n  margin-top: 2px;\n  font-size: 10px;\n  font-weight: 500;\n  color: var(--sn-assistant-muted);\n}\n\n.sn-assistant-suggestions__body {\n  margin-top: 4px;\n  font-size: 10px;\n  font-weight: 500;\n  line-height: 1.4;\n  color: var(--sn-assistant-ink);\n}\n';
+  var forms_preview_default = '/* \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\r\n   FORM FIELDS\r\n   \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500 */\r\n.sn-assistant-field {\r\n  display: flex;\r\n  flex-direction: column;\r\n  gap: 6px;\r\n}\r\n\r\n.sn-assistant-field__label {\r\n  font-size: 12px;\r\n  font-weight: 700;\r\n  color: var(--sn-assistant-ink);\r\n}\r\n\r\n.sn-assistant-input,\r\n.sn-assistant-select,\r\n.sn-assistant-textarea {\r\n  width: 100%;\r\n  border-radius: 10px;\r\n  border: 1px solid var(--sn-assistant-border);\r\n  background: var(--sn-assistant-panel);\r\n  color: var(--sn-assistant-ink);\r\n  font: inherit;\r\n  font-weight: 600;\r\n  box-sizing: border-box;\r\n  box-shadow: 0 1px 2px rgba(0,0,0,0.04);\r\n  transition: border-color 160ms ease, box-shadow 160ms ease;\r\n}\r\n\r\n.sn-assistant-input,\r\n.sn-assistant-select {\r\n  height: 40px;\r\n  padding: 0 12px;\r\n}\r\n\r\n.sn-assistant-textarea {\r\n  min-height: 80px;\r\n  padding: 10px 12px;\r\n  resize: vertical;\r\n}\r\n\r\n.sn-assistant-input::placeholder,\r\n.sn-assistant-textarea::placeholder {\r\n  color: var(--sn-assistant-muted);\r\n  font-weight: 500;\r\n}\r\n\r\n.sn-assistant-input:focus,\r\n.sn-assistant-select:focus,\r\n.sn-assistant-textarea:focus {\r\n  outline: none;\r\n  border-color: var(--sn-assistant-accent);\r\n  box-shadow: 0 0 0 3px var(--sn-assistant-accent-soft);\r\n}\r\n\r\n/* \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\r\n   PREVIEW BLOCK\r\n   \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500 */\r\n.sn-assistant-preview {\r\n  position: relative;\r\n  border-radius: 12px;\r\n  border: 1px solid var(--sn-assistant-border);\r\n  background: var(--sn-assistant-surface);\r\n  padding: 12px;\r\n  overflow: hidden;\r\n}\r\n\r\n.sn-assistant-preview::before {\r\n  content: "";\r\n  position: absolute;\r\n  inset: 0 auto auto 0;\r\n  width: 100%;\r\n  height: 2px;\r\n  background: linear-gradient(90deg, var(--sn-assistant-accent), var(--sn-assistant-accent-warm));\r\n  opacity: 0.6;\r\n}\r\n\r\n.sn-assistant-preview__empty {\r\n  font-size: 10px;\r\n  font-weight: 500;\r\n  color: var(--sn-assistant-muted);\r\n}\r\n\r\n.sn-assistant-preview__meta {\r\n  display: grid;\r\n  grid-template-columns: repeat(2, minmax(0, 1fr));\r\n  gap: 8px;\r\n  margin-bottom: 10px;\r\n}\r\n\r\n.sn-assistant-preview__meta-block {\r\n  padding: 8px 10px;\r\n  border-radius: 8px;\r\n  background: var(--sn-assistant-panel);\r\n  border: 1px solid var(--sn-assistant-border);\r\n}\r\n\r\n.sn-assistant-preview__meta-label {\r\n  display: block;\r\n  margin-bottom: 3px;\r\n  font-size: 8px;\r\n  font-weight: 800;\r\n  color: var(--sn-assistant-muted);\r\n  letter-spacing: 0.10em;\r\n  text-transform: uppercase;\r\n}\r\n\r\n.sn-assistant-preview__meta-value {\r\n  font-size: 10px;\r\n  font-weight: 600;\r\n  line-height: 1.45;\r\n}\r\n\r\n.sn-assistant-preview__body {\r\n  max-height: 182px;\r\n  overflow: auto;\r\n  padding: 8px;\r\n  border-radius: 8px;\r\n  background: rgba(0,0,0,0.03);\r\n  font-size: 10px;\r\n  font-weight: 500;\r\n  line-height: 1.6;\r\n  white-space: pre-wrap;\r\n}\r\n\r\n.sn-assistant-preview__warn-banner {\r\n  font-size: 10px;\r\n  font-weight: 600;\r\n  color: #c05621;\r\n  background: #fff3cd;\r\n  border: 1px solid #f6c340;\r\n  border-radius: 6px;\r\n  padding: 5px 8px;\r\n  margin-bottom: 4px;\r\n}\r\n\r\n.sn-assistant-preview__unfilled {\r\n  background: #fed7d7;\r\n  color: #c53030;\r\n  border-radius: 3px;\r\n  padding: 0 2px;\r\n  font-weight: 700;\r\n  font-style: normal;\r\n}\r\n\r\n/* \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\r\n   SUGGESTIONS\r\n   \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500 */\r\n.sn-assistant-suggestions {\r\n  display: grid;\r\n  gap: 6px;\r\n  padding: 10px;\r\n  border-radius: 12px;\r\n  border: 1px solid rgba(139, 94, 20, 0.18);\r\n  background: rgba(253, 246, 230, 0.80);\r\n}\r\n\r\n.sn-assistant-suggestions__title {\r\n  font-size: 10px;\r\n  font-weight: 800;\r\n  color: #7A4A0A;\r\n  letter-spacing: 0.02em;\r\n}\r\n\r\n.sn-assistant-suggestions__list {\r\n  display: grid;\r\n  gap: 6px;\r\n}\r\n\r\n.sn-assistant-suggestions__item {\r\n  width: 100%;\r\n  text-align: left;\r\n  border: 1px solid var(--sn-assistant-border);\r\n  border-radius: 10px;\r\n  background: var(--sn-assistant-panel);\r\n  padding: 8px 10px;\r\n  color: var(--sn-assistant-ink);\r\n  cursor: pointer;\r\n  transition: border-color 140ms ease, box-shadow 140ms ease;\r\n}\r\n\r\n.sn-assistant-suggestions__item:hover {\r\n  border-color: var(--sn-assistant-accent);\r\n  box-shadow: 0 2px 8px var(--sn-assistant-accent-soft);\r\n}\r\n\r\n.sn-assistant-suggestions__item.is-selected {\r\n  border-color: var(--sn-assistant-accent);\r\n  box-shadow: 0 0 0 2px var(--sn-assistant-accent-soft);\r\n}\r\n\r\n.sn-assistant-suggestions__label {\r\n  font-size: 11px;\r\n  font-weight: 700;\r\n  line-height: 1.25;\r\n}\r\n\r\n.sn-assistant-suggestions__subject {\r\n  margin-top: 2px;\r\n  font-size: 10px;\r\n  font-weight: 500;\r\n  color: var(--sn-assistant-muted);\r\n}\r\n\r\n.sn-assistant-suggestions__body {\r\n  margin-top: 4px;\r\n  font-size: 10px;\r\n  font-weight: 500;\r\n  line-height: 1.4;\r\n  color: var(--sn-assistant-ink);\r\n}\r\n';
 
   // Assistant/ui/styles/buttons-modals.css
-  var buttons_modals_default = '/* \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\n   BUTTONS\n   \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500 */\n.sn-assistant-button {\n  display: inline-flex;\n  align-items: center;\n  justify-content: center;\n  gap: 3px;\n  min-width: 96px;\n  height: 30px;\n  padding: 0 10px;\n  border-radius: 10px;\n  font-size: 11px;\n  font-weight: 700;\n  letter-spacing: 0.01em;\n  box-shadow: 0 1px 3px rgba(0,0,0,0.06);\n}\n\n.sn-assistant-button--compact {\n  min-width: 0;\n  height: 32px;\n  padding: 0 12px;\n  border-radius: 8px;\n  font-size: 12px;\n}\n\n.sn-assistant-button--primary {\n  background: var(--sn-assistant-accent);\n  color: #FFFFFF;\n  box-shadow: 0 2px 8px rgba(37, 99, 235, 0.22);\n}\n\n.sn-assistant-button--primary:hover {\n  background: var(--sn-assistant-accent-strong);\n  box-shadow: 0 4px 12px rgba(37, 99, 235, 0.28);\n}\n\n.sn-assistant-button--secondary {\n  background: var(--sn-assistant-panel);\n  color: var(--sn-assistant-ink);\n  border: 1px solid var(--sn-assistant-border);\n}\n\n.sn-assistant-button--secondary:hover {\n  background: var(--sn-assistant-surface);\n  border-color: var(--sn-assistant-border-strong);\n}\n\n.sn-assistant-button--danger {\n  background: var(--sn-assistant-danger-soft);\n  color: var(--sn-assistant-danger);\n  border: 1px solid rgba(220, 38, 38, 0.16);\n}\n\n.sn-assistant-button--danger:hover {\n  background: rgba(220, 38, 38, 0.12);\n}\n\n.sn-assistant-button[disabled],\n.sn-assistant-mini-button[disabled],\n.sn-assistant-launcher__primary[disabled] {\n  cursor: not-allowed;\n  opacity: 0.45;\n  transform: none;\n  box-shadow: none;\n}\n\n.sn-assistant-mini-button {\n  display: inline-grid;\n  place-items: center;\n  width: 24px;\n  height: 24px;\n  border-radius: 7px;\n  background: var(--sn-assistant-surface);\n  color: var(--sn-assistant-muted);\n  border: 1px solid var(--sn-assistant-border);\n  font-size: 11px;\n  line-height: 1;\n}\n\n.sn-assistant-mini-button:hover {\n  background: var(--sn-assistant-panel);\n  color: var(--sn-assistant-ink);\n}\n\n.sn-assistant-mini-button--danger {\n  color: transparent;\n  background: #FEF2F2;\n  border-color: rgba(220, 38, 38, 0.16);\n}\n\n.sn-assistant-mini-button--danger .sn-assistant-icon--close,\n.sn-assistant-mini-button--danger .sn-assistant-icon--power,\n.sn-assistant-launcher__icon--danger .sn-assistant-icon--close {\n  width: 10px;\n  height: 10px;\n}\n\n/* \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\n   MODAL\n   \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500 */\n.sn-assistant-modal {\n  position: fixed;\n  inset: 0;\n  z-index: 2147483200;\n  display: flex;\n  align-items: center;\n  justify-content: center;\n  padding: 16px;\n}\n\n.sn-assistant-modal__backdrop {\n  position: absolute;\n  inset: 0;\n  background: rgba(9, 13, 20, 0.50);\n  -webkit-backdrop-filter: blur(8px);\n  backdrop-filter: blur(8px);\n  pointer-events: none;\n  z-index: 0;\n}\n\n@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {\n  .sn-assistant-launcher__shell,\n  .sn-assistant-panel {\n    background-image: none;\n  }\n\n  .sn-assistant-modal__backdrop {\n    background: rgba(9, 13, 20, 0.55);\n  }\n}\n\n@media (prefers-reduced-motion: reduce) {\n  .sn-assistant-launcher__shell,\n  .sn-assistant-launcher__shell::before,\n  .sn-assistant-launcher__dot {\n    animation: none;\n  }\n}\n\n.sn-assistant-modal__dialog {\n  position: relative;\n  z-index: 1;\n  width: min(1120px, calc(100vw - 24px));\n  height: min(94dvh, 980px);\n  max-height: calc(100dvh - 24px);\n  min-height: 0;\n  overflow: hidden;\n  display: flex;\n  flex-direction: column;\n  border-radius: 20px;\n  background: var(--sn-assistant-panel);\n  border: 1px solid var(--sn-assistant-border);\n  box-shadow: 0 4px 16px rgba(0,0,0,0.10), 0 24px 72px rgba(0,0,0,0.16);\n  pointer-events: auto;\n}\n\n.sn-assistant-modal__dialog::before {\n  content: "";\n  position: absolute;\n  inset: 0 0 auto;\n  height: 2px;\n  background: linear-gradient(90deg, var(--sn-assistant-accent), var(--sn-assistant-accent-warm));\n  pointer-events: none;\n}\n\n.sn-assistant-modal__header,\n.sn-assistant-modal__footer {\n  display: flex;\n  align-items: center;\n  justify-content: space-between;\n  gap: 12px;\n  padding: 16px 20px;\n  flex-shrink: 0;\n}\n\n.sn-assistant-modal__header {\n  border-bottom: 1px solid var(--sn-assistant-border);\n  background: var(--sn-assistant-panel);\n}\n\n.sn-assistant-modal__footer {\n  border-top: 1px solid var(--sn-assistant-border);\n  background: var(--sn-assistant-panel);\n  position: relative;\n  z-index: 2;\n}\n\n.sn-assistant-modal__footer-group {\n  display: flex;\n  align-items: center;\n  gap: 10px;\n}\n\n.sn-assistant-modal__title {\n  display: flex;\n  flex-direction: column;\n  gap: 4px;\n  min-width: 0;\n}\n\n.sn-assistant-modal__body {\n  flex: 1 1 auto;\n  min-height: 0;\n  overflow-y: auto;\n  overflow-x: hidden;\n  -webkit-overflow-scrolling: touch;\n  overscroll-behavior: contain;\n  padding: 16px 20px;\n  display: flex;\n  flex-direction: column;\n  gap: 12px;\n  position: relative;\n  z-index: 1;\n  background: var(--sn-assistant-surface);\n}\n\n/* \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\n   VALIDATION MODAL\n   \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500 */\n.sn-assistant-validation__container {\n  display: flex;\n  flex-direction: column;\n  gap: 12px;\n}\n\n.sn-assistant-validation__description {\n  margin: 0;\n  font-size: 13px;\n  color: var(--sn-assistant-ink);\n  font-weight: 500;\n}\n\n.sn-assistant-validation__list {\n  list-style: none;\n  margin: 0;\n  padding: 0;\n  display: flex;\n  flex-direction: column;\n  gap: 8px;\n}\n\n.sn-assistant-validation__item {\n  display: flex;\n  align-items: flex-start;\n  gap: 8px;\n  padding: 8px 10px;\n  border-radius: 8px;\n  background: rgba(217, 119, 6, 0.08);\n  border: 1px solid rgba(217, 119, 6, 0.16);\n  font-size: 13px;\n  color: var(--sn-assistant-ink);\n}\n\n.sn-assistant-validation__icon {\n  flex-shrink: 0;\n  display: inline-block;\n  font-size: 14px;\n  line-height: 1;\n}\n\n/* \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\n   CONFIRMATION MODAL\n   \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500 */\n.sn-assistant-confirm__container {\n  display: flex;\n  flex-direction: column;\n  gap: 12px;\n}\n\n.sn-assistant-confirm__description {\n  margin: 0;\n  font-size: 13px;\n  color: var(--sn-assistant-ink);\n  line-height: 1.5;\n}\n\n.sn-assistant-confirm__details {\n  list-style: none;\n  margin: 0;\n  padding: 8px 10px;\n  border-radius: 8px;\n  background: var(--sn-assistant-surface);\n  border: 1px solid var(--sn-assistant-border);\n  display: flex;\n  flex-direction: column;\n  gap: 6px;\n}\n\n.sn-assistant-confirm__detail {\n  font-size: 12px;\n  color: var(--sn-assistant-ink);\n  line-height: 1.4;\n}\n\n.sn-assistant-confirm__detail strong {\n  color: var(--sn-assistant-accent);\n  font-weight: 600;\n}\n\n/* Top templates picker */\n.sn-assistant-toptpl__grid {\n  display: grid;\n  gap: 10px;\n}\n\n.sn-assistant-toptpl__card {\n  text-align: left;\n  display: flex;\n  flex-direction: column;\n  gap: 6px;\n  padding: 12px;\n  border-radius: 10px;\n  border: 1px solid var(--sn-assistant-border);\n  background: var(--sn-assistant-panel);\n  cursor: pointer;\n  transition: border-color 140ms ease, background 140ms ease, transform 120ms ease;\n}\n\n.sn-assistant-toptpl__card:hover {\n  border-color: var(--sn-assistant-accent);\n  background: var(--sn-assistant-surface);\n  transform: translateY(-1px);\n}\n\n.sn-assistant-toptpl__card.is-best {\n  border-color: color-mix(in srgb, var(--sn-assistant-accent) 45%, var(--sn-assistant-border));\n  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--sn-assistant-accent) 20%, transparent);\n}\n\n.sn-assistant-toptpl__rank {\n  display: inline-flex;\n  align-items: center;\n  width: fit-content;\n  font-size: 11px;\n  font-weight: 700;\n  letter-spacing: 0.02em;\n  color: var(--sn-assistant-accent);\n  background: var(--sn-assistant-accent-soft);\n  padding: 2px 8px;\n  border-radius: 999px;\n}\n\n.sn-assistant-toptpl__rank.is-green {\n  color: #166534;\n  background: #dcfce7;\n}\n\n.sn-assistant-toptpl__rank.is-amber {\n  color: #92400e;\n  background: #fef3c7;\n}\n\n.sn-assistant-toptpl__rank.is-red {\n  color: #991b1b;\n  background: #fee2e2;\n}\n\n.sn-assistant-toptpl__title {\n  font-size: 13px;\n  line-height: 1.3;\n  color: var(--sn-assistant-ink);\n}\n\n.sn-assistant-toptpl__subject {\n  font-size: 12px;\n  font-weight: 600;\n  color: var(--sn-assistant-ink-soft);\n}\n\n.sn-assistant-toptpl__body {\n  font-size: 12px;\n  line-height: 1.45;\n  color: var(--sn-assistant-ink-soft);\n  opacity: 0.9;\n}\n\n.sn-ep__inline-bolt {\n  margin-left: auto;\n  border: 1px solid var(--sn-assistant-border);\n  background: var(--sn-assistant-panel);\n  color: #b45309;\n  border-radius: 8px;\n  width: 24px;\n  height: 24px;\n  line-height: 1;\n  display: inline-flex;\n  align-items: center;\n  justify-content: center;\n  cursor: pointer;\n}\n\n.sn-ep__inline-bolt:hover {\n  border-color: var(--sn-assistant-accent);\n  background: var(--sn-assistant-surface);\n}\n';
+  var buttons_modals_default = '/* \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\r\n   BUTTONS\r\n   \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500 */\r\n.sn-assistant-button {\r\n  display: inline-flex;\r\n  align-items: center;\r\n  justify-content: center;\r\n  gap: 3px;\r\n  min-width: 96px;\r\n  height: 30px;\r\n  padding: 0 10px;\r\n  border-radius: 10px;\r\n  font-size: 11px;\r\n  font-weight: 700;\r\n  letter-spacing: 0.01em;\r\n  box-shadow: 0 1px 3px rgba(0,0,0,0.06);\r\n}\r\n\r\n.sn-assistant-button--compact {\r\n  min-width: 0;\r\n  height: 32px;\r\n  padding: 0 12px;\r\n  border-radius: 8px;\r\n  font-size: 12px;\r\n}\r\n\r\n.sn-assistant-button--primary {\r\n  background: var(--sn-assistant-accent);\r\n  color: #FFFFFF;\r\n  box-shadow: 0 2px 8px rgba(37, 99, 235, 0.22);\r\n}\r\n\r\n.sn-assistant-button--primary:hover {\r\n  background: var(--sn-assistant-accent-strong);\r\n  box-shadow: 0 4px 12px rgba(37, 99, 235, 0.28);\r\n}\r\n\r\n.sn-assistant-button--secondary {\r\n  background: var(--sn-assistant-panel);\r\n  color: var(--sn-assistant-ink);\r\n  border: 1px solid var(--sn-assistant-border);\r\n}\r\n\r\n.sn-assistant-button--secondary:hover {\r\n  background: var(--sn-assistant-surface);\r\n  border-color: var(--sn-assistant-border-strong);\r\n}\r\n\r\n.sn-assistant-button--danger {\r\n  background: var(--sn-assistant-danger-soft);\r\n  color: var(--sn-assistant-danger);\r\n  border: 1px solid rgba(220, 38, 38, 0.16);\r\n}\r\n\r\n.sn-assistant-button--danger:hover {\r\n  background: rgba(220, 38, 38, 0.12);\r\n}\r\n\r\n.sn-assistant-button[disabled],\r\n.sn-assistant-mini-button[disabled],\r\n.sn-assistant-launcher__primary[disabled] {\r\n  cursor: not-allowed;\r\n  opacity: 0.45;\r\n  transform: none;\r\n  box-shadow: none;\r\n}\r\n\r\n.sn-assistant-mini-button {\r\n  display: inline-grid;\r\n  place-items: center;\r\n  width: 24px;\r\n  height: 24px;\r\n  border-radius: 7px;\r\n  background: var(--sn-assistant-surface);\r\n  color: var(--sn-assistant-muted);\r\n  border: 1px solid var(--sn-assistant-border);\r\n  font-size: 11px;\r\n  line-height: 1;\r\n}\r\n\r\n.sn-assistant-mini-button:hover {\r\n  background: var(--sn-assistant-panel);\r\n  color: var(--sn-assistant-ink);\r\n}\r\n\r\n.sn-assistant-mini-button--danger {\r\n  color: transparent;\r\n  background: #FEF2F2;\r\n  border-color: rgba(220, 38, 38, 0.16);\r\n}\r\n\r\n.sn-assistant-mini-button--danger .sn-assistant-icon--close,\r\n.sn-assistant-mini-button--danger .sn-assistant-icon--power,\r\n.sn-assistant-launcher__icon--danger .sn-assistant-icon--close {\r\n  width: 10px;\r\n  height: 10px;\r\n}\r\n\r\n/* \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\r\n   MODAL\r\n   \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500 */\r\n.sn-assistant-modal {\r\n  position: fixed;\r\n  inset: 0;\r\n  z-index: 2147483200;\r\n  display: flex;\r\n  align-items: center;\r\n  justify-content: center;\r\n  padding: 16px;\r\n}\r\n\r\n.sn-assistant-modal__backdrop {\r\n  position: absolute;\r\n  inset: 0;\r\n  background: rgba(9, 13, 20, 0.50);\r\n  -webkit-backdrop-filter: blur(8px);\r\n  backdrop-filter: blur(8px);\r\n  pointer-events: none;\r\n  z-index: 0;\r\n}\r\n\r\n@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {\r\n  .sn-assistant-launcher__shell,\r\n  .sn-assistant-panel {\r\n    background-image: none;\r\n  }\r\n\r\n  .sn-assistant-modal__backdrop {\r\n    background: rgba(9, 13, 20, 0.55);\r\n  }\r\n}\r\n\r\n@media (prefers-reduced-motion: reduce) {\r\n  .sn-assistant-launcher__shell,\r\n  .sn-assistant-launcher__shell::before,\r\n  .sn-assistant-launcher__dot {\r\n    animation: none;\r\n  }\r\n}\r\n\r\n.sn-assistant-modal__dialog {\r\n  position: relative;\r\n  z-index: 1;\r\n  width: min(1120px, calc(100vw - 24px));\r\n  height: min(94dvh, 980px);\r\n  max-height: calc(100dvh - 24px);\r\n  min-height: 0;\r\n  overflow: hidden;\r\n  display: flex;\r\n  flex-direction: column;\r\n  border-radius: 20px;\r\n  background: var(--sn-assistant-panel);\r\n  border: 1px solid var(--sn-assistant-border);\r\n  box-shadow: 0 4px 16px rgba(0,0,0,0.10), 0 24px 72px rgba(0,0,0,0.16);\r\n  pointer-events: auto;\r\n}\r\n\r\n.sn-assistant-modal__dialog::before {\r\n  content: "";\r\n  position: absolute;\r\n  inset: 0 0 auto;\r\n  height: 2px;\r\n  background: linear-gradient(90deg, var(--sn-assistant-accent), var(--sn-assistant-accent-warm));\r\n  pointer-events: none;\r\n}\r\n\r\n.sn-assistant-modal__header,\r\n.sn-assistant-modal__footer {\r\n  display: flex;\r\n  align-items: center;\r\n  justify-content: space-between;\r\n  gap: 12px;\r\n  padding: 16px 20px;\r\n  flex-shrink: 0;\r\n}\r\n\r\n.sn-assistant-modal__header {\r\n  border-bottom: 1px solid var(--sn-assistant-border);\r\n  background: var(--sn-assistant-panel);\r\n}\r\n\r\n.sn-assistant-modal__footer {\r\n  border-top: 1px solid var(--sn-assistant-border);\r\n  background: var(--sn-assistant-panel);\r\n  position: relative;\r\n  z-index: 2;\r\n}\r\n\r\n.sn-assistant-modal__footer-group {\r\n  display: flex;\r\n  align-items: center;\r\n  gap: 10px;\r\n}\r\n\r\n.sn-assistant-modal__title {\r\n  display: flex;\r\n  flex-direction: column;\r\n  gap: 4px;\r\n  min-width: 0;\r\n}\r\n\r\n.sn-assistant-modal__body {\r\n  flex: 1 1 auto;\r\n  min-height: 0;\r\n  overflow-y: auto;\r\n  overflow-x: hidden;\r\n  -webkit-overflow-scrolling: touch;\r\n  overscroll-behavior: contain;\r\n  padding: 16px 20px;\r\n  display: flex;\r\n  flex-direction: column;\r\n  gap: 12px;\r\n  position: relative;\r\n  z-index: 1;\r\n  background: var(--sn-assistant-surface);\r\n}\r\n\r\n/* \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\r\n   VALIDATION MODAL\r\n   \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500 */\r\n.sn-assistant-validation__container {\r\n  display: flex;\r\n  flex-direction: column;\r\n  gap: 12px;\r\n}\r\n\r\n.sn-assistant-validation__description {\r\n  margin: 0;\r\n  font-size: 13px;\r\n  color: var(--sn-assistant-ink);\r\n  font-weight: 500;\r\n}\r\n\r\n.sn-assistant-validation__list {\r\n  list-style: none;\r\n  margin: 0;\r\n  padding: 0;\r\n  display: flex;\r\n  flex-direction: column;\r\n  gap: 8px;\r\n}\r\n\r\n.sn-assistant-validation__item {\r\n  display: flex;\r\n  align-items: flex-start;\r\n  gap: 8px;\r\n  padding: 8px 10px;\r\n  border-radius: 8px;\r\n  background: rgba(217, 119, 6, 0.08);\r\n  border: 1px solid rgba(217, 119, 6, 0.16);\r\n  font-size: 13px;\r\n  color: var(--sn-assistant-ink);\r\n}\r\n\r\n.sn-assistant-validation__icon {\r\n  flex-shrink: 0;\r\n  display: inline-block;\r\n  font-size: 14px;\r\n  line-height: 1;\r\n}\r\n\r\n/* \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\r\n   CONFIRMATION MODAL\r\n   \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500 */\r\n.sn-assistant-confirm__container {\r\n  display: flex;\r\n  flex-direction: column;\r\n  gap: 12px;\r\n}\r\n\r\n.sn-assistant-confirm__description {\r\n  margin: 0;\r\n  font-size: 13px;\r\n  color: var(--sn-assistant-ink);\r\n  line-height: 1.5;\r\n}\r\n\r\n.sn-assistant-confirm__details {\r\n  list-style: none;\r\n  margin: 0;\r\n  padding: 8px 10px;\r\n  border-radius: 8px;\r\n  background: var(--sn-assistant-surface);\r\n  border: 1px solid var(--sn-assistant-border);\r\n  display: flex;\r\n  flex-direction: column;\r\n  gap: 6px;\r\n}\r\n\r\n.sn-assistant-confirm__detail {\r\n  font-size: 12px;\r\n  color: var(--sn-assistant-ink);\r\n  line-height: 1.4;\r\n}\r\n\r\n.sn-assistant-confirm__detail strong {\r\n  color: var(--sn-assistant-accent);\r\n  font-weight: 600;\r\n}\r\n\r\n/* Top templates picker */\r\n.sn-assistant-toptpl__grid {\r\n  display: grid;\r\n  gap: 10px;\r\n}\r\n\r\n.sn-assistant-toptpl__card {\r\n  text-align: left;\r\n  display: flex;\r\n  flex-direction: column;\r\n  gap: 6px;\r\n  padding: 12px;\r\n  border-radius: 10px;\r\n  border: 1px solid var(--sn-assistant-border);\r\n  background: var(--sn-assistant-panel);\r\n  cursor: pointer;\r\n  transition: border-color 140ms ease, background 140ms ease, transform 120ms ease;\r\n}\r\n\r\n.sn-assistant-toptpl__card:hover {\r\n  border-color: var(--sn-assistant-accent);\r\n  background: var(--sn-assistant-surface);\r\n  transform: translateY(-1px);\r\n}\r\n\r\n.sn-assistant-toptpl__card.is-best {\r\n  border-color: color-mix(in srgb, var(--sn-assistant-accent) 45%, var(--sn-assistant-border));\r\n  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--sn-assistant-accent) 20%, transparent);\r\n}\r\n\r\n.sn-assistant-toptpl__rank {\r\n  display: inline-flex;\r\n  align-items: center;\r\n  width: fit-content;\r\n  font-size: 11px;\r\n  font-weight: 700;\r\n  letter-spacing: 0.02em;\r\n  color: var(--sn-assistant-accent);\r\n  background: var(--sn-assistant-accent-soft);\r\n  padding: 2px 8px;\r\n  border-radius: 999px;\r\n}\r\n\r\n.sn-assistant-toptpl__rank.is-green {\r\n  color: #166534;\r\n  background: #dcfce7;\r\n}\r\n\r\n.sn-assistant-toptpl__rank.is-amber {\r\n  color: #92400e;\r\n  background: #fef3c7;\r\n}\r\n\r\n.sn-assistant-toptpl__rank.is-red {\r\n  color: #991b1b;\r\n  background: #fee2e2;\r\n}\r\n\r\n.sn-assistant-toptpl__title {\r\n  font-size: 13px;\r\n  line-height: 1.3;\r\n  color: var(--sn-assistant-ink);\r\n}\r\n\r\n.sn-assistant-toptpl__subject {\r\n  font-size: 12px;\r\n  font-weight: 600;\r\n  color: var(--sn-assistant-ink-soft);\r\n}\r\n\r\n.sn-assistant-toptpl__body {\r\n  font-size: 12px;\r\n  line-height: 1.45;\r\n  color: var(--sn-assistant-ink-soft);\r\n  opacity: 0.9;\r\n}\r\n\r\n.sn-ep__inline-bolt {\r\n  margin-left: auto;\r\n  border: 1px solid var(--sn-assistant-border);\r\n  background: var(--sn-assistant-panel);\r\n  color: #b45309;\r\n  border-radius: 8px;\r\n  width: 24px;\r\n  height: 24px;\r\n  line-height: 1;\r\n  display: inline-flex;\r\n  align-items: center;\r\n  justify-content: center;\r\n  cursor: pointer;\r\n}\r\n\r\n.sn-ep__inline-bolt:hover {\r\n  border-color: var(--sn-assistant-accent);\r\n  background: var(--sn-assistant-surface);\r\n}\r\n';
 
   // Assistant/ui/styles/notifications.css
-  var notifications_default = '/* \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\n   TOAST NOTIFICATION\n   \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500 */\n.sn-assistant-toast {\n  position: fixed;\n  bottom: 16px;\n  right: 16px;\n  max-width: 360px;\n  padding: 12px 14px;\n  background: var(--sn-assistant-panel);\n  border: 1px solid var(--sn-assistant-border);\n  border-radius: 10px;\n  box-shadow: var(--sn-assistant-shadow);\n  display: flex;\n  align-items: center;\n  gap: 10px;\n  font-size: 13px;\n  color: var(--sn-assistant-ink);\n  animation: slideInToast 0.3s cubic-bezier(0.16, 1, 0.3, 1);\n  z-index: 9999;\n}\n\n.sn-assistant-toast__content {\n  display: flex;\n  align-items: center;\n  gap: 10px;\n  flex: 1 1 auto;\n}\n\n.sn-assistant-toast__icon {\n  flex-shrink: 0;\n  display: inline-block;\n  font-size: 16px;\n  line-height: 1;\n}\n\n.sn-assistant-toast__message {\n  flex: 1 1 auto;\n}\n\n.sn-assistant-toast__message code {\n  background: var(--sn-assistant-surface);\n  padding: 2px 6px;\n  border-radius: 4px;\n  font-family: "Menlo", "Monaco", monospace;\n  font-size: 11px;\n  word-break: break-all;\n}\n\n.sn-assistant-toast--dismissing {\n  animation: slideOutToast 0.3s cubic-bezier(0.16, 1, 0.3, 1) forwards;\n}\n\n@keyframes slideInToast {\n  from {\n    opacity: 0;\n    transform: translateX(24px);\n  }\n  to {\n    opacity: 1;\n    transform: translateX(0);\n  }\n}\n\n@keyframes slideOutToast {\n  to {\n    opacity: 0;\n    transform: translateX(24px);\n  }\n}\n\n/* \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\n   PREVIEW COLLAPSIBLE\n   \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500 */\n.sn-assistant-preview-collapsible {\n  margin: 0;\n  padding: 0;\n}\n\n.sn-assistant-preview__summary {\n  display: flex;\n  align-items: center;\n  gap: 8px;\n  padding: 8px 12px;\n  margin: 0 -8px;\n  cursor: pointer;\n  font-size: 13px;\n  font-weight: 600;\n  color: var(--sn-assistant-ink);\n  border-radius: 8px;\n  transition: background-color 160ms ease;\n  user-select: none;\n  -webkit-user-select: none;\n}\n\n.sn-assistant-preview__summary:hover {\n  background-color: var(--sn-assistant-surface);\n}\n\n.sn-assistant-preview__summary::marker {\n  color: var(--sn-assistant-accent);\n}\n\n.sn-assistant-preview-collapsible[open] .sn-assistant-preview {\n  margin-top: 8px;\n  padding-top: 12px;\n  border-top: 1px solid var(--sn-assistant-border);\n}\n\n/* \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\n   MISSING FIELDS WARNING\n   \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500 */\n.sn-assistant-missing-fields {\n  display: flex;\n  flex-direction: column;\n  gap: 6px;\n  padding: 8px;\n  border-radius: 8px;\n  background: rgba(217, 119, 6, 0.06);\n  border: 1px solid rgba(217, 119, 6, 0.12);\n}\n\n.sn-assistant-missing-field-chip {\n  display: inline-flex;\n  align-items: center;\n  gap: 6px;\n  padding: 6px 10px;\n  font-size: 12px;\n  font-weight: 500;\n  color: rgba(217, 119, 6, 0.9);\n  background: rgba(217, 119, 6, 0.08);\n  border-radius: 6px;\n  white-space: nowrap;\n}\n';
+  var notifications_default = '/* \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\r\n   TOAST NOTIFICATION\r\n   \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500 */\r\n.sn-assistant-toast {\r\n  position: fixed;\r\n  bottom: 16px;\r\n  right: 16px;\r\n  max-width: 360px;\r\n  padding: 12px 14px;\r\n  background: var(--sn-assistant-panel);\r\n  border: 1px solid var(--sn-assistant-border);\r\n  border-radius: 10px;\r\n  box-shadow: var(--sn-assistant-shadow);\r\n  display: flex;\r\n  align-items: center;\r\n  gap: 10px;\r\n  font-size: 13px;\r\n  color: var(--sn-assistant-ink);\r\n  animation: slideInToast 0.3s cubic-bezier(0.16, 1, 0.3, 1);\r\n  z-index: 9999;\r\n}\r\n\r\n.sn-assistant-toast__content {\r\n  display: flex;\r\n  align-items: center;\r\n  gap: 10px;\r\n  flex: 1 1 auto;\r\n}\r\n\r\n.sn-assistant-toast__icon {\r\n  flex-shrink: 0;\r\n  display: inline-block;\r\n  font-size: 16px;\r\n  line-height: 1;\r\n}\r\n\r\n.sn-assistant-toast__message {\r\n  flex: 1 1 auto;\r\n}\r\n\r\n.sn-assistant-toast__message code {\r\n  background: var(--sn-assistant-surface);\r\n  padding: 2px 6px;\r\n  border-radius: 4px;\r\n  font-family: "Menlo", "Monaco", monospace;\r\n  font-size: 11px;\r\n  word-break: break-all;\r\n}\r\n\r\n.sn-assistant-toast--dismissing {\r\n  animation: slideOutToast 0.3s cubic-bezier(0.16, 1, 0.3, 1) forwards;\r\n}\r\n\r\n@keyframes slideInToast {\r\n  from {\r\n    opacity: 0;\r\n    transform: translateX(24px);\r\n  }\r\n  to {\r\n    opacity: 1;\r\n    transform: translateX(0);\r\n  }\r\n}\r\n\r\n@keyframes slideOutToast {\r\n  to {\r\n    opacity: 0;\r\n    transform: translateX(24px);\r\n  }\r\n}\r\n\r\n/* \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\r\n   PREVIEW COLLAPSIBLE\r\n   \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500 */\r\n.sn-assistant-preview-collapsible {\r\n  margin: 0;\r\n  padding: 0;\r\n}\r\n\r\n.sn-assistant-preview__summary {\r\n  display: flex;\r\n  align-items: center;\r\n  gap: 8px;\r\n  padding: 8px 12px;\r\n  margin: 0 -8px;\r\n  cursor: pointer;\r\n  font-size: 13px;\r\n  font-weight: 600;\r\n  color: var(--sn-assistant-ink);\r\n  border-radius: 8px;\r\n  transition: background-color 160ms ease;\r\n  user-select: none;\r\n  -webkit-user-select: none;\r\n}\r\n\r\n.sn-assistant-preview__summary:hover {\r\n  background-color: var(--sn-assistant-surface);\r\n}\r\n\r\n.sn-assistant-preview__summary::marker {\r\n  color: var(--sn-assistant-accent);\r\n}\r\n\r\n.sn-assistant-preview-collapsible[open] .sn-assistant-preview {\r\n  margin-top: 8px;\r\n  padding-top: 12px;\r\n  border-top: 1px solid var(--sn-assistant-border);\r\n}\r\n\r\n/* \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\r\n   MISSING FIELDS WARNING\r\n   \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500 */\r\n.sn-assistant-missing-fields {\r\n  display: flex;\r\n  flex-direction: column;\r\n  gap: 6px;\r\n  padding: 8px;\r\n  border-radius: 8px;\r\n  background: rgba(217, 119, 6, 0.06);\r\n  border: 1px solid rgba(217, 119, 6, 0.12);\r\n}\r\n\r\n.sn-assistant-missing-field-chip {\r\n  display: inline-flex;\r\n  align-items: center;\r\n  gap: 6px;\r\n  padding: 6px 10px;\r\n  font-size: 12px;\r\n  font-weight: 500;\r\n  color: rgba(217, 119, 6, 0.9);\r\n  background: rgba(217, 119, 6, 0.08);\r\n  border-radius: 6px;\r\n  white-space: nowrap;\r\n}\r\n';
 
   // Assistant/ui/styles/workNotes.css
-  var workNotes_default = `/* \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
-   WORK NOTES PANEL
-   \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500 */
-.sn-assistant-worknotes-panel {
-  width: 520px;
-  max-width: calc(100vw - 24px);
-}
-
-.sn-ep[data-ep-view="work-notes"]:is([data-ep-mode="icons"], [data-ep-mode="expanded"]) .sn-ep__panel,
-.sn-ep[data-ep-view="user-info"]:is([data-ep-mode="icons"], [data-ep-mode="expanded"]) .sn-ep__panel,
-.sn-ep[data-ep-view="user-tickets"]:is([data-ep-mode="icons"], [data-ep-mode="expanded"]) .sn-ep__panel,
-.sn-ep[data-ep-view="find-ci"]:is([data-ep-mode="icons"], [data-ep-mode="expanded"]) .sn-ep__panel {
-  width: 520px;
-  max-width: calc(100vw - 24px);
-}
-
-.sn-ep[data-ep-view="work-notes"]:is([data-ep-mode="icons"], [data-ep-mode="expanded"]) .sn-ep__actions,
-.sn-ep[data-ep-view="user-info"]:is([data-ep-mode="icons"], [data-ep-mode="expanded"]) .sn-ep__actions,
-.sn-ep[data-ep-view="user-tickets"]:is([data-ep-mode="icons"], [data-ep-mode="expanded"]) .sn-ep__actions,
-.sn-ep[data-ep-view="find-ci"]:is([data-ep-mode="icons"], [data-ep-mode="expanded"]) .sn-ep__actions {
-  padding: 0;
-  overflow: visible;
-}
-
-.sn-assistant-worknotes-panel .sn-assistant-panel__header {
-  position: sticky;
-  top: 0;
-  z-index: 3;
-}
-
-.sn-assistant-worknotes-panel .sn-assistant-panel__body {
-  flex: 1 1 auto;
-  min-height: 0;
-  overflow-y: auto;
-  overflow-x: hidden;
-  padding-bottom: 10px;
-}
-
-.sn-assistant-worknotes-panel .sn-assistant-panel__footer {
-  position: sticky;
-  bottom: 0;
-  z-index: 2;
-  margin-top: auto;
-  padding-top: 10px;
-  background: var(--sn-assistant-panel);
-  border-top: 1px solid var(--sn-assistant-border);
-}
-
-.sn-assistant-worknotes__templates {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-  min-height: 0;
-}
-
-.sn-assistant-worknotes__templates-header {
-  font-size: 10px;
-  font-weight: 600;
-  letter-spacing: 0.02em;
-  text-transform: none;
-  color: var(--sn-assistant-muted);
-  padding: 0 1px;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 6px;
-}
-
-.sn-assistant-worknotes__chips {
-  display: flex;
-  flex-wrap: wrap;
-  align-content: flex-start;
-  gap: 5px;
-  max-height: min(26vh, 200px);
-  overflow-y: auto;
-  overflow-x: hidden;
-  padding: 0;
-  border: none;
-  border-radius: 0;
-  background: transparent;
-  -webkit-overflow-scrolling: touch;
-}
-
-.sn-assistant-searchbar {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 0 10px;
-  min-height: 34px;
-  border-radius: 9px;
-  border: 1px solid color-mix(in srgb, var(--sn-assistant-border) 90%, transparent);
-  background: color-mix(in srgb, var(--sn-assistant-surface) 55%, var(--sn-assistant-panel));
-  transition: border-color 140ms ease, box-shadow 140ms ease, background 140ms ease;
-}
-
-.sn-assistant-searchbar:focus-within {
-  border-color: color-mix(in srgb, var(--sn-assistant-accent) 45%, var(--sn-assistant-border));
-  background: var(--sn-assistant-panel);
-  box-shadow: 0 0 0 3px var(--sn-assistant-accent-soft);
-}
-
-.sn-assistant-searchbar__icon {
-  width: 13px;
-  height: 13px;
-  flex: 0 0 auto;
-  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%235a6873' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Ccircle cx='11' cy='11' r='6.5'/%3E%3Cpath d='M16.2 16.2L20 20'/%3E%3C/svg%3E");
-  background-repeat: no-repeat;
-  background-position: center;
-  background-size: contain;
-}
-
-.sn-assistant-searchbar__input {
-  width: 100%;
-  padding: 0;
-  border: 0;
-  background: transparent;
-  box-shadow: none;
-  font: inherit;
-  font-weight: 500;
-  color: var(--sn-assistant-ink);
-}
-
-.sn-assistant-searchbar__input::placeholder {
-  color: var(--sn-assistant-muted);
-}
-
-.sn-assistant-searchbar__input:focus {
-  outline: none;
-}
-
-.sn-assistant-worknotes__chip {
-  appearance: none;
-  border: 1px solid color-mix(in srgb, var(--sn-assistant-border) 85%, transparent);
-  border-radius: 8px;
-  background: color-mix(in srgb, var(--sn-assistant-panel) 90%, var(--sn-assistant-surface));
-  color: var(--sn-assistant-ink);
-  font: inherit;
-  font-size: 11px;
-  font-weight: 600;
-  line-height: 1.2;
-  padding: 5px 10px;
-  cursor: pointer;
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
-  transition:
-    border-color 120ms ease,
-    background 120ms ease,
-    transform 100ms ease,
-    box-shadow 120ms ease;
-}
-
-.sn-assistant-worknotes__chip:hover {
-  border-color: color-mix(in srgb, var(--sn-assistant-accent) 35%, var(--sn-assistant-border));
-  background: var(--sn-assistant-accent-soft);
-}
-
-.sn-assistant-worknotes__chip:active {
-  transform: scale(0.98);
-}
-
-.sn-assistant-worknotes__chip-badge {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  min-width: 18px;
-  height: 14px;
-  padding: 0 4px;
-  border-radius: 4px;
-  background: color-mix(in srgb, var(--sn-assistant-accent) 14%, transparent);
-  color: var(--sn-assistant-accent-strong);
-  font-size: 9px;
-  font-weight: 700;
-  letter-spacing: 0.02em;
-  text-transform: none;
-}
-
-.sn-assistant-worknotes__chip.is-recommended {
-  border-color: color-mix(in srgb, var(--sn-assistant-accent) 28%, var(--sn-assistant-border));
-  background: color-mix(in srgb, var(--sn-assistant-accent-soft) 80%, var(--sn-assistant-panel));
-}
-
-.sn-assistant-worknotes__chip.is-active {
-  border-color: var(--sn-assistant-accent);
-  background: var(--sn-assistant-accent);
-  color: #FFFFFF;
-  box-shadow: 0 1px 4px color-mix(in srgb, var(--sn-assistant-accent) 30%, transparent);
-}
-
-.sn-assistant-worknotes__textarea {
-  min-height: 180px;
-  resize: vertical;
-  border-radius: 9px;
-  border: 1px solid color-mix(in srgb, var(--sn-assistant-border) 90%, transparent);
-  background: color-mix(in srgb, var(--sn-assistant-surface) 40%, var(--sn-assistant-panel));
-  transition: border-color 140ms ease, box-shadow 140ms ease, background 140ms ease;
-}
-
-.sn-assistant-worknotes__textarea:focus {
-  border-color: color-mix(in srgb, var(--sn-assistant-accent) 40%, var(--sn-assistant-border));
-  background: var(--sn-assistant-panel);
-  box-shadow: 0 0 0 3px var(--sn-assistant-accent-soft);
-  outline: none;
-}
-
-.sn-assistant-worknotes__editor {
-  flex: 1 1 auto;
-  min-height: 0;
-}
-
-.sn-assistant-worknotes__editor .sn-assistant-textarea {
-  flex: 1 1 auto;
-  min-height: 0;
-}
+  var workNotes_default = `/* \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\r
+   WORK NOTES PANEL\r
+   \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500 */\r
+.sn-assistant-worknotes-panel {\r
+  width: 520px;\r
+  max-width: calc(100vw - 24px);\r
+}\r
+\r
+.sn-ep[data-ep-view="work-notes"]:is([data-ep-mode="icons"], [data-ep-mode="expanded"]) .sn-ep__panel,\r
+.sn-ep[data-ep-view="user-info"]:is([data-ep-mode="icons"], [data-ep-mode="expanded"]) .sn-ep__panel,\r
+.sn-ep[data-ep-view="user-tickets"]:is([data-ep-mode="icons"], [data-ep-mode="expanded"]) .sn-ep__panel,\r
+.sn-ep[data-ep-view="find-ci"]:is([data-ep-mode="icons"], [data-ep-mode="expanded"]) .sn-ep__panel {\r
+  width: 520px;\r
+  max-width: calc(100vw - 24px);\r
+}\r
+\r
+.sn-ep[data-ep-view="work-notes"]:is([data-ep-mode="icons"], [data-ep-mode="expanded"]) .sn-ep__actions,\r
+.sn-ep[data-ep-view="user-info"]:is([data-ep-mode="icons"], [data-ep-mode="expanded"]) .sn-ep__actions,\r
+.sn-ep[data-ep-view="user-tickets"]:is([data-ep-mode="icons"], [data-ep-mode="expanded"]) .sn-ep__actions,\r
+.sn-ep[data-ep-view="find-ci"]:is([data-ep-mode="icons"], [data-ep-mode="expanded"]) .sn-ep__actions {\r
+  padding: 0;\r
+  overflow: visible;\r
+}\r
+\r
+.sn-assistant-worknotes-panel .sn-assistant-panel__header {\r
+  position: sticky;\r
+  top: 0;\r
+  z-index: 3;\r
+}\r
+\r
+.sn-assistant-worknotes-panel .sn-assistant-panel__body {\r
+  flex: 1 1 auto;\r
+  min-height: 0;\r
+  overflow-y: auto;\r
+  overflow-x: hidden;\r
+  padding-bottom: 10px;\r
+}\r
+\r
+.sn-assistant-worknotes-panel .sn-assistant-panel__footer {\r
+  position: sticky;\r
+  bottom: 0;\r
+  z-index: 2;\r
+  margin-top: auto;\r
+  padding-top: 10px;\r
+  background: var(--sn-assistant-panel);\r
+  border-top: 1px solid var(--sn-assistant-border);\r
+}\r
+\r
+.sn-assistant-worknotes__templates {\r
+  display: flex;\r
+  flex-direction: column;\r
+  gap: 6px;\r
+  min-height: 0;\r
+}\r
+\r
+.sn-assistant-worknotes__templates-header {\r
+  font-size: 10px;\r
+  font-weight: 600;\r
+  letter-spacing: 0.02em;\r
+  text-transform: none;\r
+  color: var(--sn-assistant-muted);\r
+  padding: 0 1px;\r
+  display: flex;\r
+  align-items: center;\r
+  justify-content: space-between;\r
+  gap: 6px;\r
+}\r
+\r
+.sn-assistant-worknotes__chips {\r
+  display: flex;\r
+  flex-wrap: wrap;\r
+  align-content: flex-start;\r
+  gap: 5px;\r
+  max-height: min(26vh, 200px);\r
+  overflow-y: auto;\r
+  overflow-x: hidden;\r
+  padding: 0;\r
+  border: none;\r
+  border-radius: 0;\r
+  background: transparent;\r
+  -webkit-overflow-scrolling: touch;\r
+}\r
+\r
+.sn-assistant-searchbar {\r
+  display: flex;\r
+  align-items: center;\r
+  gap: 8px;\r
+  padding: 0 10px;\r
+  min-height: 34px;\r
+  border-radius: 9px;\r
+  border: 1px solid color-mix(in srgb, var(--sn-assistant-border) 90%, transparent);\r
+  background: color-mix(in srgb, var(--sn-assistant-surface) 55%, var(--sn-assistant-panel));\r
+  transition: border-color 140ms ease, box-shadow 140ms ease, background 140ms ease;\r
+}\r
+\r
+.sn-assistant-searchbar:focus-within {\r
+  border-color: color-mix(in srgb, var(--sn-assistant-accent) 45%, var(--sn-assistant-border));\r
+  background: var(--sn-assistant-panel);\r
+  box-shadow: 0 0 0 3px var(--sn-assistant-accent-soft);\r
+}\r
+\r
+.sn-assistant-searchbar__icon {\r
+  width: 13px;\r
+  height: 13px;\r
+  flex: 0 0 auto;\r
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%235a6873' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Ccircle cx='11' cy='11' r='6.5'/%3E%3Cpath d='M16.2 16.2L20 20'/%3E%3C/svg%3E");\r
+  background-repeat: no-repeat;\r
+  background-position: center;\r
+  background-size: contain;\r
+}\r
+\r
+.sn-assistant-searchbar__input {\r
+  width: 100%;\r
+  padding: 0;\r
+  border: 0;\r
+  background: transparent;\r
+  box-shadow: none;\r
+  font: inherit;\r
+  font-weight: 500;\r
+  color: var(--sn-assistant-ink);\r
+}\r
+\r
+.sn-assistant-searchbar__input::placeholder {\r
+  color: var(--sn-assistant-muted);\r
+}\r
+\r
+.sn-assistant-searchbar__input:focus {\r
+  outline: none;\r
+}\r
+\r
+.sn-assistant-worknotes__chip {\r
+  appearance: none;\r
+  border: 1px solid color-mix(in srgb, var(--sn-assistant-border) 85%, transparent);\r
+  border-radius: 8px;\r
+  background: color-mix(in srgb, var(--sn-assistant-panel) 90%, var(--sn-assistant-surface));\r
+  color: var(--sn-assistant-ink);\r
+  font: inherit;\r
+  font-size: 11px;\r
+  font-weight: 600;\r
+  line-height: 1.2;\r
+  padding: 5px 10px;\r
+  cursor: pointer;\r
+  display: inline-flex;\r
+  align-items: center;\r
+  gap: 5px;\r
+  transition:\r
+    border-color 120ms ease,\r
+    background 120ms ease,\r
+    transform 100ms ease,\r
+    box-shadow 120ms ease;\r
+}\r
+\r
+.sn-assistant-worknotes__chip:hover {\r
+  border-color: color-mix(in srgb, var(--sn-assistant-accent) 35%, var(--sn-assistant-border));\r
+  background: var(--sn-assistant-accent-soft);\r
+}\r
+\r
+.sn-assistant-worknotes__chip:active {\r
+  transform: scale(0.98);\r
+}\r
+\r
+.sn-assistant-worknotes__chip-badge {\r
+  display: inline-flex;\r
+  align-items: center;\r
+  justify-content: center;\r
+  min-width: 18px;\r
+  height: 14px;\r
+  padding: 0 4px;\r
+  border-radius: 4px;\r
+  background: color-mix(in srgb, var(--sn-assistant-accent) 14%, transparent);\r
+  color: var(--sn-assistant-accent-strong);\r
+  font-size: 9px;\r
+  font-weight: 700;\r
+  letter-spacing: 0.02em;\r
+  text-transform: none;\r
+}\r
+\r
+.sn-assistant-worknotes__chip.is-recommended {\r
+  border-color: color-mix(in srgb, var(--sn-assistant-accent) 28%, var(--sn-assistant-border));\r
+  background: color-mix(in srgb, var(--sn-assistant-accent-soft) 80%, var(--sn-assistant-panel));\r
+}\r
+\r
+.sn-assistant-worknotes__chip.is-active {\r
+  border-color: var(--sn-assistant-accent);\r
+  background: var(--sn-assistant-accent);\r
+  color: #FFFFFF;\r
+  box-shadow: 0 1px 4px color-mix(in srgb, var(--sn-assistant-accent) 30%, transparent);\r
+}\r
+\r
+.sn-assistant-worknotes__textarea {\r
+  min-height: 180px;\r
+  resize: vertical;\r
+  border-radius: 9px;\r
+  border: 1px solid color-mix(in srgb, var(--sn-assistant-border) 90%, transparent);\r
+  background: color-mix(in srgb, var(--sn-assistant-surface) 40%, var(--sn-assistant-panel));\r
+  transition: border-color 140ms ease, box-shadow 140ms ease, background 140ms ease;\r
+}\r
+\r
+.sn-assistant-worknotes__textarea:focus {\r
+  border-color: color-mix(in srgb, var(--sn-assistant-accent) 40%, var(--sn-assistant-border));\r
+  background: var(--sn-assistant-panel);\r
+  box-shadow: 0 0 0 3px var(--sn-assistant-accent-soft);\r
+  outline: none;\r
+}\r
+\r
+.sn-assistant-worknotes__editor {\r
+  flex: 1 1 auto;\r
+  min-height: 0;\r
+}\r
+\r
+.sn-assistant-worknotes__editor .sn-assistant-textarea {\r
+  flex: 1 1 auto;\r
+  min-height: 0;\r
+}\r
 `;
 
   // Assistant/ui/styles/pdf.css
-  var pdf_default = "/* \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\n   NOTE BLOCKS\n   \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500 */\n.sn-assistant-note {\n  padding: 8px 10px;\n  border-radius: 8px;\n  background: var(--sn-assistant-accent-soft);\n  color: var(--sn-assistant-accent-strong);\n  font-size: 11px;\n  font-weight: 600;\n  line-height: 1.55;\n  border: 1px solid var(--sn-assistant-border-strong);\n}\n\n.sn-assistant-note--empty {\n  width: 100%;\n  text-align: center;\n  background: var(--sn-assistant-surface);\n  border: 1px dashed var(--sn-assistant-border);\n  color: var(--sn-assistant-muted);\n}\n\n.sn-assistant-note--compact {\n  margin: 0;\n  padding: 8px 10px;\n}\n\n.sn-assistant-note--warning {\n  display: flex;\n  align-items: flex-start;\n  gap: 10px;\n  padding: 14px 16px;\n  border-radius: 12px;\n  border: 1px solid rgba(180, 120, 20, 0.20);\n  background: rgba(253, 246, 220, 0.90);\n  color: #5C3D08;\n  font-weight: 600;\n}\n\n.sn-assistant-note__icon {\n  flex: 0 0 auto;\n  font-size: 15px;\n  line-height: 1;\n  margin-top: 1px;\n}\n";
+  var pdf_default = "/* \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\r\n   NOTE BLOCKS\r\n   \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500 */\r\n.sn-assistant-note {\r\n  padding: 8px 10px;\r\n  border-radius: 8px;\r\n  background: var(--sn-assistant-accent-soft);\r\n  color: var(--sn-assistant-accent-strong);\r\n  font-size: 11px;\r\n  font-weight: 600;\r\n  line-height: 1.55;\r\n  border: 1px solid var(--sn-assistant-border-strong);\r\n}\r\n\r\n.sn-assistant-note--empty {\r\n  width: 100%;\r\n  text-align: center;\r\n  background: var(--sn-assistant-surface);\r\n  border: 1px dashed var(--sn-assistant-border);\r\n  color: var(--sn-assistant-muted);\r\n}\r\n\r\n.sn-assistant-note--compact {\r\n  margin: 0;\r\n  padding: 8px 10px;\r\n}\r\n\r\n.sn-assistant-note--warning {\r\n  display: flex;\r\n  align-items: flex-start;\r\n  gap: 10px;\r\n  padding: 14px 16px;\r\n  border-radius: 12px;\r\n  border: 1px solid rgba(180, 120, 20, 0.20);\r\n  background: rgba(253, 246, 220, 0.90);\r\n  color: #5C3D08;\r\n  font-weight: 600;\r\n}\r\n\r\n.sn-assistant-note__icon {\r\n  flex: 0 0 auto;\r\n  font-size: 15px;\r\n  line-height: 1;\r\n  margin-top: 1px;\r\n}\r\n";
 
   // Assistant/ui/styles/findCi-lookup.css
-  var findCi_lookup_default = "/* \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\n   SETTINGS GRID & CHECKBOXES\n   \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500 */\n.sn-assistant-settings-grid {\n  display: grid;\n  grid-template-columns: repeat(2, minmax(0, 1fr));\n  gap: 8px;\n}\n\n.sn-assistant-settings-grid--compact {\n  margin-bottom: 6px;\n}\n\n.sn-assistant-checkbox-list {\n  display: grid;\n  gap: 6px;\n}\n\n.sn-assistant-checkbox {\n  display: flex;\n  align-items: flex-start;\n  gap: 8px;\n  padding: 10px 12px;\n  border-radius: 10px;\n  background: var(--sn-assistant-panel);\n  border: 1px solid var(--sn-assistant-border);\n  box-shadow: 0 1px 3px rgba(0,0,0,0.04);\n}\n\n.sn-assistant-checkbox input {\n  margin-top: 3px;\n}\n\n.sn-assistant-checkbox strong {\n  display: block;\n  font-size: 11px;\n  font-weight: 700;\n  margin-bottom: 2px;\n  color: var(--sn-assistant-ink);\n}\n\n.sn-assistant-checkbox span {\n  display: block;\n  color: var(--sn-assistant-muted);\n  font-size: 10px;\n  font-weight: 500;\n  line-height: 1.5;\n}\n\n/* \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\n   BUTTON ORDER (drag-to-reorder)\n   \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500 */\n.sn-assistant-button-order {\n  margin-top: 8px;\n}\n\n.sn-assistant-button-order__list {\n  display: grid;\n  gap: 6px;\n}\n\n.sn-assistant-button-order__item {\n  display: flex;\n  align-items: center;\n  gap: 10px;\n  padding: 10px 12px;\n  border-radius: 10px;\n  background: var(--sn-assistant-panel);\n  border: 1px solid var(--sn-assistant-border);\n  box-shadow: 0 1px 3px rgba(0,0,0,0.04);\n  cursor: grab;\n  user-select: none;\n  transition: box-shadow 140ms ease, transform 140ms ease;\n}\n\n.sn-assistant-button-order__item:hover {\n  box-shadow: 0 2px 8px rgba(0,0,0,0.08);\n  transform: translateY(-1px);\n}\n\n.sn-assistant-button-order__item.is-dragging {\n  opacity: 0.60;\n  cursor: grabbing;\n  box-shadow: 0 4px 16px rgba(0,0,0,0.12);\n}\n\n.sn-assistant-button-order__handle {\n  font-size: 14px;\n  line-height: 1;\n  color: var(--sn-assistant-muted);\n  flex: 0 0 auto;\n}\n\n.sn-assistant-button-order__content {\n  display: grid;\n  gap: 2px;\n}\n\n.sn-assistant-button-order__content strong {\n  font-size: 11px;\n  font-weight: 700;\n  line-height: 1.2;\n  color: var(--sn-assistant-ink);\n}\n\n.sn-assistant-button-order__content span {\n  font-size: 10px;\n  font-weight: 500;\n  line-height: 1.4;\n  color: var(--sn-assistant-muted);\n}\n\n/* \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\n   CI LOOKUP\n   \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500 */\n.sn-assistant-ci-lookup {\n  display: grid;\n  gap: 8px;\n  margin-bottom: 8px;\n  padding: 10px;\n  border-radius: 12px;\n  background: var(--sn-assistant-accent-soft);\n  border: 1px solid var(--sn-assistant-border-strong);\n}\n\n.sn-assistant-ci-lookup__input {\n  width: 100%;\n}\n\n.sn-assistant-ci-lookup__results {\n  display: grid;\n  gap: 6px;\n}\n\n.sn-assistant-ci-lookup__result {\n  display: flex;\n  flex-direction: column;\n  align-items: flex-start;\n  gap: 2px;\n  padding: 8px 10px;\n  border-radius: 8px;\n  border: 1px solid var(--sn-assistant-border);\n  background: var(--sn-assistant-panel);\n  color: var(--sn-assistant-ink);\n  text-align: left;\n  cursor: pointer;\n}\n\n.sn-assistant-ci-lookup__result strong {\n  font-size: 11px;\n  font-weight: 700;\n  line-height: 1.25;\n}\n\n.sn-assistant-ci-lookup__result span {\n  font-size: 10px;\n  font-weight: 500;\n  line-height: 1.35;\n  color: var(--sn-assistant-muted);\n  word-break: break-all;\n}\n";
+  var findCi_lookup_default = "/* \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\r\n   SETTINGS GRID & CHECKBOXES\r\n   \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500 */\r\n.sn-assistant-settings-grid {\r\n  display: grid;\r\n  grid-template-columns: repeat(2, minmax(0, 1fr));\r\n  gap: 8px;\r\n}\r\n\r\n.sn-assistant-settings-grid--compact {\r\n  margin-bottom: 6px;\r\n}\r\n\r\n.sn-assistant-checkbox-list {\r\n  display: grid;\r\n  gap: 6px;\r\n}\r\n\r\n.sn-assistant-checkbox {\r\n  display: flex;\r\n  align-items: flex-start;\r\n  gap: 8px;\r\n  padding: 10px 12px;\r\n  border-radius: 10px;\r\n  background: var(--sn-assistant-panel);\r\n  border: 1px solid var(--sn-assistant-border);\r\n  box-shadow: 0 1px 3px rgba(0,0,0,0.04);\r\n}\r\n\r\n.sn-assistant-checkbox input {\r\n  margin-top: 3px;\r\n}\r\n\r\n.sn-assistant-checkbox strong {\r\n  display: block;\r\n  font-size: 11px;\r\n  font-weight: 700;\r\n  margin-bottom: 2px;\r\n  color: var(--sn-assistant-ink);\r\n}\r\n\r\n.sn-assistant-checkbox span {\r\n  display: block;\r\n  color: var(--sn-assistant-muted);\r\n  font-size: 10px;\r\n  font-weight: 500;\r\n  line-height: 1.5;\r\n}\r\n\r\n/* \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\r\n   BUTTON ORDER (drag-to-reorder)\r\n   \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500 */\r\n.sn-assistant-button-order {\r\n  margin-top: 8px;\r\n}\r\n\r\n.sn-assistant-button-order__list {\r\n  display: grid;\r\n  gap: 6px;\r\n}\r\n\r\n.sn-assistant-button-order__item {\r\n  display: flex;\r\n  align-items: center;\r\n  gap: 10px;\r\n  padding: 10px 12px;\r\n  border-radius: 10px;\r\n  background: var(--sn-assistant-panel);\r\n  border: 1px solid var(--sn-assistant-border);\r\n  box-shadow: 0 1px 3px rgba(0,0,0,0.04);\r\n  cursor: grab;\r\n  user-select: none;\r\n  transition: box-shadow 140ms ease, transform 140ms ease;\r\n}\r\n\r\n.sn-assistant-button-order__item:hover {\r\n  box-shadow: 0 2px 8px rgba(0,0,0,0.08);\r\n  transform: translateY(-1px);\r\n}\r\n\r\n.sn-assistant-button-order__item.is-dragging {\r\n  opacity: 0.60;\r\n  cursor: grabbing;\r\n  box-shadow: 0 4px 16px rgba(0,0,0,0.12);\r\n}\r\n\r\n.sn-assistant-button-order__handle {\r\n  font-size: 14px;\r\n  line-height: 1;\r\n  color: var(--sn-assistant-muted);\r\n  flex: 0 0 auto;\r\n}\r\n\r\n.sn-assistant-button-order__content {\r\n  display: grid;\r\n  gap: 2px;\r\n}\r\n\r\n.sn-assistant-button-order__content strong {\r\n  font-size: 11px;\r\n  font-weight: 700;\r\n  line-height: 1.2;\r\n  color: var(--sn-assistant-ink);\r\n}\r\n\r\n.sn-assistant-button-order__content span {\r\n  font-size: 10px;\r\n  font-weight: 500;\r\n  line-height: 1.4;\r\n  color: var(--sn-assistant-muted);\r\n}\r\n\r\n/* \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\r\n   CI LOOKUP\r\n   \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500 */\r\n.sn-assistant-ci-lookup {\r\n  display: grid;\r\n  gap: 8px;\r\n  margin-bottom: 8px;\r\n  padding: 10px;\r\n  border-radius: 12px;\r\n  background: var(--sn-assistant-accent-soft);\r\n  border: 1px solid var(--sn-assistant-border-strong);\r\n}\r\n\r\n.sn-assistant-ci-lookup__input {\r\n  width: 100%;\r\n}\r\n\r\n.sn-assistant-ci-lookup__results {\r\n  display: grid;\r\n  gap: 6px;\r\n}\r\n\r\n.sn-assistant-ci-lookup__result {\r\n  display: flex;\r\n  flex-direction: column;\r\n  align-items: flex-start;\r\n  gap: 2px;\r\n  padding: 8px 10px;\r\n  border-radius: 8px;\r\n  border: 1px solid var(--sn-assistant-border);\r\n  background: var(--sn-assistant-panel);\r\n  color: var(--sn-assistant-ink);\r\n  text-align: left;\r\n  cursor: pointer;\r\n}\r\n\r\n.sn-assistant-ci-lookup__result strong {\r\n  font-size: 11px;\r\n  font-weight: 700;\r\n  line-height: 1.25;\r\n}\r\n\r\n.sn-assistant-ci-lookup__result span {\r\n  font-size: 10px;\r\n  font-weight: 500;\r\n  line-height: 1.35;\r\n  color: var(--sn-assistant-muted);\r\n  word-break: break-all;\r\n}\r\n";
 
   // Assistant/ui/styles/templateStudio.css
-  var templateStudio_default = '/* \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\n   TEMPLATE MANAGER\n   \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500 */\n.sn-assistant-template-manager {\n  display: flex;\n  flex-direction: column;\n  gap: 10px;\n  padding: 12px;\n  border-radius: 14px;\n  border: 1px solid var(--sn-assistant-border);\n  background: var(--sn-assistant-panel);\n}\n\n.sn-assistant-template-manager--scrollable {\n  display: grid;\n  grid-template-rows: auto auto auto auto minmax(280px, 1fr);\n  min-height: 420px;\n  max-height: none;\n  overflow: visible;\n  padding-right: 0;\n}\n\n.sn-assistant-template-manager--full {\n  display: grid;\n  grid-template-rows: auto auto auto auto auto minmax(320px, 1fr);\n  min-height: 520px;\n}\n\n.sn-assistant-tabs--sections {\n  width: 100%;\n  justify-content: flex-start;\n}\n\n.sn-assistant-modal__body > .sn-assistant-settings-grid,\n.sn-assistant-modal__body > .sn-assistant-checkbox-list {\n  padding: 16px;\n  border-radius: 14px;\n  border: 1px solid var(--sn-assistant-border);\n  background: var(--sn-assistant-panel);\n}\n\n/* \u2500\u2500 Template Workspace \u2500\u2500 */\n.template-workspace__subtabs {\n  display: flex;\n  flex-wrap: wrap;\n  align-items: center;\n  gap: 6px;\n  margin: 10px 0;\n}\n\n.template-workspace__subtab {\n  display: inline-flex;\n  align-items: center;\n  justify-content: center;\n  padding: 5px 12px;\n  border-radius: 999px;\n  font-size: 11px;\n  font-weight: 600;\n  background: transparent;\n  border: 1px solid var(--sn-assistant-border);\n  color: var(--sn-assistant-muted);\n  cursor: pointer;\n  transition: all 0.15s ease;\n}\n\n.template-workspace__subtab:hover {\n  transform: translateY(-1px);\n  border-color: var(--sn-assistant-accent);\n  color: var(--sn-assistant-accent);\n  background: var(--sn-assistant-accent-soft);\n}\n\n.template-workspace__subtab.is-active {\n  background: var(--sn-assistant-accent);\n  border-color: var(--sn-assistant-accent);\n  color: #FFFFFF;\n  box-shadow: 0 2px 8px rgba(37, 99, 235, 0.22);\n}\n\n.template-workspace__search {\n  position: relative;\n  display: flex;\n  align-items: center;\n  margin: 10px 0;\n}\n\n.template-workspace__search .sn-assistant-searchbar__input {\n  width: 100%;\n  padding-left: 32px;\n  padding-top: 8px;\n  padding-bottom: 8px;\n  border-radius: 10px;\n  background: transparent;\n  outline: none;\n  transition: border-color 0.2s ease;\n}\n\n.template-workspace__search .sn-assistant-searchbar__icon {\n  position: absolute;\n  left: 10px;\n  pointer-events: none;\n}\n\n.template-workspace > .sn-assistant-tabs {\n  display: flex;\n  width: 100%;\n}\n\n.template-workspace .template-workspace__subtabs {\n  display: flex;\n  flex-wrap: wrap;\n  align-items: center;\n  gap: 6px;\n  padding: 10px 2px 6px;\n  border-top: 1px solid var(--sn-assistant-border);\n  margin-top: 2px;\n}\n\n.template-workspace .template-workspace__subtab {\n  min-height: 28px;\n  padding: 0 11px;\n}\n\n.template-workspace .template-workspace__empty {\n  padding: 18px 16px;\n  border: 1px dashed var(--sn-assistant-border);\n  background: var(--sn-assistant-surface);\n  border-radius: 10px;\n  text-align: center;\n  color: var(--sn-assistant-muted);\n  font-size: 12px;\n  font-weight: 500;\n}\n\n/* \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\n   DARK THEME TEXT OVERRIDES \u2014 SETTINGS MODAL\n   \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500 */\n:root[data-sn-assistant-theme="dark"] #sn-assistant-settings .sn-assistant-panel__heading,\n:root[data-sn-assistant-theme="dark"] #sn-assistant-settings .sn-assistant-panel__subheading,\n:root[data-sn-assistant-theme="dark"] #sn-assistant-settings .sn-assistant-field__label,\n:root[data-sn-assistant-theme="dark"] #sn-assistant-settings .sn-assistant-template-card__title,\n:root[data-sn-assistant-theme="dark"] #sn-assistant-settings .sn-assistant-template-card__preview,\n:root[data-sn-assistant-theme="dark"] #sn-assistant-settings .sn-assistant-note,\n:root[data-sn-assistant-theme="dark"] #sn-assistant-settings .sn-assistant-searchbar__input,\n:root[data-sn-assistant-theme="dark"] #sn-assistant-settings .template-workspace .template-workspace__subtab {\n  color: #E6EDF3;\n}\n\n:root[data-sn-assistant-theme="dark"] #sn-assistant-settings .sn-assistant-template-card__meta,\n:root[data-sn-assistant-theme="dark"] #sn-assistant-settings .sn-assistant-template-card__id,\n:root[data-sn-assistant-theme="dark"] #sn-assistant-settings .sn-assistant-panel__subheading,\n:root[data-sn-assistant-theme="dark"] #sn-assistant-settings .sn-assistant-theme-preview__hint,\n:root[data-sn-assistant-theme="dark"] #sn-assistant-settings .sn-assistant-theme-preview__caption {\n  color: #8B949E;\n}\n\n:root[data-sn-assistant-theme="dark"] #sn-assistant-settings .sn-assistant-searchbar,\n:root[data-sn-assistant-theme="dark"] #sn-assistant-settings .sn-assistant-template-card,\n:root[data-sn-assistant-theme="dark"] #sn-assistant-settings .template-workspace .template-workspace__subtab,\n:root[data-sn-assistant-theme="dark"] #sn-assistant-settings .sn-assistant-note--empty {\n  background: rgba(22, 27, 34, 0.80);\n  border-color: #30363D;\n}\n\n:root[data-sn-assistant-theme="dark"] #sn-assistant-settings .template-workspace .template-workspace__subtabs {\n  border-top-color: #30363D;\n}\n\n:root[data-sn-assistant-theme="eu_blue"] #sn-assistant-settings .sn-assistant-panel__heading,\n:root[data-sn-assistant-theme="eu_blue"] #sn-assistant-settings .sn-assistant-panel__subheading,\n:root[data-sn-assistant-theme="eu_blue"] #sn-assistant-settings .sn-assistant-field__label,\n:root[data-sn-assistant-theme="eu_blue"] #sn-assistant-settings .sn-assistant-template-card__title,\n:root[data-sn-assistant-theme="eu_blue"] #sn-assistant-settings .sn-assistant-template-card__preview,\n:root[data-sn-assistant-theme="eu_blue"] #sn-assistant-settings .sn-assistant-note,\n:root[data-sn-assistant-theme="eu_blue"] #sn-assistant-settings .sn-assistant-searchbar__input,\n:root[data-sn-assistant-theme="eu_blue"] #sn-assistant-settings .template-workspace .template-workspace__subtab,\n:root[data-sn-assistant-theme="custom"] #sn-assistant-settings .sn-assistant-panel__heading,\n:root[data-sn-assistant-theme="custom"] #sn-assistant-settings .sn-assistant-panel__subheading,\n:root[data-sn-assistant-theme="custom"] #sn-assistant-settings .sn-assistant-field__label,\n:root[data-sn-assistant-theme="custom"] #sn-assistant-settings .sn-assistant-template-card__title,\n:root[data-sn-assistant-theme="custom"] #sn-assistant-settings .sn-assistant-template-card__preview,\n:root[data-sn-assistant-theme="custom"] #sn-assistant-settings .sn-assistant-note,\n:root[data-sn-assistant-theme="custom"] #sn-assistant-settings .sn-assistant-searchbar__input,\n:root[data-sn-assistant-theme="custom"] #sn-assistant-settings .template-workspace .template-workspace__subtab,\n:root[data-sn-assistant-theme="parliament"] #sn-assistant-settings .sn-assistant-panel__heading,\n:root[data-sn-assistant-theme="parliament"] #sn-assistant-settings .sn-assistant-panel__subheading,\n:root[data-sn-assistant-theme="parliament"] #sn-assistant-settings .sn-assistant-field__label,\n:root[data-sn-assistant-theme="parliament"] #sn-assistant-settings .sn-assistant-template-card__title,\n:root[data-sn-assistant-theme="parliament"] #sn-assistant-settings .sn-assistant-template-card__preview,\n:root[data-sn-assistant-theme="parliament"] #sn-assistant-settings .sn-assistant-note,\n:root[data-sn-assistant-theme="parliament"] #sn-assistant-settings .sn-assistant-searchbar__input,\n:root[data-sn-assistant-theme="parliament"] #sn-assistant-settings .template-workspace .template-workspace__subtab,\n:root[data-sn-assistant-theme="midnightSteel"] #sn-assistant-settings .sn-assistant-panel__heading,\n:root[data-sn-assistant-theme="midnightSteel"] #sn-assistant-settings .sn-assistant-panel__subheading,\n:root[data-sn-assistant-theme="midnightSteel"] #sn-assistant-settings .sn-assistant-field__label,\n:root[data-sn-assistant-theme="midnightSteel"] #sn-assistant-settings .sn-assistant-template-card__title,\n:root[data-sn-assistant-theme="midnightSteel"] #sn-assistant-settings .sn-assistant-template-card__preview,\n:root[data-sn-assistant-theme="midnightSteel"] #sn-assistant-settings .sn-assistant-note,\n:root[data-sn-assistant-theme="midnightSteel"] #sn-assistant-settings .sn-assistant-searchbar__input,\n:root[data-sn-assistant-theme="midnightSteel"] #sn-assistant-settings .template-workspace .template-workspace__subtab {\n  color: #f0f6ff;\n}\n\n:root[data-sn-assistant-theme="obsidianGold"] #sn-assistant-settings .sn-assistant-panel__heading,\n:root[data-sn-assistant-theme="obsidianGold"] #sn-assistant-settings .sn-assistant-field__label,\n:root[data-sn-assistant-theme="obsidianGold"] #sn-assistant-settings .sn-assistant-template-card__title,\n:root[data-sn-assistant-theme="obsidianGold"] #sn-assistant-settings .sn-assistant-template-card__preview,\n:root[data-sn-assistant-theme="obsidianGold"] #sn-assistant-settings .sn-assistant-note,\n:root[data-sn-assistant-theme="obsidianGold"] #sn-assistant-settings .sn-assistant-searchbar__input,\n:root[data-sn-assistant-theme="obsidianGold"] #sn-assistant-settings .template-workspace .template-workspace__subtab {\n  color: #EDE4CC;\n}\n\n:root[data-sn-assistant-theme="obsidianGold"] #sn-assistant-settings .sn-assistant-panel__subheading,\n:root[data-sn-assistant-theme="obsidianGold"] #sn-assistant-settings .sn-assistant-template-card__meta,\n:root[data-sn-assistant-theme="obsidianGold"] #sn-assistant-settings .sn-assistant-template-card__id {\n  color: #908050;\n}\n\n:root[data-sn-assistant-theme="noirGraphite"] #sn-assistant-settings .sn-assistant-panel__heading,\n:root[data-sn-assistant-theme="noirGraphite"] #sn-assistant-settings .sn-assistant-field__label,\n:root[data-sn-assistant-theme="noirGraphite"] #sn-assistant-settings .sn-assistant-template-card__title,\n:root[data-sn-assistant-theme="noirGraphite"] #sn-assistant-settings .sn-assistant-template-card__preview,\n:root[data-sn-assistant-theme="noirGraphite"] #sn-assistant-settings .sn-assistant-note,\n:root[data-sn-assistant-theme="noirGraphite"] #sn-assistant-settings .sn-assistant-searchbar__input,\n:root[data-sn-assistant-theme="noirGraphite"] #sn-assistant-settings .template-workspace .template-workspace__subtab {\n  color: #E8E6E2;\n}\n\n:root[data-sn-assistant-theme="noirGraphite"] #sn-assistant-settings .sn-assistant-panel__subheading,\n:root[data-sn-assistant-theme="noirGraphite"] #sn-assistant-settings .sn-assistant-template-card__meta,\n:root[data-sn-assistant-theme="noirGraphite"] #sn-assistant-settings .sn-assistant-template-card__id {\n  color: #80807C;\n}\n\n/* Subtab pills on dark/gradient themes */\n:root[data-sn-assistant-theme="eu_blue"] #sn-assistant-settings .template-workspace .template-workspace__subtab,\n:root[data-sn-assistant-theme="custom"] #sn-assistant-settings .template-workspace .template-workspace__subtab,\n:root[data-sn-assistant-theme="parliament"] #sn-assistant-settings .template-workspace .template-workspace__subtab,\n:root[data-sn-assistant-theme="noirGraphite"] #sn-assistant-settings .template-workspace .template-workspace__subtab,\n:root[data-sn-assistant-theme="midnightSteel"] #sn-assistant-settings .template-workspace .template-workspace__subtab,\n:root[data-sn-assistant-theme="obsidianGold"] #sn-assistant-settings .template-workspace .template-workspace__subtab {\n  background: rgba(255, 255, 255, 0.08);\n  border-color: rgba(255, 255, 255, 0.15);\n}\n\n:root[data-sn-assistant-theme="eu_blue"] #sn-assistant-settings .template-workspace .template-workspace__subtab:hover,\n:root[data-sn-assistant-theme="custom"] #sn-assistant-settings .template-workspace .template-workspace__subtab:hover,\n:root[data-sn-assistant-theme="parliament"] #sn-assistant-settings .template-workspace .template-workspace__subtab:hover,\n:root[data-sn-assistant-theme="noirGraphite"] #sn-assistant-settings .template-workspace .template-workspace__subtab:hover,\n:root[data-sn-assistant-theme="midnightSteel"] #sn-assistant-settings .template-workspace .template-workspace__subtab:hover,\n:root[data-sn-assistant-theme="obsidianGold"] #sn-assistant-settings .template-workspace .template-workspace__subtab:hover {\n  background: rgba(255, 255, 255, 0.16);\n  border-color: rgba(255, 255, 255, 0.30);\n}\n\n:root[data-sn-assistant-theme="eu_blue"] #sn-assistant-settings .template-workspace .template-workspace__subtabs,\n:root[data-sn-assistant-theme="custom"] #sn-assistant-settings .template-workspace .template-workspace__subtabs,\n:root[data-sn-assistant-theme="parliament"] #sn-assistant-settings .template-workspace .template-workspace__subtabs,\n:root[data-sn-assistant-theme="noirGraphite"] #sn-assistant-settings .template-workspace .template-workspace__subtabs,\n:root[data-sn-assistant-theme="midnightSteel"] #sn-assistant-settings .template-workspace .template-workspace__subtabs,\n:root[data-sn-assistant-theme="obsidianGold"] #sn-assistant-settings .template-workspace .template-workspace__subtabs {\n  border-top-color: rgba(255, 255, 255, 0.08);\n}\n\n/* \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\n   TEMPLATE LIST & CARDS\n   \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500 */\n.sn-assistant-template-list {\n  min-height: 420px;\n  max-height: min(70vh, 820px);\n  overflow-y: auto;\n  overflow-x: hidden;\n  padding-right: 4px;\n  display: grid;\n  gap: 8px;\n  align-content: start;\n}\n\n.sn-assistant-template-workbench {\n  display: grid;\n  grid-template-columns: minmax(360px, 0.95fr) minmax(520px, 1.65fr);\n  gap: 16px;\n  min-height: 0;\n}\n\n.sn-assistant-template-list--compact {\n  max-height: min(70vh, 820px);\n}\n\n.sn-assistant-template-editor-shell {\n  min-height: 420px;\n  max-height: min(78vh, 960px);\n  overflow-y: auto;\n  overflow-x: hidden;\n  padding: 16px;\n  border-radius: 16px;\n  border: 1px solid var(--sn-assistant-border);\n  background: var(--sn-assistant-panel);\n}\n\n.sn-assistant-template-editor-toolbar {\n  display: flex;\n  align-items: center;\n  justify-content: space-between;\n  gap: 8px;\n  margin-bottom: 12px;\n}\n\n.sn-assistant-template-editor {\n  display: grid;\n  gap: 12px;\n}\n\n.sn-assistant-template-editor__header {\n  padding-bottom: 10px;\n  border-bottom: 1px solid var(--sn-assistant-border);\n}\n\n.sn-assistant-modal__toolbar {\n  display: flex;\n  align-items: center;\n  justify-content: space-between;\n  gap: 8px;\n}\n\n.sn-assistant-template-card {\n  position: relative;\n  padding: 14px 16px 12px;\n  border-radius: 14px;\n  background: var(--sn-assistant-panel);\n  border: 1px solid var(--sn-assistant-border);\n  box-shadow: 0 1px 3px rgba(0,0,0,0.05);\n  cursor: pointer;\n  transition:\n    border-color 150ms ease,\n    box-shadow 150ms ease,\n    transform 150ms ease;\n}\n\n.sn-assistant-template-card:hover {\n  transform: translateY(-1px);\n  box-shadow: 0 3px 12px rgba(0,0,0,0.08);\n  border-color: color-mix(in srgb, var(--sn-assistant-accent) 40%, var(--sn-assistant-border));\n}\n\n.sn-assistant-template-card:focus-visible {\n  outline: 2px solid var(--sn-assistant-accent);\n  outline-offset: 2px;\n}\n\n.sn-assistant-template-card::before {\n  content: "";\n  position: absolute;\n  inset: 0 auto 0 0;\n  width: 3px;\n  border-radius: 14px 0 0 14px;\n  background: var(--sn-assistant-accent);\n  opacity: 0;\n  transition: opacity 150ms ease;\n}\n\n.sn-assistant-template-card.is-selected {\n  border-color: var(--sn-assistant-border-strong);\n  box-shadow: 0 0 0 2px var(--sn-assistant-accent-soft), 0 3px 12px rgba(0,0,0,0.06);\n}\n\n.sn-assistant-template-card.is-selected::before {\n  opacity: 1;\n}\n\n.sn-assistant-template-card__header {\n  display: flex;\n  align-items: stretch;\n  justify-content: space-between;\n  gap: 10px;\n  margin-bottom: 0;\n}\n\n.sn-assistant-template-card__content {\n  min-width: 0;\n  flex: 1 1 auto;\n}\n\n.sn-assistant-template-card__title {\n  font-size: 13px;\n  font-weight: 700;\n  line-height: 1.3;\n  margin-bottom: 4px;\n  color: var(--sn-assistant-ink);\n}\n\n.sn-assistant-template-card__meta {\n  font-size: 9px;\n  font-weight: 700;\n  color: var(--sn-assistant-muted);\n  text-transform: uppercase;\n  letter-spacing: 0.08em;\n}\n\n.sn-assistant-template-card__id {\n  margin-top: 4px;\n  font-size: 10px;\n  font-weight: 500;\n  color: var(--sn-assistant-muted);\n  word-break: break-word;\n}\n\n.sn-assistant-template-card__preview {\n  margin-top: 8px;\n  font-size: 12px;\n  font-weight: 500;\n  line-height: 1.55;\n  color: var(--sn-assistant-ink);\n  display: -webkit-box;\n  -webkit-box-orient: vertical;\n  -webkit-line-clamp: 3;\n  overflow: hidden;\n}\n\n.sn-assistant-template-card__actions {\n  flex: 0 0 120px;\n  display: flex;\n  flex-direction: column;\n  gap: 8px;\n  align-items: stretch;\n  justify-content: flex-start;\n}\n\n.sn-assistant-template-card__actions .sn-assistant-button,\n.sn-assistant-template-card__actions .sn-assistant-mini-button {\n  width: 100%;\n  justify-content: center;\n}\n\n.sn-assistant-template-card__hint {\n  margin-top: 8px;\n  padding-top: 8px;\n  border-top: 1px solid var(--sn-assistant-border);\n  font-size: 10px;\n  font-weight: 500;\n  color: var(--sn-assistant-muted);\n  line-height: 1.5;\n}\n\n.sn-assistant-template-textarea--subject {\n  min-height: 110px;\n}\n\n.sn-assistant-template-textarea--body {\n  min-height: 360px;\n}\n\n/* \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\n   TEMPLATE HELP\n   \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500 */\n.sn-assistant-template-help {\n  margin-top: 10px;\n  padding: 12px;\n  border-radius: 12px;\n  border: 1px solid var(--sn-assistant-border);\n  background: var(--sn-assistant-surface);\n  display: grid;\n  gap: 10px;\n}\n\n.sn-assistant-template-help__title {\n  font-size: 11px;\n  font-weight: 700;\n  color: var(--sn-assistant-ink);\n}\n\n.sn-assistant-template-help__grid {\n  display: grid;\n  grid-template-columns: repeat(2, minmax(0, 1fr));\n  gap: 8px;\n}\n\n.sn-assistant-template-help__block {\n  padding: 10px;\n  border-radius: 10px;\n  background: var(--sn-assistant-panel);\n  border: 1px solid var(--sn-assistant-border);\n}\n\n.sn-assistant-template-help__label {\n  font-size: 9px;\n  font-weight: 800;\n  color: var(--sn-assistant-accent);\n  margin-bottom: 4px;\n  text-transform: uppercase;\n  letter-spacing: 0.06em;\n}\n\n.sn-assistant-template-help__text {\n  font-size: 11px;\n  font-weight: 500;\n  line-height: 1.5;\n  color: var(--sn-assistant-ink);\n}\n\n.sn-assistant-template-help__chips {\n  display: flex;\n  flex-wrap: wrap;\n  gap: 6px;\n}\n\n.sn-assistant-template-help__chip {\n  display: inline-flex;\n  align-items: center;\n  min-height: 24px;\n  padding: 0 8px;\n  border-radius: 999px;\n  background: var(--sn-assistant-accent-soft);\n  border: 1px solid var(--sn-assistant-border-strong);\n  color: var(--sn-assistant-accent);\n  font-size: 11px;\n  font-weight: 700;\n}\n\n.sn-assistant-template-help__footnote {\n  font-size: 10px;\n  font-weight: 500;\n  line-height: 1.5;\n  color: var(--sn-assistant-muted);\n}\n';
+  var templateStudio_default = '/* \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\r\n   TEMPLATE MANAGER\r\n   \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500 */\r\n.sn-assistant-template-manager {\r\n  display: flex;\r\n  flex-direction: column;\r\n  gap: 10px;\r\n  padding: 12px;\r\n  border-radius: 14px;\r\n  border: 1px solid var(--sn-assistant-border);\r\n  background: var(--sn-assistant-panel);\r\n}\r\n\r\n.sn-assistant-template-manager--scrollable {\r\n  display: grid;\r\n  grid-template-rows: auto auto auto auto minmax(280px, 1fr);\r\n  min-height: 420px;\r\n  max-height: none;\r\n  overflow: visible;\r\n  padding-right: 0;\r\n}\r\n\r\n.sn-assistant-template-manager--full {\r\n  display: grid;\r\n  grid-template-rows: auto auto auto auto auto minmax(320px, 1fr);\r\n  min-height: 520px;\r\n}\r\n\r\n.sn-assistant-tabs--sections {\r\n  width: 100%;\r\n  justify-content: flex-start;\r\n}\r\n\r\n.sn-assistant-modal__body > .sn-assistant-settings-grid,\r\n.sn-assistant-modal__body > .sn-assistant-checkbox-list {\r\n  padding: 16px;\r\n  border-radius: 14px;\r\n  border: 1px solid var(--sn-assistant-border);\r\n  background: var(--sn-assistant-panel);\r\n}\r\n\r\n/* \u2500\u2500 Template Workspace \u2500\u2500 */\r\n.template-workspace__subtabs {\r\n  display: flex;\r\n  flex-wrap: wrap;\r\n  align-items: center;\r\n  gap: 6px;\r\n  margin: 10px 0;\r\n}\r\n\r\n.template-workspace__subtab {\r\n  display: inline-flex;\r\n  align-items: center;\r\n  justify-content: center;\r\n  padding: 5px 12px;\r\n  border-radius: 999px;\r\n  font-size: 11px;\r\n  font-weight: 600;\r\n  background: transparent;\r\n  border: 1px solid var(--sn-assistant-border);\r\n  color: var(--sn-assistant-muted);\r\n  cursor: pointer;\r\n  transition: all 0.15s ease;\r\n}\r\n\r\n.template-workspace__subtab:hover {\r\n  transform: translateY(-1px);\r\n  border-color: var(--sn-assistant-accent);\r\n  color: var(--sn-assistant-accent);\r\n  background: var(--sn-assistant-accent-soft);\r\n}\r\n\r\n.template-workspace__subtab.is-active {\r\n  background: var(--sn-assistant-accent);\r\n  border-color: var(--sn-assistant-accent);\r\n  color: #FFFFFF;\r\n  box-shadow: 0 2px 8px rgba(37, 99, 235, 0.22);\r\n}\r\n\r\n.template-workspace__search {\r\n  position: relative;\r\n  display: flex;\r\n  align-items: center;\r\n  margin: 10px 0;\r\n}\r\n\r\n.template-workspace__search .sn-assistant-searchbar__input {\r\n  width: 100%;\r\n  padding-left: 32px;\r\n  padding-top: 8px;\r\n  padding-bottom: 8px;\r\n  border-radius: 10px;\r\n  background: transparent;\r\n  outline: none;\r\n  transition: border-color 0.2s ease;\r\n}\r\n\r\n.template-workspace__search .sn-assistant-searchbar__icon {\r\n  position: absolute;\r\n  left: 10px;\r\n  pointer-events: none;\r\n}\r\n\r\n.template-workspace > .sn-assistant-tabs {\r\n  display: flex;\r\n  width: 100%;\r\n}\r\n\r\n.template-workspace .template-workspace__subtabs {\r\n  display: flex;\r\n  flex-wrap: wrap;\r\n  align-items: center;\r\n  gap: 6px;\r\n  padding: 10px 2px 6px;\r\n  border-top: 1px solid var(--sn-assistant-border);\r\n  margin-top: 2px;\r\n}\r\n\r\n.template-workspace .template-workspace__subtab {\r\n  min-height: 28px;\r\n  padding: 0 11px;\r\n}\r\n\r\n.template-workspace .template-workspace__empty {\r\n  padding: 18px 16px;\r\n  border: 1px dashed var(--sn-assistant-border);\r\n  background: var(--sn-assistant-surface);\r\n  border-radius: 10px;\r\n  text-align: center;\r\n  color: var(--sn-assistant-muted);\r\n  font-size: 12px;\r\n  font-weight: 500;\r\n}\r\n\r\n/* \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\r\n   DARK THEME TEXT OVERRIDES \u2014 SETTINGS MODAL\r\n   \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500 */\r\n:root[data-sn-assistant-theme="dark"] #sn-assistant-settings .sn-assistant-panel__heading,\r\n:root[data-sn-assistant-theme="dark"] #sn-assistant-settings .sn-assistant-panel__subheading,\r\n:root[data-sn-assistant-theme="dark"] #sn-assistant-settings .sn-assistant-field__label,\r\n:root[data-sn-assistant-theme="dark"] #sn-assistant-settings .sn-assistant-template-card__title,\r\n:root[data-sn-assistant-theme="dark"] #sn-assistant-settings .sn-assistant-template-card__preview,\r\n:root[data-sn-assistant-theme="dark"] #sn-assistant-settings .sn-assistant-note,\r\n:root[data-sn-assistant-theme="dark"] #sn-assistant-settings .sn-assistant-searchbar__input,\r\n:root[data-sn-assistant-theme="dark"] #sn-assistant-settings .template-workspace .template-workspace__subtab {\r\n  color: #E6EDF3;\r\n}\r\n\r\n:root[data-sn-assistant-theme="dark"] #sn-assistant-settings .sn-assistant-template-card__meta,\r\n:root[data-sn-assistant-theme="dark"] #sn-assistant-settings .sn-assistant-template-card__id,\r\n:root[data-sn-assistant-theme="dark"] #sn-assistant-settings .sn-assistant-panel__subheading,\r\n:root[data-sn-assistant-theme="dark"] #sn-assistant-settings .sn-assistant-theme-preview__hint,\r\n:root[data-sn-assistant-theme="dark"] #sn-assistant-settings .sn-assistant-theme-preview__caption {\r\n  color: #8B949E;\r\n}\r\n\r\n:root[data-sn-assistant-theme="dark"] #sn-assistant-settings .sn-assistant-searchbar,\r\n:root[data-sn-assistant-theme="dark"] #sn-assistant-settings .sn-assistant-template-card,\r\n:root[data-sn-assistant-theme="dark"] #sn-assistant-settings .template-workspace .template-workspace__subtab,\r\n:root[data-sn-assistant-theme="dark"] #sn-assistant-settings .sn-assistant-note--empty {\r\n  background: rgba(22, 27, 34, 0.80);\r\n  border-color: #30363D;\r\n}\r\n\r\n:root[data-sn-assistant-theme="dark"] #sn-assistant-settings .template-workspace .template-workspace__subtabs {\r\n  border-top-color: #30363D;\r\n}\r\n\r\n:root[data-sn-assistant-theme="eu_blue"] #sn-assistant-settings .sn-assistant-panel__heading,\r\n:root[data-sn-assistant-theme="eu_blue"] #sn-assistant-settings .sn-assistant-panel__subheading,\r\n:root[data-sn-assistant-theme="eu_blue"] #sn-assistant-settings .sn-assistant-field__label,\r\n:root[data-sn-assistant-theme="eu_blue"] #sn-assistant-settings .sn-assistant-template-card__title,\r\n:root[data-sn-assistant-theme="eu_blue"] #sn-assistant-settings .sn-assistant-template-card__preview,\r\n:root[data-sn-assistant-theme="eu_blue"] #sn-assistant-settings .sn-assistant-note,\r\n:root[data-sn-assistant-theme="eu_blue"] #sn-assistant-settings .sn-assistant-searchbar__input,\r\n:root[data-sn-assistant-theme="eu_blue"] #sn-assistant-settings .template-workspace .template-workspace__subtab,\r\n:root[data-sn-assistant-theme="custom"] #sn-assistant-settings .sn-assistant-panel__heading,\r\n:root[data-sn-assistant-theme="custom"] #sn-assistant-settings .sn-assistant-panel__subheading,\r\n:root[data-sn-assistant-theme="custom"] #sn-assistant-settings .sn-assistant-field__label,\r\n:root[data-sn-assistant-theme="custom"] #sn-assistant-settings .sn-assistant-template-card__title,\r\n:root[data-sn-assistant-theme="custom"] #sn-assistant-settings .sn-assistant-template-card__preview,\r\n:root[data-sn-assistant-theme="custom"] #sn-assistant-settings .sn-assistant-note,\r\n:root[data-sn-assistant-theme="custom"] #sn-assistant-settings .sn-assistant-searchbar__input,\r\n:root[data-sn-assistant-theme="custom"] #sn-assistant-settings .template-workspace .template-workspace__subtab,\r\n:root[data-sn-assistant-theme="parliament"] #sn-assistant-settings .sn-assistant-panel__heading,\r\n:root[data-sn-assistant-theme="parliament"] #sn-assistant-settings .sn-assistant-panel__subheading,\r\n:root[data-sn-assistant-theme="parliament"] #sn-assistant-settings .sn-assistant-field__label,\r\n:root[data-sn-assistant-theme="parliament"] #sn-assistant-settings .sn-assistant-template-card__title,\r\n:root[data-sn-assistant-theme="parliament"] #sn-assistant-settings .sn-assistant-template-card__preview,\r\n:root[data-sn-assistant-theme="parliament"] #sn-assistant-settings .sn-assistant-note,\r\n:root[data-sn-assistant-theme="parliament"] #sn-assistant-settings .sn-assistant-searchbar__input,\r\n:root[data-sn-assistant-theme="parliament"] #sn-assistant-settings .template-workspace .template-workspace__subtab,\r\n:root[data-sn-assistant-theme="midnightSteel"] #sn-assistant-settings .sn-assistant-panel__heading,\r\n:root[data-sn-assistant-theme="midnightSteel"] #sn-assistant-settings .sn-assistant-panel__subheading,\r\n:root[data-sn-assistant-theme="midnightSteel"] #sn-assistant-settings .sn-assistant-field__label,\r\n:root[data-sn-assistant-theme="midnightSteel"] #sn-assistant-settings .sn-assistant-template-card__title,\r\n:root[data-sn-assistant-theme="midnightSteel"] #sn-assistant-settings .sn-assistant-template-card__preview,\r\n:root[data-sn-assistant-theme="midnightSteel"] #sn-assistant-settings .sn-assistant-note,\r\n:root[data-sn-assistant-theme="midnightSteel"] #sn-assistant-settings .sn-assistant-searchbar__input,\r\n:root[data-sn-assistant-theme="midnightSteel"] #sn-assistant-settings .template-workspace .template-workspace__subtab {\r\n  color: #f0f6ff;\r\n}\r\n\r\n:root[data-sn-assistant-theme="obsidianGold"] #sn-assistant-settings .sn-assistant-panel__heading,\r\n:root[data-sn-assistant-theme="obsidianGold"] #sn-assistant-settings .sn-assistant-field__label,\r\n:root[data-sn-assistant-theme="obsidianGold"] #sn-assistant-settings .sn-assistant-template-card__title,\r\n:root[data-sn-assistant-theme="obsidianGold"] #sn-assistant-settings .sn-assistant-template-card__preview,\r\n:root[data-sn-assistant-theme="obsidianGold"] #sn-assistant-settings .sn-assistant-note,\r\n:root[data-sn-assistant-theme="obsidianGold"] #sn-assistant-settings .sn-assistant-searchbar__input,\r\n:root[data-sn-assistant-theme="obsidianGold"] #sn-assistant-settings .template-workspace .template-workspace__subtab {\r\n  color: #EDE4CC;\r\n}\r\n\r\n:root[data-sn-assistant-theme="obsidianGold"] #sn-assistant-settings .sn-assistant-panel__subheading,\r\n:root[data-sn-assistant-theme="obsidianGold"] #sn-assistant-settings .sn-assistant-template-card__meta,\r\n:root[data-sn-assistant-theme="obsidianGold"] #sn-assistant-settings .sn-assistant-template-card__id {\r\n  color: #908050;\r\n}\r\n\r\n:root[data-sn-assistant-theme="noirGraphite"] #sn-assistant-settings .sn-assistant-panel__heading,\r\n:root[data-sn-assistant-theme="noirGraphite"] #sn-assistant-settings .sn-assistant-field__label,\r\n:root[data-sn-assistant-theme="noirGraphite"] #sn-assistant-settings .sn-assistant-template-card__title,\r\n:root[data-sn-assistant-theme="noirGraphite"] #sn-assistant-settings .sn-assistant-template-card__preview,\r\n:root[data-sn-assistant-theme="noirGraphite"] #sn-assistant-settings .sn-assistant-note,\r\n:root[data-sn-assistant-theme="noirGraphite"] #sn-assistant-settings .sn-assistant-searchbar__input,\r\n:root[data-sn-assistant-theme="noirGraphite"] #sn-assistant-settings .template-workspace .template-workspace__subtab {\r\n  color: #E8E6E2;\r\n}\r\n\r\n:root[data-sn-assistant-theme="noirGraphite"] #sn-assistant-settings .sn-assistant-panel__subheading,\r\n:root[data-sn-assistant-theme="noirGraphite"] #sn-assistant-settings .sn-assistant-template-card__meta,\r\n:root[data-sn-assistant-theme="noirGraphite"] #sn-assistant-settings .sn-assistant-template-card__id {\r\n  color: #80807C;\r\n}\r\n\r\n/* Subtab pills on dark/gradient themes */\r\n:root[data-sn-assistant-theme="eu_blue"] #sn-assistant-settings .template-workspace .template-workspace__subtab,\r\n:root[data-sn-assistant-theme="custom"] #sn-assistant-settings .template-workspace .template-workspace__subtab,\r\n:root[data-sn-assistant-theme="parliament"] #sn-assistant-settings .template-workspace .template-workspace__subtab,\r\n:root[data-sn-assistant-theme="noirGraphite"] #sn-assistant-settings .template-workspace .template-workspace__subtab,\r\n:root[data-sn-assistant-theme="midnightSteel"] #sn-assistant-settings .template-workspace .template-workspace__subtab,\r\n:root[data-sn-assistant-theme="obsidianGold"] #sn-assistant-settings .template-workspace .template-workspace__subtab {\r\n  background: rgba(255, 255, 255, 0.08);\r\n  border-color: rgba(255, 255, 255, 0.15);\r\n}\r\n\r\n:root[data-sn-assistant-theme="eu_blue"] #sn-assistant-settings .template-workspace .template-workspace__subtab:hover,\r\n:root[data-sn-assistant-theme="custom"] #sn-assistant-settings .template-workspace .template-workspace__subtab:hover,\r\n:root[data-sn-assistant-theme="parliament"] #sn-assistant-settings .template-workspace .template-workspace__subtab:hover,\r\n:root[data-sn-assistant-theme="noirGraphite"] #sn-assistant-settings .template-workspace .template-workspace__subtab:hover,\r\n:root[data-sn-assistant-theme="midnightSteel"] #sn-assistant-settings .template-workspace .template-workspace__subtab:hover,\r\n:root[data-sn-assistant-theme="obsidianGold"] #sn-assistant-settings .template-workspace .template-workspace__subtab:hover {\r\n  background: rgba(255, 255, 255, 0.16);\r\n  border-color: rgba(255, 255, 255, 0.30);\r\n}\r\n\r\n:root[data-sn-assistant-theme="eu_blue"] #sn-assistant-settings .template-workspace .template-workspace__subtabs,\r\n:root[data-sn-assistant-theme="custom"] #sn-assistant-settings .template-workspace .template-workspace__subtabs,\r\n:root[data-sn-assistant-theme="parliament"] #sn-assistant-settings .template-workspace .template-workspace__subtabs,\r\n:root[data-sn-assistant-theme="noirGraphite"] #sn-assistant-settings .template-workspace .template-workspace__subtabs,\r\n:root[data-sn-assistant-theme="midnightSteel"] #sn-assistant-settings .template-workspace .template-workspace__subtabs,\r\n:root[data-sn-assistant-theme="obsidianGold"] #sn-assistant-settings .template-workspace .template-workspace__subtabs {\r\n  border-top-color: rgba(255, 255, 255, 0.08);\r\n}\r\n\r\n/* \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\r\n   TEMPLATE LIST & CARDS\r\n   \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500 */\r\n.sn-assistant-template-list {\r\n  min-height: 420px;\r\n  max-height: min(70vh, 820px);\r\n  overflow-y: auto;\r\n  overflow-x: hidden;\r\n  padding-right: 4px;\r\n  display: grid;\r\n  gap: 8px;\r\n  align-content: start;\r\n}\r\n\r\n.sn-assistant-template-workbench {\r\n  display: grid;\r\n  grid-template-columns: minmax(360px, 0.95fr) minmax(520px, 1.65fr);\r\n  gap: 16px;\r\n  min-height: 0;\r\n}\r\n\r\n.sn-assistant-template-list--compact {\r\n  max-height: min(70vh, 820px);\r\n}\r\n\r\n.sn-assistant-template-editor-shell {\r\n  min-height: 420px;\r\n  max-height: min(78vh, 960px);\r\n  overflow-y: auto;\r\n  overflow-x: hidden;\r\n  padding: 16px;\r\n  border-radius: 16px;\r\n  border: 1px solid var(--sn-assistant-border);\r\n  background: var(--sn-assistant-panel);\r\n}\r\n\r\n.sn-assistant-template-editor-toolbar {\r\n  display: flex;\r\n  align-items: center;\r\n  justify-content: space-between;\r\n  gap: 8px;\r\n  margin-bottom: 12px;\r\n}\r\n\r\n.sn-assistant-template-editor {\r\n  display: grid;\r\n  gap: 12px;\r\n}\r\n\r\n.sn-assistant-template-editor__header {\r\n  padding-bottom: 10px;\r\n  border-bottom: 1px solid var(--sn-assistant-border);\r\n}\r\n\r\n.sn-assistant-modal__toolbar {\r\n  display: flex;\r\n  align-items: center;\r\n  justify-content: space-between;\r\n  gap: 8px;\r\n}\r\n\r\n.sn-assistant-template-card {\r\n  position: relative;\r\n  padding: 14px 16px 12px;\r\n  border-radius: 14px;\r\n  background: var(--sn-assistant-panel);\r\n  border: 1px solid var(--sn-assistant-border);\r\n  box-shadow: 0 1px 3px rgba(0,0,0,0.05);\r\n  cursor: pointer;\r\n  transition:\r\n    border-color 150ms ease,\r\n    box-shadow 150ms ease,\r\n    transform 150ms ease;\r\n}\r\n\r\n.sn-assistant-template-card:hover {\r\n  transform: translateY(-1px);\r\n  box-shadow: 0 3px 12px rgba(0,0,0,0.08);\r\n  border-color: color-mix(in srgb, var(--sn-assistant-accent) 40%, var(--sn-assistant-border));\r\n}\r\n\r\n.sn-assistant-template-card:focus-visible {\r\n  outline: 2px solid var(--sn-assistant-accent);\r\n  outline-offset: 2px;\r\n}\r\n\r\n.sn-assistant-template-card::before {\r\n  content: "";\r\n  position: absolute;\r\n  inset: 0 auto 0 0;\r\n  width: 3px;\r\n  border-radius: 14px 0 0 14px;\r\n  background: var(--sn-assistant-accent);\r\n  opacity: 0;\r\n  transition: opacity 150ms ease;\r\n}\r\n\r\n.sn-assistant-template-card.is-selected {\r\n  border-color: var(--sn-assistant-border-strong);\r\n  box-shadow: 0 0 0 2px var(--sn-assistant-accent-soft), 0 3px 12px rgba(0,0,0,0.06);\r\n}\r\n\r\n.sn-assistant-template-card.is-selected::before {\r\n  opacity: 1;\r\n}\r\n\r\n.sn-assistant-template-card__header {\r\n  display: flex;\r\n  align-items: stretch;\r\n  justify-content: space-between;\r\n  gap: 10px;\r\n  margin-bottom: 0;\r\n}\r\n\r\n.sn-assistant-template-card__content {\r\n  min-width: 0;\r\n  flex: 1 1 auto;\r\n}\r\n\r\n.sn-assistant-template-card__title {\r\n  font-size: 13px;\r\n  font-weight: 700;\r\n  line-height: 1.3;\r\n  margin-bottom: 4px;\r\n  color: var(--sn-assistant-ink);\r\n}\r\n\r\n.sn-assistant-template-card__meta {\r\n  font-size: 9px;\r\n  font-weight: 700;\r\n  color: var(--sn-assistant-muted);\r\n  text-transform: uppercase;\r\n  letter-spacing: 0.08em;\r\n}\r\n\r\n.sn-assistant-template-card__id {\r\n  margin-top: 4px;\r\n  font-size: 10px;\r\n  font-weight: 500;\r\n  color: var(--sn-assistant-muted);\r\n  word-break: break-word;\r\n}\r\n\r\n.sn-assistant-template-card__preview {\r\n  margin-top: 8px;\r\n  font-size: 12px;\r\n  font-weight: 500;\r\n  line-height: 1.55;\r\n  color: var(--sn-assistant-ink);\r\n  display: -webkit-box;\r\n  -webkit-box-orient: vertical;\r\n  -webkit-line-clamp: 3;\r\n  overflow: hidden;\r\n}\r\n\r\n.sn-assistant-template-card__actions {\r\n  flex: 0 0 120px;\r\n  display: flex;\r\n  flex-direction: column;\r\n  gap: 8px;\r\n  align-items: stretch;\r\n  justify-content: flex-start;\r\n}\r\n\r\n.sn-assistant-template-card__actions .sn-assistant-button,\r\n.sn-assistant-template-card__actions .sn-assistant-mini-button {\r\n  width: 100%;\r\n  justify-content: center;\r\n}\r\n\r\n.sn-assistant-template-card__hint {\r\n  margin-top: 8px;\r\n  padding-top: 8px;\r\n  border-top: 1px solid var(--sn-assistant-border);\r\n  font-size: 10px;\r\n  font-weight: 500;\r\n  color: var(--sn-assistant-muted);\r\n  line-height: 1.5;\r\n}\r\n\r\n.sn-assistant-template-textarea--subject {\r\n  min-height: 110px;\r\n}\r\n\r\n.sn-assistant-template-textarea--body {\r\n  min-height: 360px;\r\n}\r\n\r\n/* \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\r\n   TEMPLATE HELP\r\n   \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500 */\r\n.sn-assistant-template-help {\r\n  margin-top: 10px;\r\n  padding: 12px;\r\n  border-radius: 12px;\r\n  border: 1px solid var(--sn-assistant-border);\r\n  background: var(--sn-assistant-surface);\r\n  display: grid;\r\n  gap: 10px;\r\n}\r\n\r\n.sn-assistant-template-help__title {\r\n  font-size: 11px;\r\n  font-weight: 700;\r\n  color: var(--sn-assistant-ink);\r\n}\r\n\r\n.sn-assistant-template-help__grid {\r\n  display: grid;\r\n  grid-template-columns: repeat(2, minmax(0, 1fr));\r\n  gap: 8px;\r\n}\r\n\r\n.sn-assistant-template-help__block {\r\n  padding: 10px;\r\n  border-radius: 10px;\r\n  background: var(--sn-assistant-panel);\r\n  border: 1px solid var(--sn-assistant-border);\r\n}\r\n\r\n.sn-assistant-template-help__label {\r\n  font-size: 9px;\r\n  font-weight: 800;\r\n  color: var(--sn-assistant-accent);\r\n  margin-bottom: 4px;\r\n  text-transform: uppercase;\r\n  letter-spacing: 0.06em;\r\n}\r\n\r\n.sn-assistant-template-help__text {\r\n  font-size: 11px;\r\n  font-weight: 500;\r\n  line-height: 1.5;\r\n  color: var(--sn-assistant-ink);\r\n}\r\n\r\n.sn-assistant-template-help__chips {\r\n  display: flex;\r\n  flex-wrap: wrap;\r\n  gap: 6px;\r\n}\r\n\r\n.sn-assistant-template-help__chip {\r\n  display: inline-flex;\r\n  align-items: center;\r\n  min-height: 24px;\r\n  padding: 0 8px;\r\n  border-radius: 999px;\r\n  background: var(--sn-assistant-accent-soft);\r\n  border: 1px solid var(--sn-assistant-border-strong);\r\n  color: var(--sn-assistant-accent);\r\n  font-size: 11px;\r\n  font-weight: 700;\r\n}\r\n\r\n.sn-assistant-template-help__footnote {\r\n  font-size: 10px;\r\n  font-weight: 500;\r\n  line-height: 1.5;\r\n  color: var(--sn-assistant-muted);\r\n}\r\n';
 
   // Assistant/ui/styles/toasts.css
-  var toasts_default = '/* \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\n   TOASTS\n   \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500 */\n.sn-assistant-toast-viewport {\n  position: fixed;\n  right: 16px;\n  bottom: 16px;\n  display: grid;\n  gap: 8px;\n  z-index: 2147483300;\n  pointer-events: none;\n}\n\n.sn-assistant-toast {\n  min-width: 160px;\n  max-width: 260px;\n  padding: 10px 14px;\n  border-radius: 10px;\n  color: #FFFFFF;\n  font-size: 12px;\n  font-weight: 600;\n  line-height: 1.45;\n  box-shadow: 0 4px 16px rgba(0,0,0,0.18), 0 1px 4px rgba(0,0,0,0.10);\n  animation: sn-assistant-toast-in 160ms ease;\n}\n\n.sn-assistant-toast--success {\n  background: #166B46;\n}\n\n.sn-assistant-toast--error {\n  background: #991B1B;\n  border: 1px solid rgba(255, 255, 255, 0.12);\n}\n\n.sn-assistant-toast--info {\n  background: var(--sn-assistant-accent);\n}\n\n/* Toast carrying an inline action button (e.g. the "Mute 1h" new-work alert).\n   The viewport is pointer-events:none, so the button re-enables clicks. */\n.sn-assistant-toast--with-action {\n  display: flex;\n  align-items: center;\n  gap: 10px;\n}\n\n.sn-assistant-toast--with-action .sn-assistant-toast__message {\n  flex: 1;\n  min-width: 0;\n}\n\n.sn-assistant-toast__action {\n  pointer-events: auto;\n  flex-shrink: 0;\n  font-family: inherit;\n  font-size: 11px;\n  font-weight: 700;\n  color: #FFFFFF;\n  background: rgba(255, 255, 255, 0.18);\n  border: 1px solid rgba(255, 255, 255, 0.45);\n  border-radius: 6px;\n  padding: 3px 9px;\n  cursor: pointer;\n  white-space: nowrap;\n}\n\n.sn-assistant-toast__action:hover {\n  background: rgba(255, 255, 255, 0.30);\n}\n';
+  var toasts_default = '/* \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\r\n   TOASTS\r\n   \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500 */\r\n.sn-assistant-toast-viewport {\r\n  position: fixed;\r\n  right: 16px;\r\n  bottom: 16px;\r\n  display: grid;\r\n  gap: 8px;\r\n  z-index: 2147483300;\r\n  pointer-events: none;\r\n}\r\n\r\n.sn-assistant-toast {\r\n  min-width: 160px;\r\n  max-width: 260px;\r\n  padding: 10px 14px;\r\n  border-radius: 10px;\r\n  color: #FFFFFF;\r\n  font-size: 12px;\r\n  font-weight: 600;\r\n  line-height: 1.45;\r\n  box-shadow: 0 4px 16px rgba(0,0,0,0.18), 0 1px 4px rgba(0,0,0,0.10);\r\n  animation: sn-assistant-toast-in 160ms ease;\r\n}\r\n\r\n.sn-assistant-toast--success {\r\n  background: #166B46;\r\n}\r\n\r\n.sn-assistant-toast--error {\r\n  background: #991B1B;\r\n  border: 1px solid rgba(255, 255, 255, 0.12);\r\n}\r\n\r\n.sn-assistant-toast--info {\r\n  background: var(--sn-assistant-accent);\r\n}\r\n\r\n/* Toast carrying an inline action button (e.g. the "Mute 1h" new-work alert).\r\n   The viewport is pointer-events:none, so the button re-enables clicks. */\r\n.sn-assistant-toast--with-action {\r\n  display: flex;\r\n  align-items: center;\r\n  gap: 10px;\r\n}\r\n\r\n.sn-assistant-toast--with-action .sn-assistant-toast__message {\r\n  flex: 1;\r\n  min-width: 0;\r\n}\r\n\r\n.sn-assistant-toast__action {\r\n  pointer-events: auto;\r\n  flex-shrink: 0;\r\n  font-family: inherit;\r\n  font-size: 11px;\r\n  font-weight: 700;\r\n  color: #FFFFFF;\r\n  background: rgba(255, 255, 255, 0.18);\r\n  border: 1px solid rgba(255, 255, 255, 0.45);\r\n  border-radius: 6px;\r\n  padding: 3px 9px;\r\n  cursor: pointer;\r\n  white-space: nowrap;\r\n}\r\n\r\n.sn-assistant-toast__action:hover {\r\n  background: rgba(255, 255, 255, 0.30);\r\n}\r\n';
 
   // Assistant/ui/styles/animations.css
-  var animations_default = "/* \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\n   ANIMATIONS\n   \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500 */\n@keyframes sn-assistant-toast-in {\n  from { opacity: 0; transform: translateY(8px); }\n  to   { opacity: 1; transform: translateY(0); }\n}\n\n@keyframes sn-embedded-view-in {\n  from {\n    opacity: 0;\n    transform: translateY(5px);\n  }\n  to {\n    opacity: 1;\n    transform: translateY(0);\n  }\n}\n\n@keyframes sn-assistant-launcher-float {\n  0%, 100% { transform: translateY(0); }\n  50%       { transform: translateY(-2px); }\n}\n\n@keyframes sn-assistant-launcher-glow {\n  0%, 100% { opacity: 0.60; }\n  50%       { opacity: 0.88; }\n}\n\n@keyframes sn-assistant-launcher-dot {\n  0%, 100% { transform: scale(1); }\n  50%       { transform: scale(1.14); }\n}\n\n@keyframes sn-assistant-theme-pop {\n  0%   { transform: translateY(1px) scale(0.985); }\n  100% { transform: translateY(-1px) scale(1.01); }\n}\n\n@keyframes sn-assistant-theme-sheen {\n  from { transform: translateX(-140%); }\n  to   { transform: translateX(140%); }\n}\n";
+  var animations_default = "/* \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\r\n   ANIMATIONS\r\n   \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500 */\r\n@keyframes sn-assistant-toast-in {\r\n  from { opacity: 0; transform: translateY(8px); }\r\n  to   { opacity: 1; transform: translateY(0); }\r\n}\r\n\r\n@keyframes sn-embedded-view-in {\r\n  from {\r\n    opacity: 0;\r\n    transform: translateY(5px);\r\n  }\r\n  to {\r\n    opacity: 1;\r\n    transform: translateY(0);\r\n  }\r\n}\r\n\r\n@keyframes sn-assistant-launcher-float {\r\n  0%, 100% { transform: translateY(0); }\r\n  50%       { transform: translateY(-2px); }\r\n}\r\n\r\n@keyframes sn-assistant-launcher-glow {\r\n  0%, 100% { opacity: 0.60; }\r\n  50%       { opacity: 0.88; }\r\n}\r\n\r\n@keyframes sn-assistant-launcher-dot {\r\n  0%, 100% { transform: scale(1); }\r\n  50%       { transform: scale(1.14); }\r\n}\r\n\r\n@keyframes sn-assistant-theme-pop {\r\n  0%   { transform: translateY(1px) scale(0.985); }\r\n  100% { transform: translateY(-1px) scale(1.01); }\r\n}\r\n\r\n@keyframes sn-assistant-theme-sheen {\r\n  from { transform: translateX(-140%); }\r\n  to   { transform: translateX(140%); }\r\n}\r\n";
 
   // Assistant/ui/styles/edgePanel.css
-  var edgePanel_default = '/* \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\n   EDGE PANEL  (Samsung Edge Panel style)\n   \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500 */\n:root {\n  --ep-green:        #1A9E72;\n  --ep-green-bg:     #E6F5EF;\n  --ep-green-border: rgba(26, 158, 114, 0.26);\n  --ep-red:          #A52828;\n  --ep-red-bg:       #FDEAEA;\n  --ep-neutral:      #6B7280;\n  --ep-neutral-bg:   #F3F4F6;\n  --ep-surface:      #FFFFFF;\n  --ep-border:       rgba(0, 0, 0, 0.08);\n  --ep-ink:          #111827;\n  --ep-muted:        #6B7280;\n  --ep-icon-r:       8px;\n  --ep-panel-r:      12px;\n  --ep-ease:         140ms cubic-bezier(0.4, 0, 0.2, 1);\n}\n\n/* \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\n   PANEL THEME OPTIONS\n   \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500 */\n.sn-assistant-theme-option {\n  display: flex;\n  flex-direction: column;\n  align-items: center;\n  gap: 8px;\n  padding: 12px;\n  border: 2px solid var(--sn-assistant-border);\n  border-radius: 10px;\n  cursor: pointer;\n  transition: all 160ms ease;\n  background: transparent;\n}\n\n.sn-assistant-theme-option:hover {\n  border-color: var(--sn-assistant-accent);\n  background: var(--sn-assistant-accent-soft);\n}\n\n.sn-assistant-theme-option.is-selected {\n  border-color: var(--sn-assistant-accent);\n  background: var(--sn-assistant-accent-soft);\n  box-shadow: 0 0 0 3px color-mix(in srgb, var(--sn-assistant-accent) 20%, transparent);\n}\n\n.sn-assistant-theme-option__swatch {\n  width: 32px;\n  height: 32px;\n  border-radius: 6px;\n  flex-shrink: 0;\n}\n\n.sn-assistant-theme-option__label {\n  font-size: 11px;\n  font-weight: 600;\n  color: var(--sn-assistant-ink);\n}\n\n/* \u2500\u2500 Dark theme \u2500\u2500 */\n:root[data-ep-theme="dark"] {\n  --ep-green:        #10B981;\n  --ep-green-bg:     rgba(16, 185, 129, 0.15);\n  --ep-green-border: rgba(16, 185, 129, 0.28);\n  --ep-red:          #F87171;\n  --ep-red-bg:       rgba(248, 113, 113, 0.12);\n  --ep-neutral:      #9CA3AF;\n  --ep-neutral-bg:   #374151;\n  --ep-surface:      #1F2937;\n  --ep-border:       rgba(255, 255, 255, 0.10);\n  --ep-ink:          #F3F4F6;\n  --ep-muted:        #9CA3AF;\n}\n\n/* \u2500\u2500 Midnight Steel theme \u2500\u2500 */\n:root[data-ep-theme="midnightSteel"] {\n  --ep-green:        #0EA5E9;\n  --ep-green-bg:     rgba(14, 165, 233, 0.12);\n  --ep-green-border: rgba(14, 165, 233, 0.24);\n  --ep-red:          #EF4444;\n  --ep-red-bg:       rgba(239, 68, 68, 0.12);\n  --ep-neutral:      #64748B;\n  --ep-neutral-bg:   #1E293B;\n  --ep-surface:      #0F172A;\n  --ep-border:       rgba(51, 65, 85, 0.4);\n  --ep-ink:          #E2E8F0;\n  --ep-muted:        #94A3B8;\n}\n\n.sn-ep {\n  position: fixed;\n  right: 0;\n  top: 50%;\n  transform: translateY(-50%);\n  z-index: 2147483001;\n  display: flex;\n  flex-direction: row;\n  align-items: stretch;\n  background: var(--ep-surface);\n  border: 0.5px solid var(--ep-border);\n  border-right: none;\n  border-radius: var(--ep-panel-r) 0 0 var(--ep-panel-r);\n  font-family: var(--sn-assistant-font);\n  color: var(--ep-ink);\n  color-scheme: light;\n  user-select: none;\n  pointer-events: auto;\n  isolation: isolate;\n  box-shadow: -6px 0 22px rgba(15, 23, 42, 0.07), -1px 0 0 rgba(15, 23, 42, 0.05);\n}\n\n.sn-ep::before {\n  content: "";\n  position: absolute;\n  inset: -1px;\n  z-index: -1;\n  border-radius: inherit;\n  background:\n    conic-gradient(\n      from var(--sn-ep-border-angle, 0deg),\n      rgba(14, 165, 233, 0.08),\n      rgba(37, 99, 235, 0.28),\n      rgba(20, 184, 166, 0.18),\n      rgba(14, 165, 233, 0.08)\n    );\n  opacity: 0.45;\n  animation: sn-ep-border-flow 12s linear infinite;\n}\n\n.sn-ep::after {\n  content: "";\n  position: absolute;\n  inset: 1px;\n  z-index: -1;\n  border-radius: calc(var(--ep-panel-r) - 1px) 0 0 calc(var(--ep-panel-r) - 1px);\n  background:\n    linear-gradient(180deg, rgba(255,255,255,0.18), rgba(255,255,255,0.04)),\n    var(--ep-surface);\n}\n\n@property --sn-ep-border-angle {\n  syntax: "<angle>";\n  inherits: false;\n  initial-value: 0deg;\n}\n\n@keyframes sn-ep-border-flow {\n  to {\n    --sn-ep-border-angle: 360deg;\n  }\n}\n\n@media (prefers-reduced-motion: reduce) {\n  .sn-ep::before,\n  .sn-assistant-panel__generator::after {\n    animation: none;\n  }\n}\n\n.sn-ep__panel {\n  width: 0;\n  overflow: hidden;\n  display: flex;\n  flex-direction: column;\n  transition: width var(--ep-ease);\n}\n\n.sn-ep[data-ep-mode="icons"] .sn-ep__panel {\n  width: 52px;\n}\n\n.sn-ep[data-ep-mode="expanded"] .sn-ep__panel {\n  width: 200px;\n}\n\n.sn-ep[data-ep-mode="icons"] .sn-ep__panel,\n.sn-ep[data-ep-mode="expanded"] .sn-ep__panel {\n  border-right: 0.5px solid var(--ep-border);\n}\n\n.sn-ep__tab {\n  flex-shrink: 0;\n  width: 30px;\n  min-height: 82px;\n  display: flex;\n  flex-direction: column;\n  align-items: center;\n  justify-content: center;\n  gap: 8px;\n  background:\n    linear-gradient(180deg, rgba(255,255,255,0.62), rgba(255,255,255,0.18)),\n    rgba(14, 165, 233, 0.05);\n  border: none;\n  cursor: grab;\n  padding: 10px 0;\n  color: color-mix(in srgb, var(--ep-neutral) 82%, var(--ep-green));\n  font-family: inherit;\n  border-radius: var(--ep-panel-r) 0 0 var(--ep-panel-r);\n  box-shadow: inset -1px 0 0 rgba(14, 165, 233, 0.12);\n  transition: color var(--ep-ease), background var(--ep-ease), box-shadow var(--ep-ease);\n}\n\n.sn-ep__tab:active {\n  cursor: grabbing;\n}\n\n.sn-ep[data-ep-mode="tab"] .sn-ep__tab {\n  border-radius: var(--ep-panel-r) 0 0 var(--ep-panel-r);\n}\n\n.sn-ep[data-ep-mode="tab"] .sn-ep__tab + .sn-ep__panel {\n  width: 0;\n}\n\n.sn-ep__tab[data-action="ep-toggle"] {\n  cursor: pointer;\n}\n\n.sn-ep__tab[data-action="ep-toggle"]:hover {\n  color: var(--ep-green);\n}\n\n.sn-ep[data-ep-mode="icons"] .sn-ep__tab,\n.sn-ep[data-ep-mode="expanded"] .sn-ep__tab {\n  border-radius: 0;\n}\n\n.sn-ep__tab-dot {\n  width: 7px;\n  height: 7px;\n  flex-shrink: 0;\n  border-radius: 50%;\n  background: linear-gradient(135deg, #38bdf8, #0d9488);\n  box-shadow: 0 0 0 3px rgba(14, 165, 233, 0.12), 0 0 14px rgba(14, 165, 233, 0.34);\n}\n\n.sn-ep__tab-version {\n  display: inline-flex;\n  align-items: center;\n  padding: 2px 5px;\n  border-radius: 999px;\n  background: rgba(255, 255, 255, 0.12);\n  color: rgba(255, 255, 255, 0.92);\n  font-size: 9px;\n  font-weight: 700;\n  letter-spacing: 0.04em;\n  text-transform: none;\n}\n\n.sn-ep__tab-text {\n  font-size: 8.5px;\n  font-weight: 800;\n  letter-spacing: 0.04em;\n  text-transform: uppercase;\n  color: color-mix(in srgb, var(--ep-muted) 72%, var(--ep-green));\n  writing-mode: vertical-rl;\n  transform: rotate(180deg);\n  white-space: nowrap;\n  line-height: 1;\n}\n\n.sn-ep[data-ep-mode="icons"] .sn-ep__tab-text,\n.sn-ep[data-ep-mode="expanded"] .sn-ep__tab-text {\n  display: none;\n}\n\n.sn-ep__chevron {\n  display: block;\n  transition: transform var(--ep-ease);\n}\n\n.sn-ep[data-ep-mode="icons"] .sn-ep__chevron,\n.sn-ep[data-ep-mode="expanded"] .sn-ep__chevron {\n  transform: rotate(180deg);\n}\n\n.sn-ep__header {\n  display: none;\n  align-items: center;\n  gap: 6px;\n  padding: 7px 8px 6px;\n  border-bottom: 0.5px solid var(--ep-border);\n  overflow: hidden;\n  white-space: nowrap;\n  flex-shrink: 0;\n}\n\n.sn-ep__header-main {\n  flex: 1;\n  min-width: 0;\n}\n\n.sn-ep__header-actions {\n  display: inline-flex;\n  align-items: center;\n  gap: 4px;\n}\n\n.sn-ep[data-ep-mode="expanded"] .sn-ep__header {\n  display: flex;\n}\n\n.sn-ep__header-dot {\n  width: 8px;\n  height: 8px;\n  flex-shrink: 0;\n  border-radius: 50%;\n  background: var(--ep-green);\n}\n\n.sn-ep__header-title {\n  flex: 1;\n  font-size: 12px;\n  font-weight: 700;\n  color: var(--ep-ink);\n  overflow: hidden;\n  text-overflow: ellipsis;\n}\n\n.sn-ep__title {\n  font-size: 12px;\n  font-weight: 700;\n  color: var(--ep-ink);\n  overflow: hidden;\n  text-overflow: ellipsis;\n  white-space: nowrap;\n  line-height: 1.3;\n}\n\n.sn-ep__subtitle {\n  font-size: 10px;\n  font-weight: 500;\n  color: var(--ep-muted);\n  overflow: hidden;\n  text-overflow: ellipsis;\n  white-space: nowrap;\n  line-height: 1.3;\n}\n\n.sn-ep__ticket-context {\n  margin-top: 4px;\n  font-size: 10px;\n  font-weight: 600;\n  color: var(--ep-muted);\n  overflow: hidden;\n  text-overflow: ellipsis;\n  white-space: nowrap;\n}\n\n.sn-ep__version {\n  flex-shrink: 0;\n  padding: 2px 6px;\n  border-radius: 999px;\n  background: var(--sn-assistant-accent-soft);\n  color: var(--sn-assistant-accent);\n  font-size: 9px;\n  font-weight: 700;\n  letter-spacing: 0.03em;\n  text-transform: none;\n}\n\n.sn-ep__header-btn {\n  flex-shrink: 0;\n  width: 20px;\n  height: 20px;\n  display: grid;\n  place-items: center;\n  border-radius: 50%;\n  border: none;\n  background: transparent;\n  color: var(--ep-muted);\n  cursor: pointer;\n  padding: 0;\n  font-size: 14px;\n  font-family: inherit;\n  line-height: 1;\n  transition: background var(--ep-ease), color var(--ep-ease);\n}\n\n.sn-ep__header-btn:hover {\n  background: var(--ep-neutral-bg);\n  color: var(--ep-ink);\n}\n\n.sn-ep__header-btn--close:hover {\n  background: var(--ep-red-bg);\n  color: var(--ep-red);\n}\n\n/* Footer actions container */\n.sn-ep__footer-actions {\n  display: flex;\n  align-items: center;\n  gap: 4px;\n  padding: 0 4px;\n}\n\n.sn-ep__icon-btn {\n  width: 28px;\n  height: 28px;\n  min-width: 28px;\n  min-height: 28px;\n\n  display: inline-flex;\n  align-items: center;\n  justify-content: center;\n\n  border: none;\n  border-radius: 10px;\n\n  background: transparent;\n  color: var(--ep-muted);\n\n  cursor: pointer;\n  padding: 0;\n\n  /* suavidad + microinteracci\xF3n */\n  transition:\n    background 0.16s ease,\n    color 0.16s ease,\n    transform 0.14s ease,\n    box-shadow 0.16s ease,\n    border-color 0.16s ease;\n\n  /* evita deformaciones */\n  flex-shrink: 0;\n  position: relative;\n}\n\n/* hover m\xE1s moderno con efecto subtle \u2014 SOLO para botones sin colores espec\xEDficos */\n.sn-ep__icon-btn:hover {\n  transform: translateY(-2px);\n}\n\n/* Hover gen\xE9rico SOLO si no tiene data-action espec\xEDfico */\n.sn-ep__icon-btn:not([data-action]):hover,\n.sn-ep__icon-btn[data-action=""]:hover {\n  background: var(--ep-neutral-bg);\n  color: var(--ep-ink);\n  box-shadow: 0 4px 12px rgba(0,0,0,0.14);\n}\n\n/* feedback al click - efecto press */\n.sn-ep__icon-btn:active {\n  transform: scale(0.88) translateY(1px);\n  box-shadow: inset 0 1px 3px rgba(0,0,0,0.20), 0 1px 2px rgba(0,0,0,0.10);\n}\n\n/* estado activo m\xE1s visible */\n.sn-ep__icon-btn.is-active {\n  background: var(--ep-green-bg);\n  color: var(--ep-green);\n\n  /* glow suave con borde visible */\n  box-shadow:\n    0 0 0 2px var(--ep-bg, #fff),\n    0 0 0 3px var(--ep-green),\n    0 2px 8px rgba(22, 163, 74, 0.20);\n}\n\n.sn-ep__icon-btn.is-active:hover {\n  background: var(--ep-green-bg);\n  transform: translateY(-2px);\n  box-shadow:\n    0 0 0 2px var(--ep-bg, #fff),\n    0 0 0 3px var(--ep-green),\n    0 4px 12px rgba(22, 163, 74, 0.28);\n}\n\n/* accesibilidad (muy importante en SN) */\n.sn-ep__icon-btn:focus-visible {\n  outline: none;\n  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.35), inset 0 0 0 1px rgba(37, 99, 235, 0.50);\n}\n\n/* When pin is active AND focused, preserve the green ring alongside the blue focus ring. */\n.sn-ep__icon-btn[data-action="ep-pin"].is-active:focus-visible {\n  box-shadow:\n    0 0 0 2px var(--ep-bg, #fff),\n    0 0 0 3px #16a34a,\n    0 0 0 5px rgba(37, 99, 235, 0.35);\n}\n\n/* When pinned the close button unpins+closes \u2014 keep it clickable, just dim it slightly. */\n.sn-ep[data-ep-pinned="true"] .sn-ep__icon-btn--header {\n  opacity: 0.6;\n}\n\n/* Header Settings Button */\n.sn-ep__icon-btn--header {\n  width: 26px;\n  height: 26px;\n  min-width: 26px;\n  min-height: 26px;\n  border-radius: 8px;\n  color: var(--ep-ink);\n  opacity: 0.7;\n}\n\n.sn-ep__icon-btn--header:hover {\n  opacity: 1;\n  background: var(--ep-neutral-bg);\n  transform: none;  /* No elevation in header */\n  box-shadow: none;\n}\n\n.sn-ep__icon-btn--header:active {\n  transform: scale(0.9);\n  opacity: 1;\n}\n\n/* Pin button: small notification dot anchored to the corner when locked,\n   so the user has a clear "this stays open" cue beyond the filled glyph. */\n.sn-ep__icon-btn--pin {\n  position: relative;\n}\n\n.sn-ep__icon-btn--pin.is-active::after {\n  content: "";\n  position: absolute;\n  top: 2px;\n  right: 2px;\n  width: 6px;\n  height: 6px;\n  border-radius: 50%;\n  background: var(--ep-green, #16a34a);\n  box-shadow: 0 0 0 2px var(--ep-bg, #fff);\n}\n\n/* Footer button colors \u2014 specific semantic coloring */\n\n/* Close button: RED */\n.sn-ep__icon-btn[data-action="ep-close"] {\n  color: var(--ep-muted);\n}\n\n.sn-ep__icon-btn[data-action="ep-close"]:hover {\n  background: rgba(220, 38, 38, 0.12);\n  color: #dc2626;\n  box-shadow: 0 0 0 2px rgba(220, 38, 38, 0.25);\n}\n\n.sn-ep__icon-btn[data-action="ep-close"]:active {\n  box-shadow: inset 0 1px 3px rgba(220, 38, 38, 0.30), 0 1px 2px rgba(220, 38, 38, 0.15);\n  color: #b91c1c;\n}\n\n/* Pin button: GREEN */\n.sn-ep__icon-btn[data-action="ep-pin"] {\n  color: var(--ep-muted);\n}\n\n.sn-ep__icon-btn[data-action="ep-pin"]:hover {\n  background: rgba(22, 163, 74, 0.12);\n  color: #16a34a;\n  box-shadow: 0 0 0 2px rgba(22, 163, 74, 0.25);\n}\n\n.sn-ep__icon-btn[data-action="ep-pin"].is-active {\n  color: #16a34a;\n  background: rgba(22, 163, 74, 0.12);\n  box-shadow: 0 0 0 2px var(--ep-bg, #fff), 0 0 0 3px #16a34a, 0 2px 8px rgba(22, 163, 74, 0.20);\n}\n\n.sn-ep__icon-btn[data-action="ep-pin"].is-active:hover {\n  box-shadow: 0 0 0 2px var(--ep-bg, #fff), 0 0 0 3px #16a34a, 0 4px 12px rgba(22, 163, 74, 0.28);\n}\n\n.sn-ep__icon-btn[data-action="ep-pin"]:active {\n  box-shadow: inset 0 1px 3px rgba(22, 163, 74, 0.30), 0 1px 2px rgba(22, 163, 74, 0.15);\n  color: #15803d;\n}\n\n/* Edit button: BLUE */\n.sn-ep__icon-btn[data-action="ep-edit"] {\n  color: var(--ep-muted);\n}\n\n.sn-ep__icon-btn[data-action="ep-edit"]:hover {\n  background: rgba(37, 99, 235, 0.12);\n  color: #2563eb;\n  box-shadow: 0 0 0 2px rgba(37, 99, 235, 0.25);\n}\n\n.sn-ep__icon-btn[data-action="ep-edit"].is-active {\n  color: #2563eb;\n  background: rgba(37, 99, 235, 0.12);\n  box-shadow: 0 0 0 2px var(--ep-bg, #fff), 0 0 0 3px #2563eb, 0 2px 8px rgba(37, 99, 235, 0.20);\n}\n\n.sn-ep__icon-btn[data-action="ep-edit"].is-active:hover {\n  box-shadow: 0 0 0 2px var(--ep-bg, #fff), 0 0 0 3px #2563eb, 0 4px 12px rgba(37, 99, 235, 0.28);\n}\n\n.sn-ep__icon-btn[data-action="ep-edit"]:active {\n  box-shadow: inset 0 1px 3px rgba(37, 99, 235, 0.30), 0 1px 2px rgba(37, 99, 235, 0.15);\n  color: #1d4ed8;\n}\n\n.sn-ep__actions {\n  flex: 1;\n  display: flex;\n  flex-direction: column;\n  padding: 6px;\n  overflow: hidden;\n}\n\n/* Phase B: action grouping \u2014 each section gets a small uppercase header\n   and a subtle separator above (except the first one). Headers stay\n   muted so the buttons remain the visual focus. */\n.sn-ep__group {\n  display: flex;\n  flex-direction: column;\n  padding: 6px 0 4px;\n  border-top: 1px solid var(--ep-divider, rgba(15, 23, 42, 0.06));\n}\n\n.sn-ep__group:first-child {\n  border-top: 0;\n  padding-top: 0;\n}\n\n.sn-ep__group-header {\n  font-size: 9.5px;\n  font-weight: 600;\n  letter-spacing: 0.04em;\n  color: color-mix(in srgb, var(--ep-muted, #64748b) 88%, var(--ep-ink));\n  padding: 4px 8px 5px;\n  text-transform: none;\n  user-select: none;\n}\n\n.sn-ep__group-buttons {\n  display: flex;\n  flex-direction: column;\n  gap: 1px;\n}\n\n.sn-ep__action-row {\n  display: grid;\n  grid-template-columns: 1fr 42px;\n  gap: 6px;\n  align-items: stretch;\n}\n\n/* Tighten the icon-only / collapsed mode: in tab/icons mode the section\n   labels would just push everything down for no value. Hide them when\n   the panel is in icons-only mode. */\n[data-ep-mode="icons"] .sn-ep__group-header,\n[data-ep-mode="tab"] .sn-ep__group-header {\n  display: none;\n}\n\n[data-ep-mode="icons"] .sn-ep__group,\n[data-ep-mode="tab"] .sn-ep__group {\n  padding: 2px 0;\n  border-top: 0;\n}\n\n.sn-ep__action {\n  display: flex;\n  align-items: center;\n  gap: 9px;\n  padding: 7px 9px;\n  border-radius: 9px;\n  cursor: pointer;\n  border: none;\n  background: transparent;\n  text-align: left;\n  font-family: inherit;\n  font-size: 11.5px;\n  font-weight: 600;\n  transition:\n    background var(--ep-ease),\n    transform 100ms ease;\n  width: 100%;\n  overflow: hidden;\n  white-space: nowrap;\n  color: var(--ep-ink);\n}\n\n.sn-ep__action:hover {\n  background: color-mix(in srgb, var(--ep-ink) 4%, transparent);\n}\n\n.sn-ep__action:active {\n  transform: scale(0.99);\n}\n\n.sn-ep__action--mini-bolt {\n  min-width: 42px;\n  width: 42px;\n  padding: 0;\n  justify-content: center;\n}\n\n.sn-ep__action--mini-bolt .sn-ep__text {\n  display: none;\n}\n\n/* \u2500\u2500\u2500 Generate notes dropdown (Work Notes lightning menu) \u2500\u2500\u2500 */\n.sn-ep__generate-menu {\n  display: none;\n  flex-direction: column;\n  background: var(--ep-surface);\n  border: 1px solid var(--ep-border);\n  border-radius: var(--ep-icon-r);\n  overflow: hidden;\n  margin-bottom: 2px;\n  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);\n}\n\n.sn-ep__generate-menu.is-open {\n  display: flex;\n}\n\n.sn-ep__generate-item {\n  display: flex;\n  align-items: center;\n  gap: 8px;\n  padding: 7px 10px;\n  font-size: 12px;\n  font-weight: 500;\n  color: var(--ep-ink);\n  background: transparent;\n  border: none;\n  border-top: 1px solid var(--ep-border);\n  cursor: pointer;\n  text-align: left;\n  width: 100%;\n  font-family: inherit;\n  transition: background var(--ep-ease);\n  white-space: nowrap;\n  overflow: hidden;\n}\n\n.sn-ep__generate-item:first-child {\n  border-top: none;\n}\n\n.sn-ep__generate-item:hover {\n  background: var(--ep-neutral-bg);\n}\n\n.sn-ep__generate-item .sn-ep__icon {\n  flex-shrink: 0;\n  display: flex;\n  align-items: center;\n  justify-content: center;\n  opacity: 0.7;\n}\n\n.sn-ep__generate-item .sn-ep__icon svg {\n  width: 14px;\n  height: 14px;\n}\n\n.sn-ep__action:hover {\n  background: var(--ep-neutral-bg);\n}\n\n.sn-ep__generate-section-label {\n  padding: 4px 10px 2px;\n  font-size: 10px;\n  font-weight: 700;\n  letter-spacing: 0.06em;\n  text-transform: uppercase;\n  color: var(--ep-muted, #94a3b8);\n  background: transparent;\n  border-top: 1px solid var(--ep-border);\n}\n\n.sn-ep__generate-section-label:first-child {\n  border-top: none;\n}\n\n.sn-ep__generate-divider {\n  height: 0;\n  border-top: 1px solid var(--ep-border);\n  margin: 2px 0;\n}\n\n.sn-ep__generate-item--template {\n  font-size: 11.5px;\n  font-weight: 500;\n  max-width: 100%;\n}\n\n.sn-ep__generate-item--template span:last-child {\n  overflow: hidden;\n  text-overflow: ellipsis;\n  white-space: nowrap;\n}\n\n.sn-ep[style*="--btn-opacity"] .sn-ep__action--draft { background: rgba(37, 99, 235, calc(0.12 * var(--btn-opacity, 1))); }\n.sn-ep[style*="--btn-opacity"] .sn-ep__action--work-notes { background: rgba(13, 148, 136, calc(0.12 * var(--btn-opacity, 1))); }\n.sn-ep[style*="--btn-opacity"] .sn-ep__action--reminder { background: rgba(245, 158, 11, calc(0.144 * var(--btn-opacity, 1))); }\n.sn-ep[style*="--btn-opacity"] .sn-ep__action--agenda { background: rgba(59, 130, 246, calc(0.12 * var(--btn-opacity, 1))); }\n.sn-ep[style*="--btn-opacity"] .sn-ep__action--pdf { background: rgba(168, 85, 247, calc(0.12 * var(--btn-opacity, 1))); }\n.sn-ep[style*="--btn-opacity"] .sn-ep__action--links { background: rgba(20, 184, 166, calc(0.12 * var(--btn-opacity, 1))); }\n.sn-ep[style*="--btn-opacity"] .sn-ep__action--user-tickets { background: rgba(14, 165, 233, calc(0.12 * var(--btn-opacity, 1))); }\n.sn-ep[style*="--btn-opacity"] .sn-ep__action--find-ci { background: rgba(34, 197, 94, calc(0.12 * var(--btn-opacity, 1))); }\n.sn-ep[style*="--btn-opacity"] .sn-ep__action--settings { background: rgba(100, 116, 139, calc(0.144 * var(--btn-opacity, 1))); }\n.sn-ep[style*="--btn-opacity"] .sn-ep__action--danger { background: rgba(239, 68, 68, calc(0.144 * var(--btn-opacity, 1))); }\n\n.sn-ep__action--draft { background: rgba(37, 99, 235, 0.12); }\n.sn-ep__action--work-notes { background: rgba(13, 148, 136, 0.12); }\n.sn-ep__action--reminder { background: rgba(245, 158, 11, 0.144); }\n.sn-ep__action--agenda { background: rgba(59, 130, 246, 0.12); }\n.sn-ep__action--pdf { background: rgba(168, 85, 247, 0.12); }\n.sn-ep__action--links { background: rgba(20, 184, 166, 0.12); }\n.sn-ep__action--user-tickets { background: rgba(14, 165, 233, 0.12); }\n.sn-ep__action--find-ci { background: rgba(34, 197, 94, 0.12); }\n.sn-ep__action--settings { background: rgba(100, 116, 139, 0.144); }\n.sn-ep__action--danger { background: rgba(239, 68, 68, 0.144); }\n\n.sn-ep__action.is-dragging {\n  opacity: 0.50;\n  background: var(--ep-neutral-bg);\n}\n\n.sn-ep__hide-btn {\n  width: 22px;\n  height: 22px;\n  flex-shrink: 0;\n  display: inline-flex;\n  align-items: center;\n  justify-content: center;\n  border: 1px solid var(--ep-border);\n  border-radius: 6px;\n  background: transparent;\n  color: var(--ep-muted);\n  cursor: pointer;\n  padding: 0;\n}\n\n.sn-ep__hide-btn:hover {\n  color: var(--ep-red);\n  border-color: rgba(165, 40, 40, 0.35);\n  background: var(--ep-red-bg);\n}\n\n.sn-ep__icon {\n  width: 28px;\n  height: 28px;\n  flex-shrink: 0;\n  display: grid;\n  place-items: center;\n  border-radius: var(--ep-icon-r);\n  background: var(--ep-neutral-bg);\n  color: var(--ep-neutral);\n}\n\n/* Per-button custom color override \u2014 set via --btn-color inline style */\n.sn-ep__action[style*="--btn-color"] .sn-ep__icon {\n  background: color-mix(in srgb, var(--btn-color) 15%, transparent) !important;\n  color: var(--btn-color) !important;\n}\n.sn-ep__action[style*="--btn-color"]:hover {\n  background: color-mix(in srgb, var(--btn-color) 8%, transparent);\n}\n\n.sn-ep__action--active .sn-ep__icon {\n  background: var(--ep-green-bg);\n  color: var(--ep-green);\n}\n\n.sn-ep[data-button-theme="soft"] .sn-ep__action--draft,\n.sn-ep[data-button-theme="subtle"] .sn-ep__action--draft {\n  background: rgba(37, 99, 235, 0.12);\n}\n\n.sn-ep[data-button-theme="soft"] .sn-ep__action--draft .sn-ep__icon,\n.sn-ep[data-button-theme="subtle"] .sn-ep__action--draft .sn-ep__icon {\n  background: rgba(37, 99, 235, 0.12);\n  color: #2563eb;\n}\n\n.sn-ep[data-button-theme="soft"] .sn-ep__action--reminder,\n.sn-ep[data-button-theme="subtle"] .sn-ep__action--reminder {\n  background: rgba(245, 158, 11, 0.144);\n}\n\n.sn-ep[data-button-theme="soft"] .sn-ep__action--reminder .sn-ep__icon,\n.sn-ep[data-button-theme="subtle"] .sn-ep__action--reminder .sn-ep__icon {\n  background: rgba(37, 99, 235, 0.10);\n  color: #3b82f6;\n}\n\n.sn-ep[data-button-theme="soft"] .sn-ep__action--work-notes,\n.sn-ep[data-button-theme="subtle"] .sn-ep__action--work-notes {\n  background: rgba(13, 148, 136, 0.12);\n}\n\n.sn-ep[data-button-theme="soft"] .sn-ep__action--work-notes .sn-ep__icon,\n.sn-ep[data-button-theme="subtle"] .sn-ep__action--work-notes .sn-ep__icon {\n  background: rgba(100, 116, 139, 0.12);\n  color: #64748b;\n}\n\n.sn-ep[data-button-theme="soft"] .sn-ep__action--agenda,\n.sn-ep[data-button-theme="subtle"] .sn-ep__action--agenda {\n  background: rgba(59, 130, 246, 0.12);\n}\n\n.sn-ep[data-button-theme="soft"] .sn-ep__action--agenda .sn-ep__icon,\n.sn-ep[data-button-theme="subtle"] .sn-ep__action--agenda .sn-ep__icon {\n  background: rgba(15, 23, 42, 0.06);\n  color: #334155;\n}\n\n.sn-ep[data-button-theme="soft"] .sn-ep__action--pdf,\n.sn-ep[data-button-theme="subtle"] .sn-ep__action--pdf {\n  background: rgba(168, 85, 247, 0.12);\n}\n\n.sn-ep[data-button-theme="soft"] .sn-ep__action--pdf .sn-ep__icon,\n.sn-ep[data-button-theme="subtle"] .sn-ep__action--pdf .sn-ep__icon {\n  background: rgba(220, 38, 38, 0.10);\n  color: #b91c1c;\n}\n\n.sn-ep[data-button-theme="soft"] .sn-ep__action--settings,\n.sn-ep[data-button-theme="subtle"] .sn-ep__action--settings {\n  background: rgba(100, 116, 139, 0.144);\n}\n\n.sn-ep[data-button-theme="soft"] .sn-ep__action--settings .sn-ep__icon,\n.sn-ep[data-button-theme="subtle"] .sn-ep__action--settings .sn-ep__icon {\n  background: rgba(100, 116, 139, 0.08);\n  color: #64748b;\n}\n\n.sn-ep[data-button-theme="classic"] .sn-ep__action--draft .sn-ep__icon,\n.sn-ep[data-button-theme="classic"] .sn-ep__action--reminder .sn-ep__icon,\n.sn-ep[data-button-theme="classic"] .sn-ep__action--agenda .sn-ep__icon,\n.sn-ep[data-button-theme="classic"] .sn-ep__action--work-notes .sn-ep__icon,\n.sn-ep[data-button-theme="classic"] .sn-ep__action--pdf .sn-ep__icon,\n.sn-ep[data-button-theme="classic"] .sn-ep__action--settings .sn-ep__icon {\n  background: var(--ep-neutral-bg);\n  color: var(--ep-neutral);\n}\n\n/* \u2500\u2500 Launcher button style: Cards (data-button-theme="soft") \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\n   White cards with a border and a soft shadow. The per-category icon\n   tint is kept so each card still reads at a glance. */\n.sn-ep[data-button-theme="soft"] .sn-ep__action {\n  background: var(--ep-surface, #ffffff) !important;\n  border: 1px solid var(--ep-border) !important;\n  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.06) !important;\n}\n.sn-ep[data-button-theme="soft"] .sn-ep__action:hover {\n  border-color: var(--ep-neutral) !important;\n  box-shadow: 0 3px 8px rgba(15, 23, 42, 0.13) !important;\n}\n\n/* \u2500\u2500 Launcher button style: Flat (data-button-theme="classic") \u2500\u2500\u2500\u2500\u2500\n   Minimal \u2014 transparent buttons and neutral monochrome icons; colour\n   appears only on hover. */\n.sn-ep[data-button-theme="classic"] .sn-ep__action {\n  background: transparent !important;\n  border: none !important;\n  box-shadow: none !important;\n}\n.sn-ep[data-button-theme="classic"] .sn-ep__action:hover {\n  background: var(--ep-neutral-bg) !important;\n}\n.sn-ep[data-button-theme="classic"] .sn-ep__icon {\n  background: var(--ep-neutral-bg) !important;\n  color: var(--ep-neutral) !important;\n}\n\n.sn-ep__action--danger .sn-ep__icon {\n  background: var(--ep-red-bg);\n  color: var(--ep-red);\n}\n\n.sn-ep__action--dim {\n  opacity: 0.40;\n}\n\n.sn-ep__text {\n  flex: 1;\n  display: flex;\n  align-items: center;\n  min-width: 0;\n}\n\n.sn-ep__label {\n  font-size: 13px;\n  font-weight: 600;\n  color: var(--ep-ink);\n  overflow: hidden;\n  text-overflow: ellipsis;\n  white-space: nowrap;\n}\n\n.sn-ep__badge {\n  flex-shrink: 0;\n  font-size: 9px;\n  font-weight: 700;\n  color: var(--ep-green);\n  background: var(--ep-green-bg);\n  border: 1px solid var(--ep-green-border);\n  padding: 2px 6px;\n  border-radius: 4px;\n  letter-spacing: 0.05em;\n}\n\n.sn-ep[data-ep-mode="icons"] .sn-ep__text,\n.sn-ep[data-ep-mode="icons"] .sn-ep__badge {\n  display: none;\n}\n\n.sn-ep[data-ep-mode="icons"] .sn-ep__actions {\n  padding: 4px;\n}\n\n.sn-ep[data-ep-mode="icons"] .sn-ep__action {\n  justify-content: center;\n  padding: 6px 0;\n}\n\n.sn-ep[data-ep-mode="icons"] .sn-ep__footer {\n  display: flex;\n  justify-content: center;\n  padding: 5px 4px;\n}\n\n.sn-ep[data-ep-mode="icons"] .sn-ep__version,\n.sn-ep[data-ep-mode="icons"] .sn-ep__icon-btn[data-action="open-settings"],\n.sn-ep[data-ep-mode="icons"] .sn-ep__icon-btn[data-action="ep-pin"],\n.sn-ep[data-ep-mode="icons"] .sn-ep__icon-btn[data-action="ep-edit"] {\n  display: none;\n}\n\n.sn-ep[data-ep-mode="icons"] .sn-ep__footer-actions {\n  padding: 0;\n}\n\n.sn-ep__divider {\n  height: 0.5px;\n  background: var(--ep-border);\n  margin: 2px 6px;\n  flex-shrink: 0;\n}\n\n.sn-ep__resize {\n  flex-shrink: 0;\n  display: flex;\n  align-items: center;\n  justify-content: center;\n  padding: 8px;\n  border: none;\n  border-top: 0.5px solid var(--ep-border);\n  background: transparent;\n  cursor: pointer;\n  color: var(--ep-muted);\n  width: 100%;\n  font-family: inherit;\n  transition: background var(--ep-ease), color var(--ep-ease);\n}\n\n.sn-ep__resize:hover {\n  background: var(--ep-neutral-bg);\n  color: var(--ep-ink);\n}\n\n.sn-ep__resize-icon {\n  display: block;\n  transition: transform var(--ep-ease);\n  transform: rotate(-90deg);\n}\n\n.sn-ep[data-ep-mode="expanded"] .sn-ep__resize-icon {\n  transform: rotate(90deg);\n}\n\n/* \u2500\u2500 Left-edge variant \u2500\u2500 */\n.sn-ep--left {\n  right: auto;\n  left: 0;\n  flex-direction: row-reverse;\n  border-radius: 0 var(--ep-panel-r) var(--ep-panel-r) 0;\n  border-left: none;\n  border-right: 0.5px solid var(--ep-border);\n  box-shadow: 10px 0 30px rgba(15, 23, 42, 0.10), 1px 0 4px rgba(15, 23, 42, 0.08);\n}\n\n.sn-ep--left::after {\n  border-radius: 0 calc(var(--ep-panel-r) - 1px) calc(var(--ep-panel-r) - 1px) 0;\n}\n\n.sn-ep--left .sn-ep__tab {\n  border-radius: 0 var(--ep-panel-r) var(--ep-panel-r) 0;\n  box-shadow: inset 1px 0 0 rgba(14, 165, 233, 0.12);\n}\n\n.sn-ep--left .sn-ep__tab:hover {\n  box-shadow: inset 1px 0 0 rgba(14, 165, 233, 0.24), 0 0 18px rgba(14, 165, 233, 0.16);\n}\n\n.sn-ep--left[data-ep-mode="icons"] .sn-ep__tab,\n.sn-ep--left[data-ep-mode="expanded"] .sn-ep__tab {\n  border-radius: 0;\n}\n\n.sn-ep--left[data-ep-mode="icons"] .sn-ep__panel,\n.sn-ep--left[data-ep-mode="expanded"] .sn-ep__panel {\n  border-right: none;\n  border-left: 0.5px solid var(--ep-border);\n}\n\n.sn-ep--left .sn-ep__chevron {\n  transform: rotate(180deg);\n}\n\n.sn-ep--left[data-ep-mode="icons"] .sn-ep__chevron,\n.sn-ep--left[data-ep-mode="expanded"] .sn-ep__chevron {\n  transform: rotate(0deg);\n}\n\n.sn-ep--left .sn-ep__resize-icon {\n  transform: rotate(90deg);\n}\n\n.sn-ep--left[data-ep-mode="expanded"] .sn-ep__resize-icon {\n  transform: rotate(-90deg);\n}\n';
+  var edgePanel_default = '/* \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\r\n   EDGE PANEL  (Samsung Edge Panel style)\r\n   \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500 */\r\n:root {\r\n  --ep-green:        #1A9E72;\r\n  --ep-green-bg:     #E6F5EF;\r\n  --ep-green-border: rgba(26, 158, 114, 0.26);\r\n  --ep-red:          #A52828;\r\n  --ep-red-bg:       #FDEAEA;\r\n  --ep-neutral:      #6B7280;\r\n  --ep-neutral-bg:   #F3F4F6;\r\n  --ep-surface:      #FFFFFF;\r\n  --ep-border:       rgba(0, 0, 0, 0.08);\r\n  --ep-ink:          #111827;\r\n  --ep-muted:        #6B7280;\r\n  --ep-icon-r:       8px;\r\n  --ep-panel-r:      12px;\r\n  --ep-ease:         140ms cubic-bezier(0.4, 0, 0.2, 1);\r\n}\r\n\r\n/* \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\r\n   PANEL THEME OPTIONS\r\n   \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500 */\r\n.sn-assistant-theme-option {\r\n  display: flex;\r\n  flex-direction: column;\r\n  align-items: center;\r\n  gap: 8px;\r\n  padding: 12px;\r\n  border: 2px solid var(--sn-assistant-border);\r\n  border-radius: 10px;\r\n  cursor: pointer;\r\n  transition: all 160ms ease;\r\n  background: transparent;\r\n}\r\n\r\n.sn-assistant-theme-option:hover {\r\n  border-color: var(--sn-assistant-accent);\r\n  background: var(--sn-assistant-accent-soft);\r\n}\r\n\r\n.sn-assistant-theme-option.is-selected {\r\n  border-color: var(--sn-assistant-accent);\r\n  background: var(--sn-assistant-accent-soft);\r\n  box-shadow: 0 0 0 3px color-mix(in srgb, var(--sn-assistant-accent) 20%, transparent);\r\n}\r\n\r\n.sn-assistant-theme-option__swatch {\r\n  width: 32px;\r\n  height: 32px;\r\n  border-radius: 6px;\r\n  flex-shrink: 0;\r\n}\r\n\r\n.sn-assistant-theme-option__label {\r\n  font-size: 11px;\r\n  font-weight: 600;\r\n  color: var(--sn-assistant-ink);\r\n}\r\n\r\n/* \u2500\u2500 Dark theme \u2500\u2500 */\r\n:root[data-ep-theme="dark"] {\r\n  --ep-green:        #10B981;\r\n  --ep-green-bg:     rgba(16, 185, 129, 0.15);\r\n  --ep-green-border: rgba(16, 185, 129, 0.28);\r\n  --ep-red:          #F87171;\r\n  --ep-red-bg:       rgba(248, 113, 113, 0.12);\r\n  --ep-neutral:      #9CA3AF;\r\n  --ep-neutral-bg:   #374151;\r\n  --ep-surface:      #1F2937;\r\n  --ep-border:       rgba(255, 255, 255, 0.10);\r\n  --ep-ink:          #F3F4F6;\r\n  --ep-muted:        #9CA3AF;\r\n}\r\n\r\n/* \u2500\u2500 Midnight Steel theme \u2500\u2500 */\r\n:root[data-ep-theme="midnightSteel"] {\r\n  --ep-green:        #0EA5E9;\r\n  --ep-green-bg:     rgba(14, 165, 233, 0.12);\r\n  --ep-green-border: rgba(14, 165, 233, 0.24);\r\n  --ep-red:          #EF4444;\r\n  --ep-red-bg:       rgba(239, 68, 68, 0.12);\r\n  --ep-neutral:      #64748B;\r\n  --ep-neutral-bg:   #1E293B;\r\n  --ep-surface:      #0F172A;\r\n  --ep-border:       rgba(51, 65, 85, 0.4);\r\n  --ep-ink:          #E2E8F0;\r\n  --ep-muted:        #94A3B8;\r\n}\r\n\r\n.sn-ep {\r\n  position: fixed;\r\n  right: 0;\r\n  top: 50%;\r\n  transform: translateY(-50%);\r\n  z-index: 2147483001;\r\n  display: flex;\r\n  flex-direction: row;\r\n  align-items: stretch;\r\n  background: var(--ep-surface);\r\n  border: 0.5px solid var(--ep-border);\r\n  border-right: none;\r\n  border-radius: var(--ep-panel-r) 0 0 var(--ep-panel-r);\r\n  font-family: var(--sn-assistant-font);\r\n  color: var(--ep-ink);\r\n  color-scheme: light;\r\n  user-select: none;\r\n  pointer-events: auto;\r\n  isolation: isolate;\r\n  box-shadow: -6px 0 22px rgba(15, 23, 42, 0.07), -1px 0 0 rgba(15, 23, 42, 0.05);\r\n}\r\n\r\n.sn-ep::before {\r\n  content: "";\r\n  position: absolute;\r\n  inset: -1px;\r\n  z-index: -1;\r\n  border-radius: inherit;\r\n  background:\r\n    conic-gradient(\r\n      from var(--sn-ep-border-angle, 0deg),\r\n      rgba(14, 165, 233, 0.08),\r\n      rgba(37, 99, 235, 0.28),\r\n      rgba(20, 184, 166, 0.18),\r\n      rgba(14, 165, 233, 0.08)\r\n    );\r\n  opacity: 0.45;\r\n  animation: sn-ep-border-flow 12s linear infinite;\r\n}\r\n\r\n.sn-ep::after {\r\n  content: "";\r\n  position: absolute;\r\n  inset: 1px;\r\n  z-index: -1;\r\n  border-radius: calc(var(--ep-panel-r) - 1px) 0 0 calc(var(--ep-panel-r) - 1px);\r\n  background:\r\n    linear-gradient(180deg, rgba(255,255,255,0.18), rgba(255,255,255,0.04)),\r\n    var(--ep-surface);\r\n}\r\n\r\n@property --sn-ep-border-angle {\r\n  syntax: "<angle>";\r\n  inherits: false;\r\n  initial-value: 0deg;\r\n}\r\n\r\n@keyframes sn-ep-border-flow {\r\n  to {\r\n    --sn-ep-border-angle: 360deg;\r\n  }\r\n}\r\n\r\n@media (prefers-reduced-motion: reduce) {\r\n  .sn-ep::before,\r\n  .sn-assistant-panel__generator::after {\r\n    animation: none;\r\n  }\r\n}\r\n\r\n.sn-ep__panel {\r\n  width: 0;\r\n  overflow: hidden;\r\n  display: flex;\r\n  flex-direction: column;\r\n  transition: width var(--ep-ease);\r\n}\r\n\r\n.sn-ep[data-ep-mode="icons"] .sn-ep__panel {\r\n  width: 52px;\r\n}\r\n\r\n.sn-ep[data-ep-mode="expanded"] .sn-ep__panel {\r\n  width: 200px;\r\n}\r\n\r\n.sn-ep[data-ep-mode="icons"] .sn-ep__panel,\r\n.sn-ep[data-ep-mode="expanded"] .sn-ep__panel {\r\n  border-right: 0.5px solid var(--ep-border);\r\n}\r\n\r\n.sn-ep__tab {\r\n  flex-shrink: 0;\r\n  width: 30px;\r\n  min-height: 82px;\r\n  display: flex;\r\n  flex-direction: column;\r\n  align-items: center;\r\n  justify-content: center;\r\n  gap: 8px;\r\n  background:\r\n    linear-gradient(180deg, rgba(255,255,255,0.62), rgba(255,255,255,0.18)),\r\n    rgba(14, 165, 233, 0.05);\r\n  border: none;\r\n  cursor: grab;\r\n  padding: 10px 0;\r\n  color: color-mix(in srgb, var(--ep-neutral) 82%, var(--ep-green));\r\n  font-family: inherit;\r\n  border-radius: var(--ep-panel-r) 0 0 var(--ep-panel-r);\r\n  box-shadow: inset -1px 0 0 rgba(14, 165, 233, 0.12);\r\n  transition: color var(--ep-ease), background var(--ep-ease), box-shadow var(--ep-ease);\r\n}\r\n\r\n.sn-ep__tab:active {\r\n  cursor: grabbing;\r\n}\r\n\r\n.sn-ep[data-ep-mode="tab"] .sn-ep__tab {\r\n  border-radius: var(--ep-panel-r) 0 0 var(--ep-panel-r);\r\n}\r\n\r\n.sn-ep[data-ep-mode="tab"] .sn-ep__tab + .sn-ep__panel {\r\n  width: 0;\r\n}\r\n\r\n.sn-ep__tab[data-action="ep-toggle"] {\r\n  cursor: pointer;\r\n}\r\n\r\n.sn-ep__tab[data-action="ep-toggle"]:hover {\r\n  color: var(--ep-green);\r\n}\r\n\r\n.sn-ep[data-ep-mode="icons"] .sn-ep__tab,\r\n.sn-ep[data-ep-mode="expanded"] .sn-ep__tab {\r\n  border-radius: 0;\r\n}\r\n\r\n.sn-ep__tab-dot {\r\n  width: 7px;\r\n  height: 7px;\r\n  flex-shrink: 0;\r\n  border-radius: 50%;\r\n  background: linear-gradient(135deg, #38bdf8, #0d9488);\r\n  box-shadow: 0 0 0 3px rgba(14, 165, 233, 0.12), 0 0 14px rgba(14, 165, 233, 0.34);\r\n}\r\n\r\n.sn-ep__tab-version {\r\n  display: inline-flex;\r\n  align-items: center;\r\n  padding: 2px 5px;\r\n  border-radius: 999px;\r\n  background: rgba(255, 255, 255, 0.12);\r\n  color: rgba(255, 255, 255, 0.92);\r\n  font-size: 9px;\r\n  font-weight: 700;\r\n  letter-spacing: 0.04em;\r\n  text-transform: none;\r\n}\r\n\r\n.sn-ep__tab-text {\r\n  font-size: 8.5px;\r\n  font-weight: 800;\r\n  letter-spacing: 0.04em;\r\n  text-transform: uppercase;\r\n  color: color-mix(in srgb, var(--ep-muted) 72%, var(--ep-green));\r\n  writing-mode: vertical-rl;\r\n  transform: rotate(180deg);\r\n  white-space: nowrap;\r\n  line-height: 1;\r\n}\r\n\r\n.sn-ep[data-ep-mode="icons"] .sn-ep__tab-text,\r\n.sn-ep[data-ep-mode="expanded"] .sn-ep__tab-text {\r\n  display: none;\r\n}\r\n\r\n.sn-ep__chevron {\r\n  display: block;\r\n  transition: transform var(--ep-ease);\r\n}\r\n\r\n.sn-ep[data-ep-mode="icons"] .sn-ep__chevron,\r\n.sn-ep[data-ep-mode="expanded"] .sn-ep__chevron {\r\n  transform: rotate(180deg);\r\n}\r\n\r\n.sn-ep__header {\r\n  display: none;\r\n  align-items: center;\r\n  gap: 6px;\r\n  padding: 7px 8px 6px;\r\n  border-bottom: 0.5px solid var(--ep-border);\r\n  overflow: hidden;\r\n  white-space: nowrap;\r\n  flex-shrink: 0;\r\n}\r\n\r\n.sn-ep__header-main {\r\n  flex: 1;\r\n  min-width: 0;\r\n}\r\n\r\n.sn-ep__header-actions {\r\n  display: inline-flex;\r\n  align-items: center;\r\n  gap: 4px;\r\n}\r\n\r\n.sn-ep[data-ep-mode="expanded"] .sn-ep__header {\r\n  display: flex;\r\n}\r\n\r\n.sn-ep__header-dot {\r\n  width: 8px;\r\n  height: 8px;\r\n  flex-shrink: 0;\r\n  border-radius: 50%;\r\n  background: var(--ep-green);\r\n}\r\n\r\n.sn-ep__header-title {\r\n  flex: 1;\r\n  font-size: 12px;\r\n  font-weight: 700;\r\n  color: var(--ep-ink);\r\n  overflow: hidden;\r\n  text-overflow: ellipsis;\r\n}\r\n\r\n.sn-ep__title {\r\n  font-size: 12px;\r\n  font-weight: 700;\r\n  color: var(--ep-ink);\r\n  overflow: hidden;\r\n  text-overflow: ellipsis;\r\n  white-space: nowrap;\r\n  line-height: 1.3;\r\n}\r\n\r\n.sn-ep__subtitle {\r\n  font-size: 10px;\r\n  font-weight: 500;\r\n  color: var(--ep-muted);\r\n  overflow: hidden;\r\n  text-overflow: ellipsis;\r\n  white-space: nowrap;\r\n  line-height: 1.3;\r\n}\r\n\r\n.sn-ep__ticket-context {\r\n  margin-top: 4px;\r\n  font-size: 10px;\r\n  font-weight: 600;\r\n  color: var(--ep-muted);\r\n  overflow: hidden;\r\n  text-overflow: ellipsis;\r\n  white-space: nowrap;\r\n}\r\n\r\n.sn-ep__version {\r\n  flex-shrink: 0;\r\n  padding: 2px 6px;\r\n  border-radius: 999px;\r\n  background: var(--sn-assistant-accent-soft);\r\n  color: var(--sn-assistant-accent);\r\n  font-size: 9px;\r\n  font-weight: 700;\r\n  letter-spacing: 0.03em;\r\n  text-transform: none;\r\n}\r\n\r\n.sn-ep__header-btn {\r\n  flex-shrink: 0;\r\n  width: 20px;\r\n  height: 20px;\r\n  display: grid;\r\n  place-items: center;\r\n  border-radius: 50%;\r\n  border: none;\r\n  background: transparent;\r\n  color: var(--ep-muted);\r\n  cursor: pointer;\r\n  padding: 0;\r\n  font-size: 14px;\r\n  font-family: inherit;\r\n  line-height: 1;\r\n  transition: background var(--ep-ease), color var(--ep-ease);\r\n}\r\n\r\n.sn-ep__header-btn:hover {\r\n  background: var(--ep-neutral-bg);\r\n  color: var(--ep-ink);\r\n}\r\n\r\n.sn-ep__header-btn--close:hover {\r\n  background: var(--ep-red-bg);\r\n  color: var(--ep-red);\r\n}\r\n\r\n/* Footer actions container */\r\n.sn-ep__footer-actions {\r\n  display: flex;\r\n  align-items: center;\r\n  gap: 4px;\r\n  padding: 0 4px;\r\n}\r\n\r\n.sn-ep__icon-btn {\r\n  width: 28px;\r\n  height: 28px;\r\n  min-width: 28px;\r\n  min-height: 28px;\r\n\r\n  display: inline-flex;\r\n  align-items: center;\r\n  justify-content: center;\r\n\r\n  border: none;\r\n  border-radius: 10px;\r\n\r\n  background: transparent;\r\n  color: var(--ep-muted);\r\n\r\n  cursor: pointer;\r\n  padding: 0;\r\n\r\n  /* suavidad + microinteracci\xF3n */\r\n  transition:\r\n    background 0.16s ease,\r\n    color 0.16s ease,\r\n    transform 0.14s ease,\r\n    box-shadow 0.16s ease,\r\n    border-color 0.16s ease;\r\n\r\n  /* evita deformaciones */\r\n  flex-shrink: 0;\r\n  position: relative;\r\n}\r\n\r\n/* hover m\xE1s moderno con efecto subtle \u2014 SOLO para botones sin colores espec\xEDficos */\r\n.sn-ep__icon-btn:hover {\r\n  transform: translateY(-2px);\r\n}\r\n\r\n/* Hover gen\xE9rico SOLO si no tiene data-action espec\xEDfico */\r\n.sn-ep__icon-btn:not([data-action]):hover,\r\n.sn-ep__icon-btn[data-action=""]:hover {\r\n  background: var(--ep-neutral-bg);\r\n  color: var(--ep-ink);\r\n  box-shadow: 0 4px 12px rgba(0,0,0,0.14);\r\n}\r\n\r\n/* feedback al click - efecto press */\r\n.sn-ep__icon-btn:active {\r\n  transform: scale(0.88) translateY(1px);\r\n  box-shadow: inset 0 1px 3px rgba(0,0,0,0.20), 0 1px 2px rgba(0,0,0,0.10);\r\n}\r\n\r\n/* estado activo m\xE1s visible */\r\n.sn-ep__icon-btn.is-active {\r\n  background: var(--ep-green-bg);\r\n  color: var(--ep-green);\r\n\r\n  /* glow suave con borde visible */\r\n  box-shadow:\r\n    0 0 0 2px var(--ep-bg, #fff),\r\n    0 0 0 3px var(--ep-green),\r\n    0 2px 8px rgba(22, 163, 74, 0.20);\r\n}\r\n\r\n.sn-ep__icon-btn.is-active:hover {\r\n  background: var(--ep-green-bg);\r\n  transform: translateY(-2px);\r\n  box-shadow:\r\n    0 0 0 2px var(--ep-bg, #fff),\r\n    0 0 0 3px var(--ep-green),\r\n    0 4px 12px rgba(22, 163, 74, 0.28);\r\n}\r\n\r\n/* accesibilidad (muy importante en SN) */\r\n.sn-ep__icon-btn:focus-visible {\r\n  outline: none;\r\n  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.35), inset 0 0 0 1px rgba(37, 99, 235, 0.50);\r\n}\r\n\r\n/* When pin is active AND focused, preserve the green ring alongside the blue focus ring. */\r\n.sn-ep__icon-btn[data-action="ep-pin"].is-active:focus-visible {\r\n  box-shadow:\r\n    0 0 0 2px var(--ep-bg, #fff),\r\n    0 0 0 3px #16a34a,\r\n    0 0 0 5px rgba(37, 99, 235, 0.35);\r\n}\r\n\r\n/* When pinned the close button unpins+closes \u2014 keep it clickable, just dim it slightly. */\r\n.sn-ep[data-ep-pinned="true"] .sn-ep__icon-btn--header {\r\n  opacity: 0.6;\r\n}\r\n\r\n/* Header Settings Button */\r\n.sn-ep__icon-btn--header {\r\n  width: 26px;\r\n  height: 26px;\r\n  min-width: 26px;\r\n  min-height: 26px;\r\n  border-radius: 8px;\r\n  color: var(--ep-ink);\r\n  opacity: 0.7;\r\n}\r\n\r\n.sn-ep__icon-btn--header:hover {\r\n  opacity: 1;\r\n  background: var(--ep-neutral-bg);\r\n  transform: none;  /* No elevation in header */\r\n  box-shadow: none;\r\n}\r\n\r\n.sn-ep__icon-btn--header:active {\r\n  transform: scale(0.9);\r\n  opacity: 1;\r\n}\r\n\r\n/* Pin button: small notification dot anchored to the corner when locked,\r\n   so the user has a clear "this stays open" cue beyond the filled glyph. */\r\n.sn-ep__icon-btn--pin {\r\n  position: relative;\r\n}\r\n\r\n.sn-ep__icon-btn--pin.is-active::after {\r\n  content: "";\r\n  position: absolute;\r\n  top: 2px;\r\n  right: 2px;\r\n  width: 6px;\r\n  height: 6px;\r\n  border-radius: 50%;\r\n  background: var(--ep-green, #16a34a);\r\n  box-shadow: 0 0 0 2px var(--ep-bg, #fff);\r\n}\r\n\r\n/* Footer button colors \u2014 specific semantic coloring */\r\n\r\n/* Close button: RED */\r\n.sn-ep__icon-btn[data-action="ep-close"] {\r\n  color: var(--ep-muted);\r\n}\r\n\r\n.sn-ep__icon-btn[data-action="ep-close"]:hover {\r\n  background: rgba(220, 38, 38, 0.12);\r\n  color: #dc2626;\r\n  box-shadow: 0 0 0 2px rgba(220, 38, 38, 0.25);\r\n}\r\n\r\n.sn-ep__icon-btn[data-action="ep-close"]:active {\r\n  box-shadow: inset 0 1px 3px rgba(220, 38, 38, 0.30), 0 1px 2px rgba(220, 38, 38, 0.15);\r\n  color: #b91c1c;\r\n}\r\n\r\n/* Pin button: GREEN */\r\n.sn-ep__icon-btn[data-action="ep-pin"] {\r\n  color: var(--ep-muted);\r\n}\r\n\r\n.sn-ep__icon-btn[data-action="ep-pin"]:hover {\r\n  background: rgba(22, 163, 74, 0.12);\r\n  color: #16a34a;\r\n  box-shadow: 0 0 0 2px rgba(22, 163, 74, 0.25);\r\n}\r\n\r\n.sn-ep__icon-btn[data-action="ep-pin"].is-active {\r\n  color: #16a34a;\r\n  background: rgba(22, 163, 74, 0.12);\r\n  box-shadow: 0 0 0 2px var(--ep-bg, #fff), 0 0 0 3px #16a34a, 0 2px 8px rgba(22, 163, 74, 0.20);\r\n}\r\n\r\n.sn-ep__icon-btn[data-action="ep-pin"].is-active:hover {\r\n  box-shadow: 0 0 0 2px var(--ep-bg, #fff), 0 0 0 3px #16a34a, 0 4px 12px rgba(22, 163, 74, 0.28);\r\n}\r\n\r\n.sn-ep__icon-btn[data-action="ep-pin"]:active {\r\n  box-shadow: inset 0 1px 3px rgba(22, 163, 74, 0.30), 0 1px 2px rgba(22, 163, 74, 0.15);\r\n  color: #15803d;\r\n}\r\n\r\n/* Edit button: BLUE */\r\n.sn-ep__icon-btn[data-action="ep-edit"] {\r\n  color: var(--ep-muted);\r\n}\r\n\r\n.sn-ep__icon-btn[data-action="ep-edit"]:hover {\r\n  background: rgba(37, 99, 235, 0.12);\r\n  color: #2563eb;\r\n  box-shadow: 0 0 0 2px rgba(37, 99, 235, 0.25);\r\n}\r\n\r\n.sn-ep__icon-btn[data-action="ep-edit"].is-active {\r\n  color: #2563eb;\r\n  background: rgba(37, 99, 235, 0.12);\r\n  box-shadow: 0 0 0 2px var(--ep-bg, #fff), 0 0 0 3px #2563eb, 0 2px 8px rgba(37, 99, 235, 0.20);\r\n}\r\n\r\n.sn-ep__icon-btn[data-action="ep-edit"].is-active:hover {\r\n  box-shadow: 0 0 0 2px var(--ep-bg, #fff), 0 0 0 3px #2563eb, 0 4px 12px rgba(37, 99, 235, 0.28);\r\n}\r\n\r\n.sn-ep__icon-btn[data-action="ep-edit"]:active {\r\n  box-shadow: inset 0 1px 3px rgba(37, 99, 235, 0.30), 0 1px 2px rgba(37, 99, 235, 0.15);\r\n  color: #1d4ed8;\r\n}\r\n\r\n.sn-ep__actions {\r\n  flex: 1;\r\n  display: flex;\r\n  flex-direction: column;\r\n  padding: 6px;\r\n  overflow: hidden;\r\n}\r\n\r\n/* Phase B: action grouping \u2014 each section gets a small uppercase header\r\n   and a subtle separator above (except the first one). Headers stay\r\n   muted so the buttons remain the visual focus. */\r\n.sn-ep__group {\r\n  display: flex;\r\n  flex-direction: column;\r\n  padding: 6px 0 4px;\r\n  border-top: 1px solid var(--ep-divider, rgba(15, 23, 42, 0.06));\r\n}\r\n\r\n.sn-ep__group:first-child {\r\n  border-top: 0;\r\n  padding-top: 0;\r\n}\r\n\r\n.sn-ep__group-header {\r\n  font-size: 9.5px;\r\n  font-weight: 600;\r\n  letter-spacing: 0.04em;\r\n  color: color-mix(in srgb, var(--ep-muted, #64748b) 88%, var(--ep-ink));\r\n  padding: 4px 8px 5px;\r\n  text-transform: none;\r\n  user-select: none;\r\n}\r\n\r\n.sn-ep__group-buttons {\r\n  display: flex;\r\n  flex-direction: column;\r\n  gap: 1px;\r\n}\r\n\r\n.sn-ep__action-row {\r\n  display: grid;\r\n  grid-template-columns: 1fr 42px;\r\n  gap: 6px;\r\n  align-items: stretch;\r\n}\r\n\r\n/* Tighten the icon-only / collapsed mode: in tab/icons mode the section\r\n   labels would just push everything down for no value. Hide them when\r\n   the panel is in icons-only mode. */\r\n[data-ep-mode="icons"] .sn-ep__group-header,\r\n[data-ep-mode="tab"] .sn-ep__group-header {\r\n  display: none;\r\n}\r\n\r\n[data-ep-mode="icons"] .sn-ep__group,\r\n[data-ep-mode="tab"] .sn-ep__group {\r\n  padding: 2px 0;\r\n  border-top: 0;\r\n}\r\n\r\n.sn-ep__action {\r\n  display: flex;\r\n  align-items: center;\r\n  gap: 9px;\r\n  padding: 7px 9px;\r\n  border-radius: 9px;\r\n  cursor: pointer;\r\n  border: none;\r\n  background: transparent;\r\n  text-align: left;\r\n  font-family: inherit;\r\n  font-size: 11.5px;\r\n  font-weight: 600;\r\n  transition:\r\n    background var(--ep-ease),\r\n    transform 100ms ease;\r\n  width: 100%;\r\n  overflow: hidden;\r\n  white-space: nowrap;\r\n  color: var(--ep-ink);\r\n}\r\n\r\n.sn-ep__action:hover {\r\n  background: color-mix(in srgb, var(--ep-ink) 4%, transparent);\r\n}\r\n\r\n.sn-ep__action:active {\r\n  transform: scale(0.99);\r\n}\r\n\r\n.sn-ep__action--mini-bolt {\r\n  min-width: 42px;\r\n  width: 42px;\r\n  padding: 0;\r\n  justify-content: center;\r\n}\r\n\r\n.sn-ep__action--mini-bolt .sn-ep__text {\r\n  display: none;\r\n}\r\n\r\n/* \u2500\u2500\u2500 Generate notes dropdown (Work Notes lightning menu) \u2500\u2500\u2500 */\r\n.sn-ep__generate-menu {\r\n  display: none;\r\n  flex-direction: column;\r\n  background: var(--ep-surface);\r\n  border: 1px solid var(--ep-border);\r\n  border-radius: var(--ep-icon-r);\r\n  overflow: hidden;\r\n  margin-bottom: 2px;\r\n  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);\r\n}\r\n\r\n.sn-ep__generate-menu.is-open {\r\n  display: flex;\r\n}\r\n\r\n.sn-ep__generate-item {\r\n  display: flex;\r\n  align-items: center;\r\n  gap: 8px;\r\n  padding: 7px 10px;\r\n  font-size: 12px;\r\n  font-weight: 500;\r\n  color: var(--ep-ink);\r\n  background: transparent;\r\n  border: none;\r\n  border-top: 1px solid var(--ep-border);\r\n  cursor: pointer;\r\n  text-align: left;\r\n  width: 100%;\r\n  font-family: inherit;\r\n  transition: background var(--ep-ease);\r\n  white-space: nowrap;\r\n  overflow: hidden;\r\n}\r\n\r\n.sn-ep__generate-item:first-child {\r\n  border-top: none;\r\n}\r\n\r\n.sn-ep__generate-item:hover {\r\n  background: var(--ep-neutral-bg);\r\n}\r\n\r\n.sn-ep__generate-item .sn-ep__icon {\r\n  flex-shrink: 0;\r\n  display: flex;\r\n  align-items: center;\r\n  justify-content: center;\r\n  opacity: 0.7;\r\n}\r\n\r\n.sn-ep__generate-item .sn-ep__icon svg {\r\n  width: 14px;\r\n  height: 14px;\r\n}\r\n\r\n.sn-ep__action:hover {\r\n  background: var(--ep-neutral-bg);\r\n}\r\n\r\n.sn-ep__generate-section-label {\r\n  padding: 4px 10px 2px;\r\n  font-size: 10px;\r\n  font-weight: 700;\r\n  letter-spacing: 0.06em;\r\n  text-transform: uppercase;\r\n  color: var(--ep-muted, #94a3b8);\r\n  background: transparent;\r\n  border-top: 1px solid var(--ep-border);\r\n}\r\n\r\n.sn-ep__generate-section-label:first-child {\r\n  border-top: none;\r\n}\r\n\r\n.sn-ep__generate-divider {\r\n  height: 0;\r\n  border-top: 1px solid var(--ep-border);\r\n  margin: 2px 0;\r\n}\r\n\r\n.sn-ep__generate-item--template {\r\n  font-size: 11.5px;\r\n  font-weight: 500;\r\n  max-width: 100%;\r\n}\r\n\r\n.sn-ep__generate-item--template span:last-child {\r\n  overflow: hidden;\r\n  text-overflow: ellipsis;\r\n  white-space: nowrap;\r\n}\r\n\r\n.sn-ep[style*="--btn-opacity"] .sn-ep__action--draft { background: rgba(37, 99, 235, calc(0.12 * var(--btn-opacity, 1))); }\r\n.sn-ep[style*="--btn-opacity"] .sn-ep__action--work-notes { background: rgba(13, 148, 136, calc(0.12 * var(--btn-opacity, 1))); }\r\n.sn-ep[style*="--btn-opacity"] .sn-ep__action--reminder { background: rgba(245, 158, 11, calc(0.144 * var(--btn-opacity, 1))); }\r\n.sn-ep[style*="--btn-opacity"] .sn-ep__action--agenda { background: rgba(59, 130, 246, calc(0.12 * var(--btn-opacity, 1))); }\r\n.sn-ep[style*="--btn-opacity"] .sn-ep__action--pdf { background: rgba(168, 85, 247, calc(0.12 * var(--btn-opacity, 1))); }\r\n.sn-ep[style*="--btn-opacity"] .sn-ep__action--links { background: rgba(20, 184, 166, calc(0.12 * var(--btn-opacity, 1))); }\r\n.sn-ep[style*="--btn-opacity"] .sn-ep__action--user-tickets { background: rgba(14, 165, 233, calc(0.12 * var(--btn-opacity, 1))); }\r\n.sn-ep[style*="--btn-opacity"] .sn-ep__action--find-ci { background: rgba(34, 197, 94, calc(0.12 * var(--btn-opacity, 1))); }\r\n.sn-ep[style*="--btn-opacity"] .sn-ep__action--settings { background: rgba(100, 116, 139, calc(0.144 * var(--btn-opacity, 1))); }\r\n.sn-ep[style*="--btn-opacity"] .sn-ep__action--danger { background: rgba(239, 68, 68, calc(0.144 * var(--btn-opacity, 1))); }\r\n\r\n.sn-ep__action--draft { background: rgba(37, 99, 235, 0.12); }\r\n.sn-ep__action--work-notes { background: rgba(13, 148, 136, 0.12); }\r\n.sn-ep__action--reminder { background: rgba(245, 158, 11, 0.144); }\r\n.sn-ep__action--agenda { background: rgba(59, 130, 246, 0.12); }\r\n.sn-ep__action--pdf { background: rgba(168, 85, 247, 0.12); }\r\n.sn-ep__action--links { background: rgba(20, 184, 166, 0.12); }\r\n.sn-ep__action--user-tickets { background: rgba(14, 165, 233, 0.12); }\r\n.sn-ep__action--find-ci { background: rgba(34, 197, 94, 0.12); }\r\n.sn-ep__action--settings { background: rgba(100, 116, 139, 0.144); }\r\n.sn-ep__action--danger { background: rgba(239, 68, 68, 0.144); }\r\n\r\n.sn-ep__action.is-dragging {\r\n  opacity: 0.50;\r\n  background: var(--ep-neutral-bg);\r\n}\r\n\r\n.sn-ep__hide-btn {\r\n  width: 22px;\r\n  height: 22px;\r\n  flex-shrink: 0;\r\n  display: inline-flex;\r\n  align-items: center;\r\n  justify-content: center;\r\n  border: 1px solid var(--ep-border);\r\n  border-radius: 6px;\r\n  background: transparent;\r\n  color: var(--ep-muted);\r\n  cursor: pointer;\r\n  padding: 0;\r\n}\r\n\r\n.sn-ep__hide-btn:hover {\r\n  color: var(--ep-red);\r\n  border-color: rgba(165, 40, 40, 0.35);\r\n  background: var(--ep-red-bg);\r\n}\r\n\r\n.sn-ep__icon {\r\n  width: 28px;\r\n  height: 28px;\r\n  flex-shrink: 0;\r\n  display: grid;\r\n  place-items: center;\r\n  border-radius: var(--ep-icon-r);\r\n  background: var(--ep-neutral-bg);\r\n  color: var(--ep-neutral);\r\n}\r\n\r\n/* Per-button custom color override \u2014 set via --btn-color inline style */\r\n.sn-ep__action[style*="--btn-color"] .sn-ep__icon {\r\n  background: color-mix(in srgb, var(--btn-color) 15%, transparent) !important;\r\n  color: var(--btn-color) !important;\r\n}\r\n.sn-ep__action[style*="--btn-color"]:hover {\r\n  background: color-mix(in srgb, var(--btn-color) 8%, transparent);\r\n}\r\n\r\n.sn-ep__action--active .sn-ep__icon {\r\n  background: var(--ep-green-bg);\r\n  color: var(--ep-green);\r\n}\r\n\r\n.sn-ep[data-button-theme="soft"] .sn-ep__action--draft,\r\n.sn-ep[data-button-theme="subtle"] .sn-ep__action--draft {\r\n  background: rgba(37, 99, 235, 0.12);\r\n}\r\n\r\n.sn-ep[data-button-theme="soft"] .sn-ep__action--draft .sn-ep__icon,\r\n.sn-ep[data-button-theme="subtle"] .sn-ep__action--draft .sn-ep__icon {\r\n  background: rgba(37, 99, 235, 0.12);\r\n  color: #2563eb;\r\n}\r\n\r\n.sn-ep[data-button-theme="soft"] .sn-ep__action--reminder,\r\n.sn-ep[data-button-theme="subtle"] .sn-ep__action--reminder {\r\n  background: rgba(245, 158, 11, 0.144);\r\n}\r\n\r\n.sn-ep[data-button-theme="soft"] .sn-ep__action--reminder .sn-ep__icon,\r\n.sn-ep[data-button-theme="subtle"] .sn-ep__action--reminder .sn-ep__icon {\r\n  background: rgba(37, 99, 235, 0.10);\r\n  color: #3b82f6;\r\n}\r\n\r\n.sn-ep[data-button-theme="soft"] .sn-ep__action--work-notes,\r\n.sn-ep[data-button-theme="subtle"] .sn-ep__action--work-notes {\r\n  background: rgba(13, 148, 136, 0.12);\r\n}\r\n\r\n.sn-ep[data-button-theme="soft"] .sn-ep__action--work-notes .sn-ep__icon,\r\n.sn-ep[data-button-theme="subtle"] .sn-ep__action--work-notes .sn-ep__icon {\r\n  background: rgba(100, 116, 139, 0.12);\r\n  color: #64748b;\r\n}\r\n\r\n.sn-ep[data-button-theme="soft"] .sn-ep__action--agenda,\r\n.sn-ep[data-button-theme="subtle"] .sn-ep__action--agenda {\r\n  background: rgba(59, 130, 246, 0.12);\r\n}\r\n\r\n.sn-ep[data-button-theme="soft"] .sn-ep__action--agenda .sn-ep__icon,\r\n.sn-ep[data-button-theme="subtle"] .sn-ep__action--agenda .sn-ep__icon {\r\n  background: rgba(15, 23, 42, 0.06);\r\n  color: #334155;\r\n}\r\n\r\n.sn-ep[data-button-theme="soft"] .sn-ep__action--pdf,\r\n.sn-ep[data-button-theme="subtle"] .sn-ep__action--pdf {\r\n  background: rgba(168, 85, 247, 0.12);\r\n}\r\n\r\n.sn-ep[data-button-theme="soft"] .sn-ep__action--pdf .sn-ep__icon,\r\n.sn-ep[data-button-theme="subtle"] .sn-ep__action--pdf .sn-ep__icon {\r\n  background: rgba(220, 38, 38, 0.10);\r\n  color: #b91c1c;\r\n}\r\n\r\n.sn-ep[data-button-theme="soft"] .sn-ep__action--settings,\r\n.sn-ep[data-button-theme="subtle"] .sn-ep__action--settings {\r\n  background: rgba(100, 116, 139, 0.144);\r\n}\r\n\r\n.sn-ep[data-button-theme="soft"] .sn-ep__action--settings .sn-ep__icon,\r\n.sn-ep[data-button-theme="subtle"] .sn-ep__action--settings .sn-ep__icon {\r\n  background: rgba(100, 116, 139, 0.08);\r\n  color: #64748b;\r\n}\r\n\r\n.sn-ep[data-button-theme="classic"] .sn-ep__action--draft .sn-ep__icon,\r\n.sn-ep[data-button-theme="classic"] .sn-ep__action--reminder .sn-ep__icon,\r\n.sn-ep[data-button-theme="classic"] .sn-ep__action--agenda .sn-ep__icon,\r\n.sn-ep[data-button-theme="classic"] .sn-ep__action--work-notes .sn-ep__icon,\r\n.sn-ep[data-button-theme="classic"] .sn-ep__action--pdf .sn-ep__icon,\r\n.sn-ep[data-button-theme="classic"] .sn-ep__action--settings .sn-ep__icon {\r\n  background: var(--ep-neutral-bg);\r\n  color: var(--ep-neutral);\r\n}\r\n\r\n/* \u2500\u2500 Launcher button style: Cards (data-button-theme="soft") \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\r\n   White cards with a border and a soft shadow. The per-category icon\r\n   tint is kept so each card still reads at a glance. */\r\n.sn-ep[data-button-theme="soft"] .sn-ep__action {\r\n  background: var(--ep-surface, #ffffff) !important;\r\n  border: 1px solid var(--ep-border) !important;\r\n  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.06) !important;\r\n}\r\n.sn-ep[data-button-theme="soft"] .sn-ep__action:hover {\r\n  border-color: var(--ep-neutral) !important;\r\n  box-shadow: 0 3px 8px rgba(15, 23, 42, 0.13) !important;\r\n}\r\n\r\n/* \u2500\u2500 Launcher button style: Flat (data-button-theme="classic") \u2500\u2500\u2500\u2500\u2500\r\n   Minimal \u2014 transparent buttons and neutral monochrome icons; colour\r\n   appears only on hover. */\r\n.sn-ep[data-button-theme="classic"] .sn-ep__action {\r\n  background: transparent !important;\r\n  border: none !important;\r\n  box-shadow: none !important;\r\n}\r\n.sn-ep[data-button-theme="classic"] .sn-ep__action:hover {\r\n  background: var(--ep-neutral-bg) !important;\r\n}\r\n.sn-ep[data-button-theme="classic"] .sn-ep__icon {\r\n  background: var(--ep-neutral-bg) !important;\r\n  color: var(--ep-neutral) !important;\r\n}\r\n\r\n.sn-ep__action--danger .sn-ep__icon {\r\n  background: var(--ep-red-bg);\r\n  color: var(--ep-red);\r\n}\r\n\r\n.sn-ep__action--dim {\r\n  opacity: 0.40;\r\n}\r\n\r\n.sn-ep__text {\r\n  flex: 1;\r\n  display: flex;\r\n  align-items: center;\r\n  min-width: 0;\r\n}\r\n\r\n.sn-ep__label {\r\n  font-size: 13px;\r\n  font-weight: 600;\r\n  color: var(--ep-ink);\r\n  overflow: hidden;\r\n  text-overflow: ellipsis;\r\n  white-space: nowrap;\r\n}\r\n\r\n.sn-ep__badge {\r\n  flex-shrink: 0;\r\n  font-size: 9px;\r\n  font-weight: 700;\r\n  color: var(--ep-green);\r\n  background: var(--ep-green-bg);\r\n  border: 1px solid var(--ep-green-border);\r\n  padding: 2px 6px;\r\n  border-radius: 4px;\r\n  letter-spacing: 0.05em;\r\n}\r\n\r\n.sn-ep[data-ep-mode="icons"] .sn-ep__text,\r\n.sn-ep[data-ep-mode="icons"] .sn-ep__badge {\r\n  display: none;\r\n}\r\n\r\n.sn-ep[data-ep-mode="icons"] .sn-ep__actions {\r\n  padding: 4px;\r\n}\r\n\r\n.sn-ep[data-ep-mode="icons"] .sn-ep__action {\r\n  justify-content: center;\r\n  padding: 6px 0;\r\n}\r\n\r\n.sn-ep[data-ep-mode="icons"] .sn-ep__footer {\r\n  display: flex;\r\n  justify-content: center;\r\n  padding: 5px 4px;\r\n}\r\n\r\n.sn-ep[data-ep-mode="icons"] .sn-ep__version,\r\n.sn-ep[data-ep-mode="icons"] .sn-ep__icon-btn[data-action="open-settings"],\r\n.sn-ep[data-ep-mode="icons"] .sn-ep__icon-btn[data-action="ep-pin"],\r\n.sn-ep[data-ep-mode="icons"] .sn-ep__icon-btn[data-action="ep-edit"] {\r\n  display: none;\r\n}\r\n\r\n.sn-ep[data-ep-mode="icons"] .sn-ep__footer-actions {\r\n  padding: 0;\r\n}\r\n\r\n.sn-ep__divider {\r\n  height: 0.5px;\r\n  background: var(--ep-border);\r\n  margin: 2px 6px;\r\n  flex-shrink: 0;\r\n}\r\n\r\n.sn-ep__resize {\r\n  flex-shrink: 0;\r\n  display: flex;\r\n  align-items: center;\r\n  justify-content: center;\r\n  padding: 8px;\r\n  border: none;\r\n  border-top: 0.5px solid var(--ep-border);\r\n  background: transparent;\r\n  cursor: pointer;\r\n  color: var(--ep-muted);\r\n  width: 100%;\r\n  font-family: inherit;\r\n  transition: background var(--ep-ease), color var(--ep-ease);\r\n}\r\n\r\n.sn-ep__resize:hover {\r\n  background: var(--ep-neutral-bg);\r\n  color: var(--ep-ink);\r\n}\r\n\r\n.sn-ep__resize-icon {\r\n  display: block;\r\n  transition: transform var(--ep-ease);\r\n  transform: rotate(-90deg);\r\n}\r\n\r\n.sn-ep[data-ep-mode="expanded"] .sn-ep__resize-icon {\r\n  transform: rotate(90deg);\r\n}\r\n\r\n/* \u2500\u2500 Left-edge variant \u2500\u2500 */\r\n.sn-ep--left {\r\n  right: auto;\r\n  left: 0;\r\n  flex-direction: row-reverse;\r\n  border-radius: 0 var(--ep-panel-r) var(--ep-panel-r) 0;\r\n  border-left: none;\r\n  border-right: 0.5px solid var(--ep-border);\r\n  box-shadow: 10px 0 30px rgba(15, 23, 42, 0.10), 1px 0 4px rgba(15, 23, 42, 0.08);\r\n}\r\n\r\n.sn-ep--left::after {\r\n  border-radius: 0 calc(var(--ep-panel-r) - 1px) calc(var(--ep-panel-r) - 1px) 0;\r\n}\r\n\r\n.sn-ep--left .sn-ep__tab {\r\n  border-radius: 0 var(--ep-panel-r) var(--ep-panel-r) 0;\r\n  box-shadow: inset 1px 0 0 rgba(14, 165, 233, 0.12);\r\n}\r\n\r\n.sn-ep--left .sn-ep__tab:hover {\r\n  box-shadow: inset 1px 0 0 rgba(14, 165, 233, 0.24), 0 0 18px rgba(14, 165, 233, 0.16);\r\n}\r\n\r\n.sn-ep--left[data-ep-mode="icons"] .sn-ep__tab,\r\n.sn-ep--left[data-ep-mode="expanded"] .sn-ep__tab {\r\n  border-radius: 0;\r\n}\r\n\r\n.sn-ep--left[data-ep-mode="icons"] .sn-ep__panel,\r\n.sn-ep--left[data-ep-mode="expanded"] .sn-ep__panel {\r\n  border-right: none;\r\n  border-left: 0.5px solid var(--ep-border);\r\n}\r\n\r\n.sn-ep--left .sn-ep__chevron {\r\n  transform: rotate(180deg);\r\n}\r\n\r\n.sn-ep--left[data-ep-mode="icons"] .sn-ep__chevron,\r\n.sn-ep--left[data-ep-mode="expanded"] .sn-ep__chevron {\r\n  transform: rotate(0deg);\r\n}\r\n\r\n.sn-ep--left .sn-ep__resize-icon {\r\n  transform: rotate(90deg);\r\n}\r\n\r\n.sn-ep--left[data-ep-mode="expanded"] .sn-ep__resize-icon {\r\n  transform: rotate(-90deg);\r\n}\r\n';
+
+  // Assistant/ui/styles/iconography.css
+  var iconography_default = `/* \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\r
+   UIX ICONOGRAPHY\r
+   A lightweight semantic icon layer for the Edge Panel.\r
+   Keeps interaction logic untouched while giving each major action\r
+   a distinct silhouette and a consistent visual system.\r
+   \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500 */\r
+\r
+.sn-ep__action .sn-ep__icon {\r
+  position: relative;\r
+  width: 30px;\r
+  height: 30px;\r
+  border-radius: 9px;\r
+  border: 1px solid color-mix(in srgb, currentColor 10%, transparent);\r
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.30);\r
+  transition:\r
+    transform 140ms cubic-bezier(0.2, 0.8, 0.2, 1),\r
+    background 160ms ease,\r
+    color 160ms ease,\r
+    border-color 160ms ease,\r
+    box-shadow 160ms ease;\r
+}\r
+\r
+.sn-ep__action:hover .sn-ep__icon {\r
+  transform: translateY(-1px) scale(1.04);\r
+  border-color: color-mix(in srgb, currentColor 22%, transparent);\r
+  box-shadow:\r
+    inset 0 1px 0 rgba(255, 255, 255, 0.34),\r
+    0 4px 10px color-mix(in srgb, currentColor 12%, transparent);\r
+}\r
+\r
+.sn-ep__action:active .sn-ep__icon {\r
+  transform: scale(0.96);\r
+}\r
+\r
+.sn-ep__action .sn-ep__icon svg {\r
+  width: 18px;\r
+  height: 18px;\r
+  transition: opacity 120ms ease, transform 140ms ease;\r
+}\r
+\r
+/* The actions below get purpose-built semantic glyphs. The original inline\r
+   SVG remains in markup as a safe fallback, but is visually replaced here. */\r
+.sn-ep__action[data-action="quick-draft"] .sn-ep__icon svg,\r
+.sn-ep__action[data-action="generate-email-draft"] .sn-ep__icon svg,\r
+.sn-ep__action[data-action="generate-close-notes"] .sn-ep__icon svg,\r
+.sn-ep__action[data-action="generate-work-notes"] .sn-ep__icon svg,\r
+.sn-ep__action[data-action="generate-all-notes"] .sn-ep__icon svg,\r
+.sn-ep__action[data-action="incident-resolution-notes"] .sn-ep__icon svg,\r
+.sn-ep__action[data-action="open-work-notes"] .sn-ep__icon svg,\r
+.sn-ep__action[data-action="open-reminder"] .sn-ep__icon svg,\r
+.sn-ep__action[data-action="create-calendar-event"] .sn-ep__icon svg,\r
+.sn-ep__action[data-action="open-pdf"] .sn-ep__icon svg,\r
+.sn-ep__action[data-action="user-info"] .sn-ep__icon svg,\r
+.sn-ep__action[data-action="user-open-tickets"] .sn-ep__icon svg,\r
+.sn-ep__action[data-action="find-ci"] .sn-ep__icon svg,\r
+.sn-ep__action[data-action="assign-to-my-group"] .sn-ep__icon svg,\r
+.sn-ep__action[data-action="open-ep-links"] .sn-ep__icon svg,\r
+.sn-ep__action[data-action="open-settings"] .sn-ep__icon svg {\r
+  opacity: 0;\r
+}\r
+\r
+.sn-ep__action[data-action] .sn-ep__icon::before {\r
+  content: "";\r
+  position: absolute;\r
+  inset: 5px;\r
+  background: currentColor;\r
+  -webkit-mask-repeat: no-repeat;\r
+  mask-repeat: no-repeat;\r
+  -webkit-mask-position: center;\r
+  mask-position: center;\r
+  -webkit-mask-size: contain;\r
+  mask-size: contain;\r
+  pointer-events: none;\r
+}\r
+\r
+/* Draft \u2014 envelope with edit stroke */\r
+.sn-ep__action[data-action="quick-draft"] .sn-ep__icon::before {\r
+  -webkit-mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='white' stroke-width='1.9' stroke-linecap='round' stroke-linejoin='round'%3E%3Crect x='3' y='5' width='18' height='14' rx='2'/%3E%3Cpath d='m4 7 8 6 8-6'/%3E%3Cpath d='M15.5 15.5 19 12l2 2-3.5 3.5-2.5.5z'/%3E%3C/svg%3E");\r
+  mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='white' stroke-width='1.9' stroke-linecap='round' stroke-linejoin='round'%3E%3Crect x='3' y='5' width='18' height='14' rx='2'/%3E%3Cpath d='m4 7 8 6 8-6'/%3E%3Cpath d='M15.5 15.5 19 12l2 2-3.5 3.5-2.5.5z'/%3E%3C/svg%3E");\r
+}\r
+\r
+/* Generate Email \u2014 envelope + AI sparkle */\r
+.sn-ep__action[data-action="generate-email-draft"] .sn-ep__icon::before {\r
+  -webkit-mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='white' stroke-width='1.85' stroke-linecap='round' stroke-linejoin='round'%3E%3Crect x='3' y='6' width='15' height='12' rx='2'/%3E%3Cpath d='m4 8 6.5 5L17 8'/%3E%3Cpath d='M19 2.5 19.8 4.7 22 5.5l-2.2.8L19 8.5l-.8-2.2-2.2-.8 2.2-.8z'/%3E%3C/svg%3E");\r
+  mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='white' stroke-width='1.85' stroke-linecap='round' stroke-linejoin='round'%3E%3Crect x='3' y='6' width='15' height='12' rx='2'/%3E%3Cpath d='m4 8 6.5 5L17 8'/%3E%3Cpath d='M19 2.5 19.8 4.7 22 5.5l-2.2.8L19 8.5l-.8-2.2-2.2-.8 2.2-.8z'/%3E%3C/svg%3E");\r
+}\r
+\r
+/* Work note \u2014 note + pencil */\r
+.sn-ep__action[data-action="open-work-notes"] .sn-ep__icon::before,\r
+.sn-ep__action[data-action="generate-work-notes"] .sn-ep__icon::before {\r
+  -webkit-mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='white' stroke-width='1.9' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M5 3h10l4 4v14H5z'/%3E%3Cpath d='M15 3v4h4M8 11h6M8 15h4'/%3E%3Cpath d='m14 18 4-4 2 2-4 4-3 .7z'/%3E%3C/svg%3E");\r
+  mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='white' stroke-width='1.9' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M5 3h10l4 4v14H5z'/%3E%3Cpath d='M15 3v4h4M8 11h6M8 15h4'/%3E%3Cpath d='m14 18 4-4 2 2-4 4-3 .7z'/%3E%3C/svg%3E");\r
+}\r
+\r
+/* Close / Resolution \u2014 document with verified check */\r
+.sn-ep__action[data-action="generate-close-notes"] .sn-ep__icon::before,\r
+.sn-ep__action[data-action="incident-resolution-notes"] .sn-ep__icon::before {\r
+  -webkit-mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='white' stroke-width='1.9' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M5 3h10l4 4v14H5z'/%3E%3Cpath d='M15 3v4h4M8 11h6'/%3E%3Cpath d='m8 16 2.3 2.3L15 13.6'/%3E%3C/svg%3E");\r
+  mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='white' stroke-width='1.9' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M5 3h10l4 4v14H5z'/%3E%3Cpath d='M15 3v4h4M8 11h6'/%3E%3Cpath d='m8 16 2.3 2.3L15 13.6'/%3E%3C/svg%3E");\r
+}\r
+\r
+/* Generate All \u2014 four outputs + sparkle */\r
+.sn-ep__action[data-action="generate-all-notes"] .sn-ep__icon::before {\r
+  -webkit-mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='white' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'%3E%3Crect x='3' y='4' width='6' height='6' rx='1.3'/%3E%3Crect x='3' y='14' width='6' height='6' rx='1.3'/%3E%3Crect x='13' y='14' width='6' height='6' rx='1.3'/%3E%3Cpath d='M16 2.5 16.8 4.7 19 5.5l-2.2.8L16 8.5l-.8-2.2-2.2-.8 2.2-.8z'/%3E%3C/svg%3E");\r
+  mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='white' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'%3E%3Crect x='3' y='4' width='6' height='6' rx='1.3'/%3E%3Crect x='3' y='14' width='6' height='6' rx='1.3'/%3E%3Crect x='13' y='14' width='6' height='6' rx='1.3'/%3E%3Cpath d='M16 2.5 16.8 4.7 19 5.5l-2.2.8L16 8.5l-.8-2.2-2.2-.8 2.2-.8z'/%3E%3C/svg%3E");\r
+}\r
+\r
+/* Reminder */\r
+.sn-ep__action[data-action="open-reminder"] .sn-ep__icon::before {\r
+  -webkit-mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='white' stroke-width='1.9' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M18 8a6 6 0 0 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9'/%3E%3Cpath d='M10 21h4'/%3E%3Cpath d='M18.5 3.5h3M20 2v3'/%3E%3C/svg%3E");\r
+  mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='white' stroke-width='1.9' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M18 8a6 6 0 0 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9'/%3E%3Cpath d='M10 21h4'/%3E%3Cpath d='M18.5 3.5h3M20 2v3'/%3E%3C/svg%3E");\r
+}\r
+\r
+/* Calendar */\r
+.sn-ep__action[data-action="create-calendar-event"] .sn-ep__icon::before {\r
+  -webkit-mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='white' stroke-width='1.9' stroke-linecap='round' stroke-linejoin='round'%3E%3Crect x='3' y='5' width='18' height='16' rx='2'/%3E%3Cpath d='M8 3v4M16 3v4M3 10h18'/%3E%3Cpath d='M12 13v5M9.5 15.5h5'/%3E%3C/svg%3E");\r
+  mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='white' stroke-width='1.9' stroke-linecap='round' stroke-linejoin='round'%3E%3Crect x='3' y='5' width='18' height='16' rx='2'/%3E%3Cpath d='M8 3v4M16 3v4M3 10h18'/%3E%3Cpath d='M12 13v5M9.5 15.5h5'/%3E%3C/svg%3E");\r
+}\r
+\r
+/* PDF export */\r
+.sn-ep__action[data-action="open-pdf"] .sn-ep__icon::before {\r
+  -webkit-mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='white' stroke-width='1.9' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M6 3h9l4 4v14H6z'/%3E%3Cpath d='M15 3v5h4M9 12h3M9 15h2'/%3E%3Cpath d='M16 12v6M13.5 15.5 16 18l2.5-2.5'/%3E%3C/svg%3E");\r
+  mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='white' stroke-width='1.9' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M6 3h9l4 4v14H6z'/%3E%3Cpath d='M15 3v5h4M9 12h3M9 15h2'/%3E%3Cpath d='M16 12v6M13.5 15.5 16 18l2.5-2.5'/%3E%3C/svg%3E");\r
+}\r
+\r
+/* User Info \u2014 ID card */\r
+.sn-ep__action[data-action="user-info"] .sn-ep__icon::before {\r
+  -webkit-mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='white' stroke-width='1.9' stroke-linecap='round' stroke-linejoin='round'%3E%3Crect x='3' y='5' width='18' height='14' rx='2'/%3E%3Ccircle cx='8' cy='10' r='2.2'/%3E%3Cpath d='M5.5 16c.5-2 1.5-3 2.5-3s2 .9 2.5 3M14 9h4M14 13h4'/%3E%3C/svg%3E");\r
+  mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='white' stroke-width='1.9' stroke-linecap='round' stroke-linejoin='round'%3E%3Crect x='3' y='5' width='18' height='14' rx='2'/%3E%3Ccircle cx='8' cy='10' r='2.2'/%3E%3Cpath d='M5.5 16c.5-2 1.5-3 2.5-3s2 .9 2.5 3M14 9h4M14 13h4'/%3E%3C/svg%3E");\r
+}\r
+\r
+/* User Tickets \u2014 stacked ticket cards */\r
+.sn-ep__action[data-action="user-open-tickets"] .sn-ep__icon::before {\r
+  -webkit-mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='white' stroke-width='1.9' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M4 7h14a2 2 0 0 1 2 2v7a2 2 0 0 1-2 2H4z'/%3E%3Cpath d='M7 4h12a2 2 0 0 1 2 2v7M8 11h7M8 14h4'/%3E%3C/svg%3E");\r
+  mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='white' stroke-width='1.9' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M4 7h14a2 2 0 0 1 2 2v7a2 2 0 0 1-2 2H4z'/%3E%3Cpath d='M7 4h12a2 2 0 0 1 2 2v7M8 11h7M8 14h4'/%3E%3C/svg%3E");\r
+}\r
+\r
+/* Find CI \u2014 cube + search */\r
+.sn-ep__action[data-action="find-ci"] .sn-ep__icon::before {\r
+  -webkit-mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='white' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m9 3 6 3v6l-6 3-6-3V6z'/%3E%3Cpath d='M9 3v7M3 6l6 3 6-3'/%3E%3Ccircle cx='17' cy='17' r='3.5'/%3E%3Cpath d='m19.5 19.5 2 2'/%3E%3C/svg%3E");\r
+  mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='white' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m9 3 6 3v6l-6 3-6-3V6z'/%3E%3Cpath d='M9 3v7M3 6l6 3 6-3'/%3E%3Ccircle cx='17' cy='17' r='3.5'/%3E%3Cpath d='m19.5 19.5 2 2'/%3E%3C/svg%3E");\r
+}\r
+\r
+/* Assign \u2014 user + check */\r
+.sn-ep__action[data-action="assign-to-my-group"] .sn-ep__icon::before {\r
+  -webkit-mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='white' stroke-width='1.9' stroke-linecap='round' stroke-linejoin='round'%3E%3Ccircle cx='9' cy='8' r='3.5'/%3E%3Cpath d='M3 20c.5-4 2.7-6 6-6 1.3 0 2.4.3 3.3.9'/%3E%3Cpath d='m14 18 2.2 2.2L21 15'/%3E%3C/svg%3E");\r
+  mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='white' stroke-width='1.9' stroke-linecap='round' stroke-linejoin='round'%3E%3Ccircle cx='9' cy='8' r='3.5'/%3E%3Cpath d='M3 20c.5-4 2.7-6 6-6 1.3 0 2.4.3 3.3.9'/%3E%3Cpath d='m14 18 2.2 2.2L21 15'/%3E%3C/svg%3E");\r
+}\r
+\r
+/* Links */\r
+.sn-ep__action[data-action="open-ep-links"] .sn-ep__icon::before {\r
+  -webkit-mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='white' stroke-width='1.9' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M10 13a5 5 0 0 0 7.1 0l2-2a5 5 0 0 0-7.1-7.1l-1.1 1.1'/%3E%3Cpath d='M14 11a5 5 0 0 0-7.1 0l-2 2A5 5 0 0 0 12 20.1l1.1-1.1'/%3E%3C/svg%3E");\r
+  mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='white' stroke-width='1.9' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M10 13a5 5 0 0 0 7.1 0l2-2a5 5 0 0 0-7.1-7.1l-1.1 1.1'/%3E%3Cpath d='M14 11a5 5 0 0 0-7.1 0l-2 2A5 5 0 0 0 12 20.1l1.1-1.1'/%3E%3C/svg%3E");\r
+}\r
+\r
+/* Settings \u2014 sliders instead of generic gear: clearer for customization */\r
+.sn-ep__action[data-action="open-settings"] .sn-ep__icon::before {\r
+  -webkit-mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='white' stroke-width='1.9' stroke-linecap='round'%3E%3Cpath d='M4 6h16M4 12h16M4 18h16'/%3E%3Ccircle cx='9' cy='6' r='2' fill='white' stroke='none'/%3E%3Ccircle cx='15' cy='12' r='2' fill='white' stroke='none'/%3E%3Ccircle cx='11' cy='18' r='2' fill='white' stroke='none'/%3E%3C/svg%3E");\r
+  mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='white' stroke-width='1.9' stroke-linecap='round'%3E%3Cpath d='M4 6h16M4 12h16M4 18h16'/%3E%3Ccircle cx='9' cy='6' r='2' fill='white' stroke='none'/%3E%3Ccircle cx='15' cy='12' r='2' fill='white' stroke='none'/%3E%3Ccircle cx='11' cy='18' r='2' fill='white' stroke='none'/%3E%3C/svg%3E");\r
+}\r
+\r
+/* Stronger semantic icon colors while preserving user custom --btn-color. */\r
+.sn-ep__action:not([style*="--btn-color"])[data-action="quick-draft"] .sn-ep__icon,\r
+.sn-ep__action:not([style*="--btn-color"])[data-action="generate-email-draft"] .sn-ep__icon,\r
+.sn-ep__action:not([style*="--btn-color"])[data-action="generate-all-notes"] .sn-ep__icon { color: #2563eb; background: rgba(37, 99, 235, 0.10); }\r
+.sn-ep__action:not([style*="--btn-color"])[data-action="open-work-notes"] .sn-ep__icon,\r
+.sn-ep__action:not([style*="--btn-color"])[data-action="generate-work-notes"] .sn-ep__icon { color: #0f766e; background: rgba(15, 118, 110, 0.10); }\r
+.sn-ep__action:not([style*="--btn-color"])[data-action="generate-close-notes"] .sn-ep__icon,\r
+.sn-ep__action:not([style*="--btn-color"])[data-action="incident-resolution-notes"] .sn-ep__icon { color: #b45309; background: rgba(180, 83, 9, 0.10); }\r
+.sn-ep__action:not([style*="--btn-color"])[data-action="open-reminder"] .sn-ep__icon { color: #d97706; background: rgba(217, 119, 6, 0.10); }\r
+.sn-ep__action:not([style*="--btn-color"])[data-action="create-calendar-event"] .sn-ep__icon { color: #0284c7; background: rgba(2, 132, 199, 0.10); }\r
+.sn-ep__action:not([style*="--btn-color"])[data-action="open-pdf"] .sn-ep__icon { color: #7c3aed; background: rgba(124, 58, 237, 0.10); }\r
+.sn-ep__action:not([style*="--btn-color"])[data-action="user-info"] .sn-ep__icon { color: #475569; background: rgba(71, 85, 105, 0.10); }\r
+.sn-ep__action:not([style*="--btn-color"])[data-action="user-open-tickets"] .sn-ep__icon { color: #0369a1; background: rgba(3, 105, 161, 0.10); }\r
+.sn-ep__action:not([style*="--btn-color"])[data-action="find-ci"] .sn-ep__icon { color: #15803d; background: rgba(21, 128, 61, 0.10); }\r
+.sn-ep__action:not([style*="--btn-color"])[data-action="assign-to-my-group"] .sn-ep__icon { color: #4f46e5; background: rgba(79, 70, 229, 0.10); }\r
+.sn-ep__action:not([style*="--btn-color"])[data-action="open-ep-links"] .sn-ep__icon { color: #0f766e; background: rgba(15, 118, 110, 0.10); }\r
+.sn-ep__action:not([style*="--btn-color"])[data-action="open-settings"] .sn-ep__icon { color: #64748b; background: rgba(100, 116, 139, 0.10); }\r
+\r
+/* Icon-only mode gets a slightly larger tap target without widening expanded mode. */\r
+.sn-ep[data-ep-mode="icons"] .sn-ep__action {\r
+  justify-content: center;\r
+  padding-inline: 6px;\r
+}\r
+\r
+.sn-ep[data-ep-mode="icons"] .sn-ep__action .sn-ep__icon {\r
+  width: 32px;\r
+  height: 32px;\r
+  border-radius: 10px;\r
+}\r
+\r
+@media (prefers-reduced-motion: reduce) {\r
+  .sn-ep__action .sn-ep__icon,\r
+  .sn-ep__action .sn-ep__icon svg {\r
+    transition: none;\r
+  }\r
+}\r
+`;
+
+  // Assistant/ui/styles/brand-icon.css
+  var brand_icon_default = `/* \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\r
+   EDGE TAB BRAND ICON\r
+   Replaces the generic status dot with a compact assistant mark.\r
+   Pure CSS/SVG mask: no image dependency and theme-safe.\r
+   \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500 */\r
+\r
+.sn-ep__tab-dot {\r
+  position: relative;\r
+  width: 22px;\r
+  height: 22px;\r
+  border-radius: 7px;\r
+  background:\r
+    linear-gradient(145deg, #2563eb 0%, #0ea5e9 52%, #0d9488 100%);\r
+  box-shadow:\r
+    0 0 0 1px rgba(255,255,255,0.58) inset,\r
+    0 3px 8px rgba(37, 99, 235, 0.22),\r
+    0 0 0 3px rgba(14, 165, 233, 0.08);\r
+  transition:\r
+    transform 160ms cubic-bezier(0.2, 0.8, 0.2, 1),\r
+    box-shadow 160ms ease,\r
+    filter 160ms ease;\r
+}\r
+\r
+.sn-ep__tab-dot::before {\r
+  content: "";\r
+  position: absolute;\r
+  inset: 4px;\r
+  background: #fff;\r
+  -webkit-mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='white' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M13 2 5.5 12H11l-1 10 8.5-12H13z'/%3E%3Cpath d='M18.5 3.5 19 5l1.5.5L19 6l-.5 1.5L18 6l-1.5-.5L18 5z'/%3E%3C/svg%3E");\r
+  mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='white' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M13 2 5.5 12H11l-1 10 8.5-12H13z'/%3E%3Cpath d='M18.5 3.5 19 5l1.5.5L19 6l-.5 1.5L18 6l-1.5-.5L18 5z'/%3E%3C/svg%3E");\r
+  -webkit-mask-repeat: no-repeat;\r
+  mask-repeat: no-repeat;\r
+  -webkit-mask-position: center;\r
+  mask-position: center;\r
+  -webkit-mask-size: contain;\r
+  mask-size: contain;\r
+}\r
+\r
+.sn-ep__tab:hover .sn-ep__tab-dot {\r
+  transform: scale(1.08) rotate(-3deg);\r
+  filter: saturate(1.08);\r
+  box-shadow:\r
+    0 0 0 1px rgba(255,255,255,0.68) inset,\r
+    0 5px 13px rgba(37, 99, 235, 0.28),\r
+    0 0 0 4px rgba(14, 165, 233, 0.10);\r
+}\r
+\r
+.sn-ep__tab:active .sn-ep__tab-dot {\r
+  transform: scale(0.95);\r
+}\r
+\r
+/* A very small status pulse when the assistant is collapsed. */\r
+.sn-ep[data-ep-mode="tab"] .sn-ep__tab-dot::after {\r
+  content: "";\r
+  position: absolute;\r
+  top: -2px;\r
+  right: -2px;\r
+  width: 6px;\r
+  height: 6px;\r
+  border-radius: 50%;\r
+  background: #22c55e;\r
+  border: 2px solid var(--ep-surface, #fff);\r
+  box-shadow: 0 0 0 2px rgba(34, 197, 94, 0.12);\r
+}\r
+\r
+:root[data-ep-theme="dark"] .sn-ep__tab-dot,\r
+:root[data-ep-theme="midnightSteel"] .sn-ep__tab-dot {\r
+  box-shadow:\r
+    0 0 0 1px rgba(255,255,255,0.18) inset,\r
+    0 4px 12px rgba(14, 165, 233, 0.24),\r
+    0 0 0 3px rgba(14, 165, 233, 0.10);\r
+}\r
+\r
+@media (prefers-reduced-motion: reduce) {\r
+  .sn-ep__tab-dot {\r
+    transition: none;\r
+  }\r
+}\r
+`;
 
   // Assistant/ui/styles/responsive.css
-  var responsive_default = "/* \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\n   RESPONSIVE\n   \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500 */\n@media (max-width: 768px) {\n  .sn-assistant-panel {\n    width: min(92vw, 280px);\n  }\n\n  .sn-assistant-chip-row,\n  .sn-assistant-settings-grid,\n  .sn-assistant-preview__meta {\n    grid-template-columns: 1fr;\n  }\n\n  .sn-assistant-modal {\n    padding: 8px;\n    align-items: stretch;\n  }\n\n  .sn-assistant-modal__dialog {\n    width: calc(100vw - 8px);\n    height: calc(100dvh - 8px);\n    max-height: calc(100dvh - 8px);\n    min-height: 0;\n    border-radius: 15px;\n  }\n\n  .sn-assistant-modal__body {\n    min-height: 0;\n  }\n\n  .sn-assistant-template-list {\n    max-height: min(46vh, 420px);\n    min-height: 220px;\n  }\n\n  .sn-assistant-template-workbench {\n    grid-template-columns: 1fr;\n  }\n\n  .sn-assistant-template-editor-shell {\n    max-height: none;\n    min-height: 320px;\n  }\n\n  .sn-assistant-template-help__grid {\n    grid-template-columns: 1fr;\n  }\n}\n";
+  var responsive_default = "/* \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\r\n   RESPONSIVE\r\n   \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500 */\r\n@media (max-width: 768px) {\r\n  .sn-assistant-panel {\r\n    width: min(92vw, 280px);\r\n  }\r\n\r\n  .sn-assistant-chip-row,\r\n  .sn-assistant-settings-grid,\r\n  .sn-assistant-preview__meta {\r\n    grid-template-columns: 1fr;\r\n  }\r\n\r\n  .sn-assistant-modal {\r\n    padding: 8px;\r\n    align-items: stretch;\r\n  }\r\n\r\n  .sn-assistant-modal__dialog {\r\n    width: calc(100vw - 8px);\r\n    height: calc(100dvh - 8px);\r\n    max-height: calc(100dvh - 8px);\r\n    min-height: 0;\r\n    border-radius: 15px;\r\n  }\r\n\r\n  .sn-assistant-modal__body {\r\n    min-height: 0;\r\n  }\r\n\r\n  .sn-assistant-template-list {\r\n    max-height: min(46vh, 420px);\r\n    min-height: 220px;\r\n  }\r\n\r\n  .sn-assistant-template-workbench {\r\n    grid-template-columns: 1fr;\r\n  }\r\n\r\n  .sn-assistant-template-editor-shell {\r\n    max-height: none;\r\n    min-height: 320px;\r\n  }\r\n\r\n  .sn-assistant-template-help__grid {\r\n    grid-template-columns: 1fr;\r\n  }\r\n}\r\n";
 
   // Assistant/ui/styles/epLinks.css
-  var epLinks_default = "/* \u2500\u2500\u2500 EP Links floating panel \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500 */\n.sn-ep-links-root {\n  position: fixed;\n  right: 72px;\n  top: 50%;\n  transform: translateY(-50%);\n  z-index: 2147483640;\n  font-family: var(--sn-assistant-font);\n}\n\n.sn-ep-links__panel {\n  background: var(--sn-assistant-panel);\n  border: 1px solid var(--sn-assistant-border);\n  border-radius: var(--sn-assistant-radius);\n  box-shadow: var(--sn-assistant-shadow);\n  min-width: 260px;\n  max-width: 340px;\n  overflow: hidden;\n}\n\n.sn-ep-links__header {\n  display: flex;\n  align-items: center;\n  justify-content: space-between;\n  gap: 8px;\n  padding: 10px 12px 8px;\n  border-bottom: 1px solid var(--sn-assistant-border);\n}\n\n.sn-ep-links__title {\n  font-size: 13px;\n  font-weight: 600;\n  color: var(--sn-assistant-ink);\n  white-space: nowrap;\n  overflow: hidden;\n  text-overflow: ellipsis;\n}\n\n.sn-ep-links__body {\n  padding: 8px 0 4px;\n  max-height: min(60vh, 420px);\n  overflow-y: auto;\n}\n\n.sn-ep-links__section {\n  padding: 4px 0 8px;\n}\n\n.sn-ep-links__section + .sn-ep-links__section {\n  border-top: 1px solid var(--sn-assistant-border);\n  margin-top: 4px;\n}\n\n.sn-ep-links__section-label {\n  font-size: 10px;\n  font-weight: 700;\n  text-transform: uppercase;\n  letter-spacing: 0.06em;\n  color: var(--sn-assistant-muted);\n  padding: 0 12px 4px;\n}\n\n.sn-ep-links__item {\n  display: flex;\n  align-items: center;\n  gap: 8px;\n  padding: 7px 12px;\n  color: var(--sn-assistant-ink);\n  text-decoration: none;\n  font-size: 13px;\n  transition: background 120ms;\n  cursor: pointer;\n}\n\n.sn-ep-links__item:hover {\n  background: var(--sn-assistant-surface);\n  color: var(--sn-assistant-accent);\n}\n\n.sn-ep-links__icon {\n  font-size: 12px;\n  opacity: 0.5;\n  flex-shrink: 0;\n}\n\n.sn-ep-links__label {\n  overflow: hidden;\n  text-overflow: ellipsis;\n  white-space: nowrap;\n}\n\n.sn-ep-links__footer-hint {\n  font-size: 10px;\n  color: var(--sn-assistant-muted);\n  padding: 6px 12px 8px;\n  border-top: 1px solid var(--sn-assistant-border);\n  margin-top: 4px;\n}\n\n/* \u2500\u2500\u2500 Custom links row in Launcher settings section \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500 */\n.sn-assistant-custom-link-row {\n  display: flex;\n  align-items: center;\n  gap: 6px;\n}\n\n.sn-assistant-custom-link-row .sn-assistant-input {\n  padding: 5px 8px;\n  font-size: 12px;\n}\n\n/* \u2500\u2500\u2500 Launcher footer + copy summary button \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500 */\n.sn-ep__footer {\n  display: flex;\n  align-items: center;\n  justify-content: space-between;\n  gap: 6px;\n  padding: 6px 8px;\n  border-top: 1px solid var(--ep-border, var(--sn-assistant-border));\n  flex-shrink: 0;\n}\n\n.sn-ep__copy-summary-btn {\n  flex-shrink: 0;\n  font-size: 9px;\n  font-weight: 600;\n  letter-spacing: 0.02em;\n  background: var(--sn-assistant-accent-soft);\n  color: var(--sn-assistant-accent);\n  border: 1px solid transparent;\n  border-radius: 6px;\n  padding: 3px 7px;\n  cursor: pointer;\n  font-family: inherit;\n  transition: background 0.15s, border-color 0.15s;\n  white-space: nowrap;\n}\n\n.sn-ep__copy-summary-btn:hover {\n  background: var(--sn-assistant-accent);\n  color: #fff;\n}\n\n/* \u2500\u2500\u2500 SLA warning indicator \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500 */\n.sn-ep__sla-dot {\n  position: absolute;\n  top: 5px;\n  right: 5px;\n  width: 8px;\n  height: 8px;\n  border-radius: 50%;\n  background: #e53e3e;\n  box-shadow: 0 0 0 2px var(--sn-assistant-panel, #fff);\n  animation: sla-pulse 1.8s infinite;\n  pointer-events: none;\n}\n\n@keyframes sla-pulse {\n  0%, 100% { opacity: 1; transform: scale(1); }\n  50% { opacity: 0.6; transform: scale(1.3); }\n}\n\n@keyframes shake {\n  0%, 100% { transform: translateX(0); }\n  20% { transform: translateX(-1.8px); }\n  40% { transform: translateX(1.8px); }\n  60% { transform: translateX(-1.2px); }\n  80% { transform: translateX(1.2px); }\n}\n\n.sn-ep--edit-mode .sn-ep__action {\n  animation: shake 0.3s ease-in-out infinite;\n}\n\n.sn-ep__tab {\n  position: relative; /* needed for .sn-ep__sla-dot absolute positioning */\n}\n\n.sn-ep__sla-badge {\n  display: inline-flex;\n  align-items: center;\n  padding: 1px 5px;\n  border-radius: 4px;\n  background: #e53e3e;\n  color: #fff;\n  font-size: 9px;\n  font-weight: 700;\n  letter-spacing: 0.06em;\n  margin-left: 5px;\n  vertical-align: middle;\n}\n";
+  var epLinks_default = "/* \u2500\u2500\u2500 EP Links floating panel \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500 */\r\n.sn-ep-links-root {\r\n  position: fixed;\r\n  right: 72px;\r\n  top: 50%;\r\n  transform: translateY(-50%);\r\n  z-index: 2147483640;\r\n  font-family: var(--sn-assistant-font);\r\n}\r\n\r\n.sn-ep-links__panel {\r\n  background: var(--sn-assistant-panel);\r\n  border: 1px solid var(--sn-assistant-border);\r\n  border-radius: var(--sn-assistant-radius);\r\n  box-shadow: var(--sn-assistant-shadow);\r\n  min-width: 260px;\r\n  max-width: 340px;\r\n  overflow: hidden;\r\n}\r\n\r\n.sn-ep-links__header {\r\n  display: flex;\r\n  align-items: center;\r\n  justify-content: space-between;\r\n  gap: 8px;\r\n  padding: 10px 12px 8px;\r\n  border-bottom: 1px solid var(--sn-assistant-border);\r\n}\r\n\r\n.sn-ep-links__title {\r\n  font-size: 13px;\r\n  font-weight: 600;\r\n  color: var(--sn-assistant-ink);\r\n  white-space: nowrap;\r\n  overflow: hidden;\r\n  text-overflow: ellipsis;\r\n}\r\n\r\n.sn-ep-links__body {\r\n  padding: 8px 0 4px;\r\n  max-height: min(60vh, 420px);\r\n  overflow-y: auto;\r\n}\r\n\r\n.sn-ep-links__section {\r\n  padding: 4px 0 8px;\r\n}\r\n\r\n.sn-ep-links__section + .sn-ep-links__section {\r\n  border-top: 1px solid var(--sn-assistant-border);\r\n  margin-top: 4px;\r\n}\r\n\r\n.sn-ep-links__section-label {\r\n  font-size: 10px;\r\n  font-weight: 700;\r\n  text-transform: uppercase;\r\n  letter-spacing: 0.06em;\r\n  color: var(--sn-assistant-muted);\r\n  padding: 0 12px 4px;\r\n}\r\n\r\n.sn-ep-links__item {\r\n  display: flex;\r\n  align-items: center;\r\n  gap: 8px;\r\n  padding: 7px 12px;\r\n  color: var(--sn-assistant-ink);\r\n  text-decoration: none;\r\n  font-size: 13px;\r\n  transition: background 120ms;\r\n  cursor: pointer;\r\n}\r\n\r\n.sn-ep-links__item:hover {\r\n  background: var(--sn-assistant-surface);\r\n  color: var(--sn-assistant-accent);\r\n}\r\n\r\n.sn-ep-links__icon {\r\n  font-size: 12px;\r\n  opacity: 0.5;\r\n  flex-shrink: 0;\r\n}\r\n\r\n.sn-ep-links__label {\r\n  overflow: hidden;\r\n  text-overflow: ellipsis;\r\n  white-space: nowrap;\r\n}\r\n\r\n.sn-ep-links__footer-hint {\r\n  font-size: 10px;\r\n  color: var(--sn-assistant-muted);\r\n  padding: 6px 12px 8px;\r\n  border-top: 1px solid var(--sn-assistant-border);\r\n  margin-top: 4px;\r\n}\r\n\r\n/* \u2500\u2500\u2500 Custom links row in Launcher settings section \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500 */\r\n.sn-assistant-custom-link-row {\r\n  display: flex;\r\n  align-items: center;\r\n  gap: 6px;\r\n}\r\n\r\n.sn-assistant-custom-link-row .sn-assistant-input {\r\n  padding: 5px 8px;\r\n  font-size: 12px;\r\n}\r\n\r\n/* \u2500\u2500\u2500 Launcher footer + copy summary button \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500 */\r\n.sn-ep__footer {\r\n  display: flex;\r\n  align-items: center;\r\n  justify-content: space-between;\r\n  gap: 6px;\r\n  padding: 6px 8px;\r\n  border-top: 1px solid var(--ep-border, var(--sn-assistant-border));\r\n  flex-shrink: 0;\r\n}\r\n\r\n.sn-ep__copy-summary-btn {\r\n  flex-shrink: 0;\r\n  font-size: 9px;\r\n  font-weight: 600;\r\n  letter-spacing: 0.02em;\r\n  background: var(--sn-assistant-accent-soft);\r\n  color: var(--sn-assistant-accent);\r\n  border: 1px solid transparent;\r\n  border-radius: 6px;\r\n  padding: 3px 7px;\r\n  cursor: pointer;\r\n  font-family: inherit;\r\n  transition: background 0.15s, border-color 0.15s;\r\n  white-space: nowrap;\r\n}\r\n\r\n.sn-ep__copy-summary-btn:hover {\r\n  background: var(--sn-assistant-accent);\r\n  color: #fff;\r\n}\r\n\r\n/* \u2500\u2500\u2500 SLA warning indicator \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500 */\r\n.sn-ep__sla-dot {\r\n  position: absolute;\r\n  top: 5px;\r\n  right: 5px;\r\n  width: 8px;\r\n  height: 8px;\r\n  border-radius: 50%;\r\n  background: #e53e3e;\r\n  box-shadow: 0 0 0 2px var(--sn-assistant-panel, #fff);\r\n  animation: sla-pulse 1.8s infinite;\r\n  pointer-events: none;\r\n}\r\n\r\n@keyframes sla-pulse {\r\n  0%, 100% { opacity: 1; transform: scale(1); }\r\n  50% { opacity: 0.6; transform: scale(1.3); }\r\n}\r\n\r\n@keyframes shake {\r\n  0%, 100% { transform: translateX(0); }\r\n  20% { transform: translateX(-1.8px); }\r\n  40% { transform: translateX(1.8px); }\r\n  60% { transform: translateX(-1.2px); }\r\n  80% { transform: translateX(1.2px); }\r\n}\r\n\r\n.sn-ep--edit-mode .sn-ep__action {\r\n  animation: shake 0.3s ease-in-out infinite;\r\n}\r\n\r\n.sn-ep__tab {\r\n  position: relative; /* needed for .sn-ep__sla-dot absolute positioning */\r\n}\r\n\r\n.sn-ep__sla-badge {\r\n  display: inline-flex;\r\n  align-items: center;\r\n  padding: 1px 5px;\r\n  border-radius: 4px;\r\n  background: #e53e3e;\r\n  color: #fff;\r\n  font-size: 9px;\r\n  font-weight: 700;\r\n  letter-spacing: 0.06em;\r\n  margin-left: 5px;\r\n  vertical-align: middle;\r\n}\r\n";
 
   // Assistant/ui/styles/workNotes-enhanced.css
-  var workNotes_enhanced_default = "/* \u2500\u2500\u2500 Work Notes canned phrase chips \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500 */\n.sn-assistant-worknotes__canned {\n  margin-bottom: 2px;\n}\n\n.sn-assistant-worknotes__canned-chips {\n  flex-wrap: wrap;\n  gap: 4px;\n  max-height: 64px;\n  padding: 0;\n}\n\n.sn-assistant-worknotes__canned-chip {\n  font-size: 10px;\n  padding: 4px 8px;\n  border-radius: 7px;\n  background: color-mix(in srgb, var(--sn-assistant-accent-soft) 75%, var(--sn-assistant-panel));\n  color: color-mix(in srgb, var(--sn-assistant-accent-strong) 85%, var(--sn-assistant-ink));\n  border-color: color-mix(in srgb, var(--sn-assistant-accent) 12%, transparent);\n}\n\n.sn-assistant-worknotes__canned-chip:hover {\n  background: var(--sn-assistant-accent);\n  color: #fff;\n}\n\n.sn-assistant-worknotes__canned-chip {\n  display: inline-flex;\n  align-items: center;\n  gap: 6px;\n}\n\n.sn-assistant-worknotes__canned-label {\n  max-width: 170px;\n  overflow: hidden;\n  text-overflow: ellipsis;\n  white-space: nowrap;\n}\n\n.sn-assistant-worknotes__canned-remove {\n  display: inline-flex;\n  align-items: center;\n  justify-content: center;\n  width: 14px;\n  height: 14px;\n  border-radius: 999px;\n  font-size: 11px;\n  line-height: 1;\n  font-weight: 700;\n  background: rgba(0, 0, 0, 0.12);\n}\n\n/* \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\n   WORK NOTES \u2014 IMPROVED LAYOUT\n   \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500 */\n.sn-assistant-worknotes__editor-header {\n  display: flex;\n  align-items: center;\n  justify-content: space-between;\n  margin-bottom: 3px;\n}\n\n.sn-assistant-worknotes__char-count {\n  font-size: 10px;\n  color: var(--sn-assistant-muted);\n  font-weight: 500;\n  flex-shrink: 0;\n  font-variant-numeric: tabular-nums;\n}\n\n.sn-assistant-worknotes__textarea {\n  min-height: 120px;\n  resize: vertical;\n  line-height: 1.45;\n  padding: 10px 11px;\n}\n\n.sn-assistant-worknotes__editor--primary {\n  order: -1;\n}\n\n.sn-assistant-worknotes__picker {\n  display: flex;\n  flex-direction: column;\n  gap: 8px;\n  padding: 10px;\n  border-radius: 10px;\n  background: color-mix(in srgb, var(--sn-assistant-surface) 55%, transparent);\n  border: 1px solid color-mix(in srgb, var(--sn-assistant-border) 75%, transparent);\n}\n\n.sn-assistant-worknotes__editor--primary .sn-assistant-worknotes__textarea {\n  min-height: 140px;\n}\n\n.sn-assistant-worknotes__footer {\n  flex-direction: row;\n  align-items: center;\n  justify-content: space-between;\n  gap: 10px;\n}\n\n.sn-assistant-worknotes__footer-actions {\n  display: flex;\n  flex: 1;\n  gap: 8px;\n}\n\n.sn-assistant-worknotes__footer-actions .sn-assistant-button {\n  flex: 1;\n  min-width: 0;\n  height: 34px;\n}\n\n.sn-assistant-worknotes__footer-tools {\n  display: inline-flex;\n  align-items: center;\n  gap: 4px;\n  flex-shrink: 0;\n}\n\n.sn-assistant-worknotes__footer-tools .sn-assistant-mini-button {\n  width: 32px;\n  height: 32px;\n  border-radius: 8px;\n}\n\n.sn-assistant-worknotes__footer-primary,\n.sn-assistant-worknotes__footer-secondary {\n  display: flex;\n  gap: 8px;\n  flex: 1;\n}\n";
+  var workNotes_enhanced_default = '/* \u2500\u2500\u2500 Work Notes canned phrase chips \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500 */\r\n.sn-assistant-worknotes__canned {\r\n  margin-bottom: 2px;\r\n}\r\n\r\n.sn-assistant-worknotes__canned-chips {\r\n  flex-wrap: wrap;\r\n  gap: 4px;\r\n  max-height: 64px;\r\n  padding: 6px 0 0;\r\n}\r\n\r\n.sn-assistant-worknotes__canned-chip {\r\n  font-size: 10px;\r\n  padding: 4px 8px;\r\n  border-radius: 7px;\r\n  background: color-mix(in srgb, var(--sn-assistant-accent-soft) 75%, var(--sn-assistant-panel));\r\n  color: color-mix(in srgb, var(--sn-assistant-accent-strong) 85%, var(--sn-assistant-ink));\r\n  border-color: color-mix(in srgb, var(--sn-assistant-accent) 12%, transparent);\r\n  display: inline-flex;\r\n  align-items: center;\r\n  gap: 6px;\r\n}\r\n\r\n.sn-assistant-worknotes__canned-chip:hover {\r\n  background: var(--sn-assistant-accent);\r\n  color: #fff;\r\n}\r\n\r\n.sn-assistant-worknotes__canned-label {\r\n  max-width: 170px;\r\n  overflow: hidden;\r\n  text-overflow: ellipsis;\r\n  white-space: nowrap;\r\n}\r\n\r\n.sn-assistant-worknotes__canned-remove {\r\n  display: inline-flex;\r\n  align-items: center;\r\n  justify-content: center;\r\n  width: 14px;\r\n  height: 14px;\r\n  border-radius: 999px;\r\n  font-size: 11px;\r\n  line-height: 1;\r\n  font-weight: 700;\r\n  background: rgba(0, 0, 0, 0.12);\r\n}\r\n\r\n/* \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\r\n   WORK NOTES \u2014 COMPACT / FOCUSED LAYOUT\r\n   \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500 */\r\n.sn-assistant-worknotes__editor-header {\r\n  display: flex;\r\n  align-items: center;\r\n  justify-content: space-between;\r\n  margin-bottom: 3px;\r\n}\r\n\r\n.sn-assistant-worknotes__char-count {\r\n  font-size: 10px;\r\n  color: var(--sn-assistant-muted);\r\n  font-weight: 500;\r\n  flex-shrink: 0;\r\n  font-variant-numeric: tabular-nums;\r\n}\r\n\r\n.sn-assistant-worknotes__textarea {\r\n  min-height: 112px;\r\n  resize: vertical;\r\n  line-height: 1.45;\r\n  padding: 9px 10px;\r\n}\r\n\r\n.sn-assistant-worknotes__editor--primary {\r\n  order: -1;\r\n}\r\n\r\n.sn-assistant-worknotes__editor--primary .sn-assistant-worknotes__textarea {\r\n  min-height: 124px;\r\n}\r\n\r\n/* Keep the picker visually quiet: editor first, search second, templates on demand. */\r\n.sn-assistant-worknotes__picker {\r\n  display: flex;\r\n  flex-direction: column;\r\n  gap: 7px;\r\n  padding: 0;\r\n  border: 0;\r\n  border-radius: 0;\r\n  background: transparent;\r\n}\r\n\r\n.sn-assistant-worknotes__picker .sn-assistant-searchbar {\r\n  min-height: 32px;\r\n  border-radius: 8px;\r\n  background: color-mix(in srgb, var(--sn-assistant-surface) 42%, var(--sn-assistant-panel));\r\n}\r\n\r\n.sn-assistant-worknotes__picker .sn-assistant-searchbar:focus-within {\r\n  background: var(--sn-assistant-panel);\r\n}\r\n\r\n.sn-assistant-worknotes__templates {\r\n  gap: 4px;\r\n}\r\n\r\n.sn-assistant-worknotes__templates-header {\r\n  min-height: 18px;\r\n}\r\n\r\n.sn-assistant-worknotes__section-hint {\r\n  font-size: 9px;\r\n  font-weight: 500;\r\n  color: var(--sn-assistant-muted);\r\n  opacity: 0.72;\r\n}\r\n\r\n.sn-assistant-worknotes__chips--suggested {\r\n  max-height: none;\r\n  overflow: visible;\r\n  gap: 4px;\r\n}\r\n\r\n.sn-assistant-worknotes__chip {\r\n  font-size: 10.5px;\r\n  line-height: 1.2;\r\n  padding: 4px 8px;\r\n  border-radius: 7px;\r\n  gap: 4px;\r\n}\r\n\r\n.sn-assistant-worknotes__chip-badge {\r\n  min-width: 16px;\r\n  height: 13px;\r\n  padding: 0 3px;\r\n  font-size: 8px;\r\n}\r\n\r\n/* Native details keep the complete catalog available without flooding the panel. */\r\n.sn-assistant-worknotes__browse,\r\n.sn-assistant-worknotes__quick {\r\n  margin: 0;\r\n  padding: 0;\r\n  border: 1px solid color-mix(in srgb, var(--sn-assistant-border) 72%, transparent);\r\n  border-radius: 8px;\r\n  background: color-mix(in srgb, var(--sn-assistant-surface) 30%, transparent);\r\n  overflow: hidden;\r\n}\r\n\r\n.sn-assistant-worknotes__browse-summary {\r\n  min-height: 30px;\r\n  padding: 0 9px;\r\n  display: flex;\r\n  align-items: center;\r\n  gap: 8px;\r\n  cursor: pointer;\r\n  list-style: none;\r\n  user-select: none;\r\n  font-size: 10.5px;\r\n  font-weight: 600;\r\n  color: color-mix(in srgb, var(--sn-assistant-ink) 82%, var(--sn-assistant-muted));\r\n}\r\n\r\n.sn-assistant-worknotes__browse-summary::-webkit-details-marker {\r\n  display: none;\r\n}\r\n\r\n.sn-assistant-worknotes__browse-summary::after {\r\n  content: "\u203A";\r\n  margin-left: 2px;\r\n  color: var(--sn-assistant-muted);\r\n  font-size: 14px;\r\n  line-height: 1;\r\n  transform: rotate(90deg);\r\n  transition: transform 120ms ease;\r\n}\r\n\r\n.sn-assistant-worknotes__browse[open] > .sn-assistant-worknotes__browse-summary::after,\r\n.sn-assistant-worknotes__quick[open] > .sn-assistant-worknotes__browse-summary::after {\r\n  transform: rotate(-90deg);\r\n}\r\n\r\n.sn-assistant-worknotes__browse-summary:hover {\r\n  background: color-mix(in srgb, var(--sn-assistant-ink) 3%, transparent);\r\n}\r\n\r\n.sn-assistant-worknotes__browse-count {\r\n  margin-left: auto;\r\n  min-width: 20px;\r\n  height: 18px;\r\n  padding: 0 6px;\r\n  border-radius: 999px;\r\n  display: inline-flex;\r\n  align-items: center;\r\n  justify-content: center;\r\n  background: color-mix(in srgb, var(--sn-assistant-surface) 78%, transparent);\r\n  color: var(--sn-assistant-muted);\r\n  font-size: 9px;\r\n  font-weight: 700;\r\n  font-variant-numeric: tabular-nums;\r\n}\r\n\r\n.sn-assistant-worknotes__chips--browse {\r\n  max-height: min(22vh, 150px);\r\n  overflow-y: auto;\r\n  padding: 6px 8px 8px;\r\n  border-top: 1px solid color-mix(in srgb, var(--sn-assistant-border) 60%, transparent);\r\n  gap: 4px;\r\n}\r\n\r\n.sn-assistant-worknotes__browse:not([open]) .sn-assistant-worknotes__chips--browse,\r\n.sn-assistant-worknotes__quick:not([open]) .sn-assistant-worknotes__canned-chips {\r\n  display: none;\r\n}\r\n\r\n.sn-assistant-worknotes__quick .sn-assistant-worknotes__canned-chips {\r\n  max-height: 76px;\r\n  overflow-y: auto;\r\n  padding: 6px 8px 8px;\r\n  border-top: 1px solid color-mix(in srgb, var(--sn-assistant-border) 60%, transparent);\r\n}\r\n\r\n.sn-assistant-worknotes__footer {\r\n  flex-direction: row;\r\n  align-items: center;\r\n  justify-content: space-between;\r\n  gap: 8px;\r\n}\r\n\r\n.sn-assistant-worknotes__footer-actions {\r\n  display: flex;\r\n  flex: 1;\r\n  gap: 6px;\r\n}\r\n\r\n.sn-assistant-worknotes__footer-actions .sn-assistant-button {\r\n  flex: 1;\r\n  min-width: 0;\r\n  height: 32px;\r\n  padding-inline: 10px;\r\n}\r\n\r\n.sn-assistant-worknotes__footer-tools {\r\n  display: inline-flex;\r\n  align-items: center;\r\n  gap: 3px;\r\n  flex-shrink: 0;\r\n}\r\n\r\n.sn-assistant-worknotes__footer-tools .sn-assistant-mini-button {\r\n  width: 30px;\r\n  height: 30px;\r\n  border-radius: 7px;\r\n}\r\n\r\n.sn-assistant-worknotes__footer-primary,\r\n.sn-assistant-worknotes__footer-secondary {\r\n  display: flex;\r\n  gap: 8px;\r\n  flex: 1;\r\n}\r\n';
 
   // Assistant/ui/styles/userTickets.css
-  var userTickets_default = "/* \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\n   PANEL BODY \u2014 FLUSH (no padding, used for tables / lists)\n   \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500 */\n.sn-assistant-panel__body--flush {\n  padding: 0;\n  gap: 0;\n}\n\n/* \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\n   USER OPEN TICKETS PANEL\n   \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500 */\n.sn-assistant-panel--user-tickets {\n  width: 520px;\n  max-width: calc(100vw - 24px);\n}\n\n.sn-assistant-tickets-table-wrapper {\n  overflow-x: auto;\n  overflow-y: auto;\n  max-height: min(55vh, 440px);\n}\n\n.sn-assistant-tickets-table {\n  width: 100%;\n  border-collapse: collapse;\n  font-size: 11.5px;\n  font-family: inherit;\n}\n\n.sn-assistant-tickets-table thead tr {\n  background: var(--sn-assistant-surface);\n  position: sticky;\n  top: 0;\n  z-index: 1;\n}\n\n.sn-assistant-tickets-table th {\n  padding: 7px 10px;\n  text-align: left;\n  font-size: 10px;\n  font-weight: 700;\n  letter-spacing: 0.06em;\n  text-transform: uppercase;\n  color: var(--sn-assistant-muted);\n  border-bottom: 1px solid var(--sn-assistant-border);\n  white-space: nowrap;\n}\n\n.sn-assistant-tickets-table td {\n  padding: 8px 10px;\n  border-bottom: 1px solid var(--sn-assistant-border);\n  vertical-align: middle;\n  color: var(--sn-assistant-ink);\n}\n\n.sn-assistant-tickets-table__row {\n  cursor: pointer;\n  transition: background 120ms ease;\n}\n\n.sn-assistant-tickets-table__row:hover td,\n.sn-assistant-tickets-table__row:focus td {\n  background: var(--sn-assistant-accent-soft);\n}\n\n.sn-assistant-tickets-table__row:last-child td {\n  border-bottom: none;\n}\n\n.sn-assistant-tickets-table__number {\n  white-space: nowrap;\n  display: flex;\n  align-items: center;\n  gap: 5px;\n}\n\n.sn-assistant-tickets-table__badge {\n  display: inline-flex;\n  align-items: center;\n  padding: 2px 5px;\n  border-radius: 4px;\n  font-size: 9px;\n  font-weight: 800;\n  letter-spacing: 0.04em;\n  background: var(--sn-assistant-accent-soft);\n  color: var(--sn-assistant-accent);\n  flex-shrink: 0;\n}\n\n.sn-assistant-tickets-table__badge--incident {\n  background: rgba(220, 38, 38, 0.08);\n  color: #dc2626;\n}\n\n.sn-assistant-tickets-table__badge--sc_req_item {\n  background: rgba(5, 150, 105, 0.08);\n  color: #059669;\n}\n\n.sn-assistant-tickets-table__badge--sc_request {\n  background: rgba(217, 119, 6, 0.08);\n  color: #d97706;\n}\n\n.sn-assistant-tickets-table__num-val {\n  font-weight: 700;\n  color: var(--sn-assistant-accent);\n  font-size: 11px;\n}\n\n.sn-assistant-tickets-table__desc {\n  max-width: 220px;\n  overflow: hidden;\n  text-overflow: ellipsis;\n  white-space: nowrap;\n  color: var(--sn-assistant-ink);\n}\n\n.sn-assistant-tickets-table__state {\n  white-space: nowrap;\n}\n\n.sn-assistant-tickets-table__state-pill {\n  display: inline-flex;\n  align-items: center;\n  padding: 2px 7px;\n  border-radius: 999px;\n  font-size: 10px;\n  font-weight: 600;\n  white-space: nowrap;\n  line-height: 1.5;\n}\n\n.sn-assistant-tickets-table__state-pill--new {\n  background: rgba(37, 99, 235, 0.1);\n  color: #2563eb;\n}\n\n.sn-assistant-tickets-table__state-pill--inprogress {\n  background: rgba(5, 150, 105, 0.1);\n  color: #059669;\n}\n\n.sn-assistant-tickets-table__state-pill--pending {\n  background: rgba(217, 119, 6, 0.1);\n  color: #d97706;\n}\n\n.sn-assistant-tickets-table__state-pill--resolved {\n  background: rgba(107, 114, 128, 0.1);\n  color: #6b7280;\n}\n\n.sn-assistant-tickets-table__state-pill--closed {\n  background: rgba(107, 114, 128, 0.06);\n  color: #9ca3af;\n}\n\n.sn-assistant-tickets-table__state-pill--default {\n  color: var(--sn-assistant-muted);\n}\n\n.sn-assistant-tickets-table__date {\n  white-space: nowrap;\n  font-size: 11px;\n  color: var(--sn-assistant-muted);\n  font-variant-numeric: tabular-nums;\n}\n\n.sn-assistant-tickets-loading,\n.sn-assistant-ci-loading {\n  padding: 20px 16px;\n  text-align: center;\n  font-size: 12px;\n  color: var(--sn-assistant-muted);\n  font-style: italic;\n}\n";
+  var userTickets_default = "/* \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\r\n   PANEL BODY \u2014 FLUSH (no padding, used for tables / lists)\r\n   \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500 */\r\n.sn-assistant-panel__body--flush {\r\n  padding: 0;\r\n  gap: 0;\r\n}\r\n\r\n/* \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\r\n   USER OPEN TICKETS PANEL\r\n   \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500 */\r\n.sn-assistant-panel--user-tickets {\r\n  width: 520px;\r\n  max-width: calc(100vw - 24px);\r\n}\r\n\r\n.sn-assistant-tickets-table-wrapper {\r\n  overflow-x: auto;\r\n  overflow-y: auto;\r\n  max-height: min(55vh, 440px);\r\n}\r\n\r\n.sn-assistant-tickets-table {\r\n  width: 100%;\r\n  border-collapse: collapse;\r\n  font-size: 11.5px;\r\n  font-family: inherit;\r\n}\r\n\r\n.sn-assistant-tickets-table thead tr {\r\n  background: var(--sn-assistant-surface);\r\n  position: sticky;\r\n  top: 0;\r\n  z-index: 1;\r\n}\r\n\r\n.sn-assistant-tickets-table th {\r\n  padding: 7px 10px;\r\n  text-align: left;\r\n  font-size: 10px;\r\n  font-weight: 700;\r\n  letter-spacing: 0.06em;\r\n  text-transform: uppercase;\r\n  color: var(--sn-assistant-muted);\r\n  border-bottom: 1px solid var(--sn-assistant-border);\r\n  white-space: nowrap;\r\n}\r\n\r\n.sn-assistant-tickets-table td {\r\n  padding: 8px 10px;\r\n  border-bottom: 1px solid var(--sn-assistant-border);\r\n  vertical-align: middle;\r\n  color: var(--sn-assistant-ink);\r\n}\r\n\r\n.sn-assistant-tickets-table__row {\r\n  cursor: pointer;\r\n  transition: background 120ms ease;\r\n}\r\n\r\n.sn-assistant-tickets-table__row:hover td,\r\n.sn-assistant-tickets-table__row:focus td {\r\n  background: var(--sn-assistant-accent-soft);\r\n}\r\n\r\n.sn-assistant-tickets-table__row:last-child td {\r\n  border-bottom: none;\r\n}\r\n\r\n.sn-assistant-tickets-table__number {\r\n  white-space: nowrap;\r\n  display: flex;\r\n  align-items: center;\r\n  gap: 5px;\r\n}\r\n\r\n.sn-assistant-tickets-table__badge {\r\n  display: inline-flex;\r\n  align-items: center;\r\n  padding: 2px 5px;\r\n  border-radius: 4px;\r\n  font-size: 9px;\r\n  font-weight: 800;\r\n  letter-spacing: 0.04em;\r\n  background: var(--sn-assistant-accent-soft);\r\n  color: var(--sn-assistant-accent);\r\n  flex-shrink: 0;\r\n}\r\n\r\n.sn-assistant-tickets-table__badge--incident {\r\n  background: rgba(220, 38, 38, 0.08);\r\n  color: #dc2626;\r\n}\r\n\r\n.sn-assistant-tickets-table__badge--sc_req_item {\r\n  background: rgba(5, 150, 105, 0.08);\r\n  color: #059669;\r\n}\r\n\r\n.sn-assistant-tickets-table__badge--sc_request {\r\n  background: rgba(217, 119, 6, 0.08);\r\n  color: #d97706;\r\n}\r\n\r\n.sn-assistant-tickets-table__num-val {\r\n  font-weight: 700;\r\n  color: var(--sn-assistant-accent);\r\n  font-size: 11px;\r\n}\r\n\r\n.sn-assistant-tickets-table__desc {\r\n  max-width: 220px;\r\n  overflow: hidden;\r\n  text-overflow: ellipsis;\r\n  white-space: nowrap;\r\n  color: var(--sn-assistant-ink);\r\n}\r\n\r\n.sn-assistant-tickets-table__state {\r\n  white-space: nowrap;\r\n}\r\n\r\n.sn-assistant-tickets-table__state-pill {\r\n  display: inline-flex;\r\n  align-items: center;\r\n  padding: 2px 7px;\r\n  border-radius: 999px;\r\n  font-size: 10px;\r\n  font-weight: 600;\r\n  white-space: nowrap;\r\n  line-height: 1.5;\r\n}\r\n\r\n.sn-assistant-tickets-table__state-pill--new {\r\n  background: rgba(37, 99, 235, 0.1);\r\n  color: #2563eb;\r\n}\r\n\r\n.sn-assistant-tickets-table__state-pill--inprogress {\r\n  background: rgba(5, 150, 105, 0.1);\r\n  color: #059669;\r\n}\r\n\r\n.sn-assistant-tickets-table__state-pill--pending {\r\n  background: rgba(217, 119, 6, 0.1);\r\n  color: #d97706;\r\n}\r\n\r\n.sn-assistant-tickets-table__state-pill--resolved {\r\n  background: rgba(107, 114, 128, 0.1);\r\n  color: #6b7280;\r\n}\r\n\r\n.sn-assistant-tickets-table__state-pill--closed {\r\n  background: rgba(107, 114, 128, 0.06);\r\n  color: #9ca3af;\r\n}\r\n\r\n.sn-assistant-tickets-table__state-pill--default {\r\n  color: var(--sn-assistant-muted);\r\n}\r\n\r\n.sn-assistant-tickets-table__date {\r\n  white-space: nowrap;\r\n  font-size: 11px;\r\n  color: var(--sn-assistant-muted);\r\n  font-variant-numeric: tabular-nums;\r\n}\r\n\r\n.sn-assistant-tickets-loading,\r\n.sn-assistant-ci-loading {\r\n  padding: 20px 16px;\r\n  text-align: center;\r\n  font-size: 12px;\r\n  color: var(--sn-assistant-muted);\r\n  font-style: italic;\r\n}\r\n";
 
   // Assistant/ui/styles/findCi.css
-  var findCi_default = '/* \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\n   FIND CI PANEL\n   \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500 */\n.sn-assistant-panel--find-ci {\n  width: 340px;\n}\n\n.sn-ep[data-ep-view="user-info"] .sn-assistant-panel--user-info,\n.sn-ep[data-ep-view="find-ci"] .sn-assistant-panel--find-ci {\n  width: 520px;\n  max-width: calc(100vw - 24px);\n}\n\n.sn-assistant-ci-list {\n  display: flex;\n  flex-direction: column;\n  overflow-y: auto;\n  max-height: min(55vh, 400px);\n}\n\n.sn-assistant-ci-item {\n  display: flex;\n  align-items: center;\n  gap: 8px;\n  padding: 9px 12px;\n  border-bottom: 1px solid var(--sn-assistant-border);\n  transition: background 120ms ease;\n}\n\n.sn-assistant-ci-item:last-child {\n  border-bottom: none;\n}\n\n.sn-assistant-ci-item--corp {\n  background: var(--sn-assistant-accent-soft);\n}\n\n.sn-assistant-ci-item--corp:hover {\n  background: rgba(37, 99, 235, 0.14);\n}\n\n.sn-assistant-ci-item:not(.sn-assistant-ci-item--corp):hover {\n  background: var(--sn-assistant-surface);\n}\n\n.sn-assistant-ci-item__info {\n  flex: 1;\n  min-width: 0;\n  cursor: pointer;\n  border-radius: 6px;\n  padding: 2px 4px;\n  margin: -2px -4px;\n  transition: background 100ms ease;\n}\n\n.sn-assistant-ci-item__info:hover {\n  background: var(--sn-assistant-border);\n}\n\n.sn-assistant-ci-item__name {\n  font-size: 12px;\n  font-weight: 700;\n  color: var(--sn-assistant-ink);\n  word-break: break-all;\n  display: flex;\n  align-items: center;\n  gap: 5px;\n  flex-wrap: wrap;\n}\n\n.sn-assistant-ci-item__corp-badge {\n  display: inline-flex;\n  align-items: center;\n  padding: 1px 5px;\n  border-radius: 4px;\n  font-size: 9px;\n  font-weight: 800;\n  letter-spacing: 0.05em;\n  text-transform: uppercase;\n  background: var(--sn-assistant-accent);\n  color: #fff;\n  flex-shrink: 0;\n}\n\n.sn-assistant-ci-item__meta {\n  font-size: 10px;\n  color: var(--sn-assistant-muted);\n  margin-top: 2px;\n}\n\n.sn-assistant-ci-item__copy {\n  flex-shrink: 0;\n  font-size: 10px;\n  padding: 3px 8px;\n  height: auto;\n  min-width: 48px;\n}\n\n.sn-assistant-ci-item__pdf {\n  border-color: color-mix(in srgb, var(--sn-assistant-accent) 40%, var(--sn-assistant-border));\n  color: color-mix(in srgb, var(--sn-assistant-accent) 72%, #111);\n  font-weight: 700;\n}\n\n.sn-assistant-ci-item__pdf:hover {\n  background: color-mix(in srgb, var(--sn-assistant-accent) 10%, #fff);\n}\n\n/* Best match highlight wrapper */\n.sn-assistant-ci-best {\n  background: var(--sn-assistant-accent-soft);\n  border-bottom: 2px solid var(--sn-assistant-accent);\n}\n\n.sn-assistant-ci-best .sn-assistant-ci-item {\n  border-bottom: none;\n}\n\n/* CI action button group */\n.sn-assistant-ci-item__actions {\n  display: flex;\n  flex-direction: row;\n  align-items: center;\n  gap: 4px;\n  flex-shrink: 0;\n}\n\n/* Collapsible CI group sections */\n.sn-assistant-ci-section {\n  border-top: 1px solid var(--sn-assistant-border);\n}\n\n.sn-assistant-ci-section__summary {\n  cursor: pointer;\n  font-size: 10px;\n  font-weight: 700;\n  color: var(--sn-assistant-muted);\n  letter-spacing: 0.06em;\n  text-transform: uppercase;\n  padding: 8px 12px;\n  list-style: none;\n  display: flex;\n  align-items: center;\n  justify-content: space-between;\n  user-select: none;\n  transition: background 100ms ease;\n}\n\n.sn-assistant-ci-section__summary::-webkit-details-marker {\n  display: none;\n}\n\n.sn-assistant-ci-section__summary::after {\n  content: "\u203A";\n  font-size: 16px;\n  font-weight: 400;\n  line-height: 1;\n  transition: transform 180ms ease;\n  opacity: 0.6;\n}\n\n.sn-assistant-ci-section[open] > .sn-assistant-ci-section__summary::after {\n  transform: rotate(90deg);\n}\n\n.sn-assistant-ci-section__summary:hover {\n  background: var(--sn-assistant-surface);\n}\n\n.sn-assistant-ci-section__body {\n  padding-top: 2px;\n}\n\n/* Copied badge variant */\n.sn-assistant-ci-item__corp-badge--copied {\n  background: rgba(5, 150, 105, 0.12);\n  color: #059669;\n}\n';
+  var findCi_default = '/* \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\r\n   FIND CI PANEL\r\n   \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500 */\r\n.sn-assistant-panel--find-ci {\r\n  width: 340px;\r\n}\r\n\r\n.sn-ep[data-ep-view="user-info"] .sn-assistant-panel--user-info,\r\n.sn-ep[data-ep-view="find-ci"] .sn-assistant-panel--find-ci {\r\n  width: 520px;\r\n  max-width: calc(100vw - 24px);\r\n}\r\n\r\n.sn-assistant-ci-list {\r\n  display: flex;\r\n  flex-direction: column;\r\n  overflow-y: auto;\r\n  max-height: min(55vh, 400px);\r\n}\r\n\r\n.sn-assistant-ci-item {\r\n  display: flex;\r\n  align-items: center;\r\n  gap: 8px;\r\n  padding: 9px 12px;\r\n  border-bottom: 1px solid var(--sn-assistant-border);\r\n  transition: background 120ms ease;\r\n}\r\n\r\n.sn-assistant-ci-item:last-child {\r\n  border-bottom: none;\r\n}\r\n\r\n.sn-assistant-ci-item--corp {\r\n  background: var(--sn-assistant-accent-soft);\r\n}\r\n\r\n.sn-assistant-ci-item--corp:hover {\r\n  background: rgba(37, 99, 235, 0.14);\r\n}\r\n\r\n.sn-assistant-ci-item:not(.sn-assistant-ci-item--corp):hover {\r\n  background: var(--sn-assistant-surface);\r\n}\r\n\r\n.sn-assistant-ci-item__info {\r\n  flex: 1;\r\n  min-width: 0;\r\n  cursor: pointer;\r\n  border-radius: 6px;\r\n  padding: 2px 4px;\r\n  margin: -2px -4px;\r\n  transition: background 100ms ease;\r\n}\r\n\r\n.sn-assistant-ci-item__info:hover {\r\n  background: var(--sn-assistant-border);\r\n}\r\n\r\n.sn-assistant-ci-item__name {\r\n  font-size: 12px;\r\n  font-weight: 700;\r\n  color: var(--sn-assistant-ink);\r\n  word-break: break-all;\r\n  display: flex;\r\n  align-items: center;\r\n  gap: 5px;\r\n  flex-wrap: wrap;\r\n}\r\n\r\n.sn-assistant-ci-item__corp-badge {\r\n  display: inline-flex;\r\n  align-items: center;\r\n  padding: 1px 5px;\r\n  border-radius: 4px;\r\n  font-size: 9px;\r\n  font-weight: 800;\r\n  letter-spacing: 0.05em;\r\n  text-transform: uppercase;\r\n  background: var(--sn-assistant-accent);\r\n  color: #fff;\r\n  flex-shrink: 0;\r\n}\r\n\r\n.sn-assistant-ci-item__meta {\r\n  font-size: 10px;\r\n  color: var(--sn-assistant-muted);\r\n  margin-top: 2px;\r\n}\r\n\r\n.sn-assistant-ci-item__copy {\r\n  flex-shrink: 0;\r\n  font-size: 10px;\r\n  padding: 3px 8px;\r\n  height: auto;\r\n  min-width: 48px;\r\n}\r\n\r\n.sn-assistant-ci-item__pdf {\r\n  border-color: color-mix(in srgb, var(--sn-assistant-accent) 40%, var(--sn-assistant-border));\r\n  color: color-mix(in srgb, var(--sn-assistant-accent) 72%, #111);\r\n  font-weight: 700;\r\n}\r\n\r\n.sn-assistant-ci-item__pdf:hover {\r\n  background: color-mix(in srgb, var(--sn-assistant-accent) 10%, #fff);\r\n}\r\n\r\n/* Best match highlight wrapper */\r\n.sn-assistant-ci-best {\r\n  background: var(--sn-assistant-accent-soft);\r\n  border-bottom: 2px solid var(--sn-assistant-accent);\r\n}\r\n\r\n.sn-assistant-ci-best .sn-assistant-ci-item {\r\n  border-bottom: none;\r\n}\r\n\r\n/* CI action button group */\r\n.sn-assistant-ci-item__actions {\r\n  display: flex;\r\n  flex-direction: row;\r\n  align-items: center;\r\n  gap: 4px;\r\n  flex-shrink: 0;\r\n}\r\n\r\n/* Collapsible CI group sections */\r\n.sn-assistant-ci-section {\r\n  border-top: 1px solid var(--sn-assistant-border);\r\n}\r\n\r\n.sn-assistant-ci-section__summary {\r\n  cursor: pointer;\r\n  font-size: 10px;\r\n  font-weight: 700;\r\n  color: var(--sn-assistant-muted);\r\n  letter-spacing: 0.06em;\r\n  text-transform: uppercase;\r\n  padding: 8px 12px;\r\n  list-style: none;\r\n  display: flex;\r\n  align-items: center;\r\n  justify-content: space-between;\r\n  user-select: none;\r\n  transition: background 100ms ease;\r\n}\r\n\r\n.sn-assistant-ci-section__summary::-webkit-details-marker {\r\n  display: none;\r\n}\r\n\r\n.sn-assistant-ci-section__summary::after {\r\n  content: "\u203A";\r\n  font-size: 16px;\r\n  font-weight: 400;\r\n  line-height: 1;\r\n  transition: transform 180ms ease;\r\n  opacity: 0.6;\r\n}\r\n\r\n.sn-assistant-ci-section[open] > .sn-assistant-ci-section__summary::after {\r\n  transform: rotate(90deg);\r\n}\r\n\r\n.sn-assistant-ci-section__summary:hover {\r\n  background: var(--sn-assistant-surface);\r\n}\r\n\r\n.sn-assistant-ci-section__body {\r\n  padding-top: 2px;\r\n}\r\n\r\n/* Copied badge variant */\r\n.sn-assistant-ci-item__corp-badge--copied {\r\n  background: rgba(5, 150, 105, 0.12);\r\n  color: #059669;\r\n}\r\n';
 
   // Assistant/ui/styles/workNotes-apply.css
-  var workNotes_apply_default = "/* \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\n   WORK NOTES \u2014 APPLY HINT\n   \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500 */\n.sn-assistant-worknotes__apply-hint {\n  font-size: 10px;\n  font-weight: 500;\n  text-transform: none;\n  letter-spacing: 0;\n  color: var(--sn-assistant-muted);\n  opacity: 0.5;\n}\n\n/* \u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\n   SNAP POSITIONS \u2014 9-point grid for the edge panel\n   \u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550 */\n";
+  var workNotes_apply_default = "/* \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\r\n   WORK NOTES \u2014 APPLY HINT\r\n   \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500 */\r\n.sn-assistant-worknotes__apply-hint {\r\n  font-size: 10px;\r\n  font-weight: 500;\r\n  text-transform: none;\r\n  letter-spacing: 0;\r\n  color: var(--sn-assistant-muted);\r\n  opacity: 0.5;\r\n}\r\n\r\n/* \u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\r\n   SNAP POSITIONS \u2014 9-point grid for the edge panel\r\n   \u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550 */\r\n";
 
   // Assistant/ui/styles/launcher-positioning.css
-  var launcher_positioning_default = '/* Shared snap base \u2014 smooth transitions for all snap modes */\n.sn-ep[class*="sn-ep--snap-"] {\n  transition: top 200ms ease, left 200ms ease, right 200ms ease, bottom 200ms ease, transform 200ms ease, width 200ms ease !important;\n}\n\n/* \u2500\u2500 Corner & edge positions \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500 */\n.sn-ep--snap-tl { top: 12px !important; left: 12px !important; right: auto !important; bottom: auto !important; transform: none !important; }\n.sn-ep--snap-tc { top: 12px !important; left: 50% !important; right: auto !important; bottom: auto !important; transform: translateX(-50%) !important; }\n.sn-ep--snap-tr { top: 12px !important; right: 12px !important; left: auto !important; bottom: auto !important; transform: none !important; }\n\n.sn-ep--snap-cl { top: 50% !important; left: 12px !important; right: auto !important; bottom: auto !important; transform: translateY(-50%) !important; }\n.sn-ep--snap-cr { top: 50% !important; right: 12px !important; left: auto !important; bottom: auto !important; transform: translateY(-50%) !important; }\n\n.sn-ep--snap-bl { bottom: 12px !important; left: 12px !important; right: auto !important; top: auto !important; transform: none !important; }\n.sn-ep--snap-br { bottom: 12px !important; right: 12px !important; left: auto !important; top: auto !important; transform: none !important; }\n\n/* \u2500\u2500 Bottom-center: footer bar mode \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500 */\n.sn-ep--snap-bc {\n  bottom: 0 !important;\n  top: auto !important;\n  left: 0 !important;\n  right: 0 !important;\n  width: 100% !important;\n  transform: none !important;\n  border-radius: 0 !important;\n}\n\n.sn-ep--snap-bc .sn-ep__tab { display: none !important; }\n\n.sn-ep--snap-bc .sn-ep__panel {\n  border-radius: 0 !important;\n  box-shadow: 0 -2px 16px rgba(0,0,0,0.1) !important;\n}\n\n.sn-ep--snap-bc[data-ep-mode="tab"] .sn-ep__panel,\n.sn-ep--snap-bc[data-ep-mode="icons"] .sn-ep__panel {\n  display: flex !important;\n}\n\n.sn-ep--snap-bc .sn-ep__actions {\n  flex-direction: row !important;\n  flex-wrap: wrap !important;\n  justify-content: center !important;\n  overflow: visible !important;\n  max-height: none !important;\n}\n\n.sn-ep--snap-bc .sn-ep__action {\n  min-width: 80px !important;\n  max-width: 110px !important;\n}\n\n.sn-ep--snap-bc .sn-ep__header {\n  display: none !important;\n}\n\n.sn-ep--snap-bc .sn-ep__footer {\n  display: none !important;\n}\n\n/* \u2500\u2500 Position picker popover \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500 */\n.sn-ep__pos-picker {\n  position: absolute;\n  top: calc(100% + 8px);\n  right: 0;\n  z-index: 10;\n  background: var(--ep-surface, #fff);\n  border: 1px solid var(--ep-border, rgba(0,0,0,.08));\n  border-radius: 10px;\n  box-shadow: 0 8px 24px rgba(0,0,0,.12);\n  padding: 8px;\n  opacity: 0;\n  pointer-events: none;\n  transform: translateY(-6px);\n  transition: opacity 160ms ease, transform 160ms ease;\n}\n\n.sn-ep__pos-picker[data-ep-pos-open="true"] {\n  opacity: 1;\n  pointer-events: auto;\n  transform: translateY(0);\n}\n\n.sn-ep__pos-grid {\n  display: grid;\n  grid-template-columns: repeat(3, 30px);\n  gap: 4px;\n}\n\n.sn-ep__pos-btn {\n  appearance: none;\n  width: 30px;\n  height: 30px;\n  border: 1px solid var(--ep-border, rgba(0,0,0,.08));\n  border-radius: 6px;\n  background: transparent;\n  color: var(--ep-muted, #6B7280);\n  font-size: 14px;\n  cursor: pointer;\n  display: flex;\n  align-items: center;\n  justify-content: center;\n  transition: background 120ms ease, border-color 120ms ease, color 120ms ease;\n}\n\n.sn-ep__pos-btn:hover {\n  background: var(--ep-surface, #f3f4f6);\n  border-color: var(--ep-ink, #111827);\n  color: var(--ep-ink, #111827);\n}\n\n.sn-ep__pos-btn.is-active {\n  background: var(--sn-assistant-accent, #2563eb);\n  border-color: var(--sn-assistant-accent, #2563eb);\n  color: #fff;\n}\n\n/* \u2500\u2500 Edit-mode per-button overlay \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500 */\n.sn-ep__action--edit {\n  position: relative;\n}\n\n.sn-ep__edit-overlay {\n  position: absolute;\n  top: 3px;\n  right: 3px;\n  display: flex;\n  align-items: center;\n  gap: 3px;\n  z-index: 2;\n}\n\n.sn-ep__edit-color {\n  display: flex;\n  align-items: center;\n  justify-content: center;\n  width: 18px;\n  height: 18px;\n  border-radius: 50%;\n  border: 1.5px solid rgba(255,255,255,0.7);\n  overflow: hidden;\n  cursor: pointer;\n  background: var(--btn-color, var(--sn-assistant-accent, #2563eb));\n  box-shadow: 0 1px 3px rgba(0,0,0,0.25);\n  flex-shrink: 0;\n}\n\n.sn-ep__color-input {\n  opacity: 0;\n  position: absolute;\n  width: 100%;\n  height: 100%;\n  inset: 0;\n  cursor: pointer;\n  padding: 0;\n  border: none;\n}\n\n.sn-ep__edit-hide {\n  appearance: none;\n  background: rgba(0,0,0,0.45);\n  border: none;\n  border-radius: 4px;\n  width: 18px;\n  height: 18px;\n  padding: 0;\n  cursor: pointer;\n  color: #fff;\n  display: flex;\n  align-items: center;\n  justify-content: center;\n  flex-shrink: 0;\n}\n\n.sn-ep__edit-hide:hover {\n  background: rgba(220, 38, 38, 0.8);\n}\n\n/* \u2500\u2500 Positioned panel: hide native left/right edge classes \u2500\u2500 */\n.sn-ep[class*="sn-ep--snap-"] .sn-ep__tab {\n  /* keep tab visible for non-bc positions */\n}\n';
+  var launcher_positioning_default = '/* Shared snap base \u2014 smooth transitions for all snap modes */\r\n.sn-ep[class*="sn-ep--snap-"] {\r\n  transition: top 200ms ease, left 200ms ease, right 200ms ease, bottom 200ms ease, transform 200ms ease, width 200ms ease !important;\r\n}\r\n\r\n/* \u2500\u2500 Corner & edge positions \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500 */\r\n.sn-ep--snap-tl { top: 12px !important; left: 12px !important; right: auto !important; bottom: auto !important; transform: none !important; }\r\n.sn-ep--snap-tc { top: 12px !important; left: 50% !important; right: auto !important; bottom: auto !important; transform: translateX(-50%) !important; }\r\n.sn-ep--snap-tr { top: 12px !important; right: 12px !important; left: auto !important; bottom: auto !important; transform: none !important; }\r\n\r\n.sn-ep--snap-cl { top: 50% !important; left: 12px !important; right: auto !important; bottom: auto !important; transform: translateY(-50%) !important; }\r\n.sn-ep--snap-cr { top: 50% !important; right: 12px !important; left: auto !important; bottom: auto !important; transform: translateY(-50%) !important; }\r\n\r\n.sn-ep--snap-bl { bottom: 12px !important; left: 12px !important; right: auto !important; top: auto !important; transform: none !important; }\r\n.sn-ep--snap-br { bottom: 12px !important; right: 12px !important; left: auto !important; top: auto !important; transform: none !important; }\r\n\r\n/* \u2500\u2500 Bottom-center: footer bar mode \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500 */\r\n.sn-ep--snap-bc {\r\n  bottom: 0 !important;\r\n  top: auto !important;\r\n  left: 0 !important;\r\n  right: 0 !important;\r\n  width: 100% !important;\r\n  transform: none !important;\r\n  border-radius: 0 !important;\r\n}\r\n\r\n.sn-ep--snap-bc .sn-ep__tab { display: none !important; }\r\n\r\n.sn-ep--snap-bc .sn-ep__panel {\r\n  border-radius: 0 !important;\r\n  box-shadow: 0 -2px 16px rgba(0,0,0,0.1) !important;\r\n}\r\n\r\n.sn-ep--snap-bc[data-ep-mode="tab"] .sn-ep__panel,\r\n.sn-ep--snap-bc[data-ep-mode="icons"] .sn-ep__panel {\r\n  display: flex !important;\r\n}\r\n\r\n.sn-ep--snap-bc .sn-ep__actions {\r\n  flex-direction: row !important;\r\n  flex-wrap: wrap !important;\r\n  justify-content: center !important;\r\n  overflow: visible !important;\r\n  max-height: none !important;\r\n}\r\n\r\n.sn-ep--snap-bc .sn-ep__action {\r\n  min-width: 80px !important;\r\n  max-width: 110px !important;\r\n}\r\n\r\n.sn-ep--snap-bc .sn-ep__header {\r\n  display: none !important;\r\n}\r\n\r\n.sn-ep--snap-bc .sn-ep__footer {\r\n  display: none !important;\r\n}\r\n\r\n/* \u2500\u2500 Position picker popover \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500 */\r\n.sn-ep__pos-picker {\r\n  position: absolute;\r\n  top: calc(100% + 8px);\r\n  right: 0;\r\n  z-index: 10;\r\n  background: var(--ep-surface, #fff);\r\n  border: 1px solid var(--ep-border, rgba(0,0,0,.08));\r\n  border-radius: 10px;\r\n  box-shadow: 0 8px 24px rgba(0,0,0,.12);\r\n  padding: 8px;\r\n  opacity: 0;\r\n  pointer-events: none;\r\n  transform: translateY(-6px);\r\n  transition: opacity 160ms ease, transform 160ms ease;\r\n}\r\n\r\n.sn-ep__pos-picker[data-ep-pos-open="true"] {\r\n  opacity: 1;\r\n  pointer-events: auto;\r\n  transform: translateY(0);\r\n}\r\n\r\n.sn-ep__pos-grid {\r\n  display: grid;\r\n  grid-template-columns: repeat(3, 30px);\r\n  gap: 4px;\r\n}\r\n\r\n.sn-ep__pos-btn {\r\n  appearance: none;\r\n  width: 30px;\r\n  height: 30px;\r\n  border: 1px solid var(--ep-border, rgba(0,0,0,.08));\r\n  border-radius: 6px;\r\n  background: transparent;\r\n  color: var(--ep-muted, #6B7280);\r\n  font-size: 14px;\r\n  cursor: pointer;\r\n  display: flex;\r\n  align-items: center;\r\n  justify-content: center;\r\n  transition: background 120ms ease, border-color 120ms ease, color 120ms ease;\r\n}\r\n\r\n.sn-ep__pos-btn:hover {\r\n  background: var(--ep-surface, #f3f4f6);\r\n  border-color: var(--ep-ink, #111827);\r\n  color: var(--ep-ink, #111827);\r\n}\r\n\r\n.sn-ep__pos-btn.is-active {\r\n  background: var(--sn-assistant-accent, #2563eb);\r\n  border-color: var(--sn-assistant-accent, #2563eb);\r\n  color: #fff;\r\n}\r\n\r\n/* \u2500\u2500 Edit-mode per-button overlay \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500 */\r\n.sn-ep__action--edit {\r\n  position: relative;\r\n}\r\n\r\n.sn-ep__edit-overlay {\r\n  position: absolute;\r\n  top: 3px;\r\n  right: 3px;\r\n  display: flex;\r\n  align-items: center;\r\n  gap: 3px;\r\n  z-index: 2;\r\n}\r\n\r\n.sn-ep__edit-color {\r\n  display: flex;\r\n  align-items: center;\r\n  justify-content: center;\r\n  width: 18px;\r\n  height: 18px;\r\n  border-radius: 50%;\r\n  border: 1.5px solid rgba(255,255,255,0.7);\r\n  overflow: hidden;\r\n  cursor: pointer;\r\n  background: var(--btn-color, var(--sn-assistant-accent, #2563eb));\r\n  box-shadow: 0 1px 3px rgba(0,0,0,0.25);\r\n  flex-shrink: 0;\r\n}\r\n\r\n.sn-ep__color-input {\r\n  opacity: 0;\r\n  position: absolute;\r\n  width: 100%;\r\n  height: 100%;\r\n  inset: 0;\r\n  cursor: pointer;\r\n  padding: 0;\r\n  border: none;\r\n}\r\n\r\n.sn-ep__edit-hide {\r\n  appearance: none;\r\n  background: rgba(0,0,0,0.45);\r\n  border: none;\r\n  border-radius: 4px;\r\n  width: 18px;\r\n  height: 18px;\r\n  padding: 0;\r\n  cursor: pointer;\r\n  color: #fff;\r\n  display: flex;\r\n  align-items: center;\r\n  justify-content: center;\r\n  flex-shrink: 0;\r\n}\r\n\r\n.sn-ep__edit-hide:hover {\r\n  background: rgba(220, 38, 38, 0.8);\r\n}\r\n\r\n/* \u2500\u2500 Positioned panel: hide native left/right edge classes \u2500\u2500 */\r\n.sn-ep[class*="sn-ep--snap-"] .sn-ep__tab {\r\n  /* keep tab visible for non-bc positions */\r\n}\r\n';
+
+  // Assistant/ui/styles/launcher-edit.css
+  var launcher_edit_default = ".sn-ep-editable-wrap {\r\n  position: relative;\r\n  width: 100%;\r\n  min-width: 0;\r\n}\r\n\r\n.sn-ep-editable-wrap.is-dragging {\r\n  opacity: 0.5;\r\n}\r\n\r\n.sn-ep-editable-wrap .sn-ep__edit-overlay {\r\n  position: absolute;\r\n  top: 50%;\r\n  right: 5px;\r\n  z-index: 2;\r\n  display: inline-flex;\r\n  align-items: center;\r\n  gap: 3px;\r\n  transform: translateY(-50%);\r\n}\r\n\r\n.sn-ep-editable-wrap .sn-ep__action--edit {\r\n  padding-right: 58px;\r\n}\r\n\r\n.sn-ep-editable-wrap .sn-ep__edit-color,\r\n.sn-ep-editable-wrap .sn-ep__edit-hide {\r\n  display: inline-flex;\r\n  align-items: center;\r\n  justify-content: center;\r\n  width: 22px;\r\n  height: 22px;\r\n  padding: 0;\r\n  border: 1px solid var(--ep-border);\r\n  border-radius: 6px;\r\n  background: var(--ep-surface);\r\n  color: var(--ep-muted);\r\n  cursor: pointer;\r\n}\r\n\r\n.sn-ep-editable-wrap .sn-ep__color-input {\r\n  width: 18px;\r\n  height: 18px;\r\n  padding: 0;\r\n  border: 0;\r\n  background: transparent;\r\n  cursor: pointer;\r\n}\r\n\r\n.sn-ep-editable-wrap .sn-ep__edit-hide:hover {\r\n  color: var(--ep-red);\r\n  border-color: rgba(165, 40, 40, 0.35);\r\n  background: var(--ep-red-bg);\r\n}\r\n\r\n/* The Top-3 companion lives in a deliberately narrow 42px column. Keep its\r\n   action usable while editing the primary Quick Draft button. */\r\n.sn-ep__action-row > .sn-ep-editable-wrap:nth-child(2) .sn-ep__edit-overlay {\r\n  display: none;\r\n}\r\n\r\n.sn-ep__action-row > .sn-ep-editable-wrap:nth-child(2) .sn-ep__action--edit {\r\n  padding-right: 0;\r\n}\r\n";
 
   // Assistant/ui/styles/onboarding.css
-  var onboarding_default = "/* \u2500\u2500\u2500 Onboarding welcome modal \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500 */\n#sn-assistant-onboarding {\n  position: fixed;\n  inset: 0;\n  z-index: 2147483640;\n  pointer-events: auto;\n}\n\n.sn-ob__backdrop {\n  position: absolute;\n  inset: 0;\n  background: rgba(15, 23, 42, 0.55);\n  backdrop-filter: blur(3px);\n  display: flex;\n  align-items: center;\n  justify-content: center;\n  padding: 16px;\n}\n\n.sn-ob__card {\n  background: #fff;\n  border-radius: 20px;\n  box-shadow: 0 24px 64px rgba(15, 23, 42, 0.22);\n  padding: 40px 36px 32px;\n  max-width: 420px;\n  width: 100%;\n  text-align: center;\n  display: flex;\n  flex-direction: column;\n  align-items: center;\n  gap: 0;\n  animation: sn-ob-in 0.25s ease;\n}\n\n@keyframes sn-ob-in {\n  from { opacity: 0; transform: translateY(12px) scale(0.97); }\n  to   { opacity: 1; transform: translateY(0) scale(1); }\n}\n\n.sn-ob__icon {\n  color: #0d5a6d;\n  margin-bottom: 20px;\n  opacity: 0.9;\n}\n\n.sn-ob__title {\n  font-size: 20px;\n  font-weight: 700;\n  color: #0f172a;\n  margin: 0 0 12px;\n  line-height: 1.3;\n}\n\n.sn-ob__body {\n  font-size: 14px;\n  color: #475569;\n  margin: 0 0 24px;\n  line-height: 1.6;\n}\n\n.sn-ob__bullets {\n  list-style: none;\n  padding: 0;\n  margin: 0 0 24px;\n  text-align: left;\n  width: 100%;\n  display: flex;\n  flex-direction: column;\n  gap: 10px;\n}\n\n.sn-ob__bullets li {\n  font-size: 13.5px;\n  color: #334155;\n  padding: 8px 12px;\n  background: #f8fafc;\n  border-radius: 8px;\n  border: 1px solid #e2e8f0;\n  line-height: 1.4;\n}\n\n.sn-ob__actions {\n  display: flex;\n  flex-direction: column;\n  gap: 8px;\n  width: 100%;\n  margin-bottom: 20px;\n}\n\n.sn-ob__btn {\n  padding: 11px 20px;\n  border-radius: 10px;\n  font-size: 14px;\n  font-weight: 600;\n  cursor: pointer;\n  border: none;\n  transition: background 0.15s, transform 0.1s, box-shadow 0.15s;\n  width: 100%;\n}\n\n.sn-ob__btn:active {\n  transform: scale(0.98);\n}\n\n.sn-ob__btn--primary {\n  background: #0d5a6d;\n  color: #fff;\n  box-shadow: 0 2px 8px rgba(13, 90, 109, 0.3);\n}\n\n.sn-ob__btn--primary:hover {\n  background: #0a4a5a;\n  box-shadow: 0 4px 12px rgba(13, 90, 109, 0.4);\n}\n\n.sn-ob__btn--ghost {\n  background: transparent;\n  color: #64748b;\n  border: 1px solid #e2e8f0;\n}\n\n.sn-ob__btn--ghost:hover {\n  background: #f8fafc;\n  color: #475569;\n}\n\n.sn-ob__dots {\n  display: flex;\n  gap: 6px;\n  justify-content: center;\n}\n\n.sn-ob__dot {\n  width: 6px;\n  height: 6px;\n  border-radius: 50%;\n  background: #cbd5e1;\n  transition: background 0.2s, width 0.2s;\n}\n\n.sn-ob__dot--active {\n  background: #0d5a6d;\n  width: 18px;\n  border-radius: 3px;\n}\n";
+  var onboarding_default = "/* \u2500\u2500\u2500 Onboarding welcome modal \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500 */\r\n#sn-assistant-onboarding {\r\n  position: fixed;\r\n  inset: 0;\r\n  z-index: 2147483640;\r\n  pointer-events: auto;\r\n}\r\n\r\n.sn-ob__backdrop {\r\n  position: absolute;\r\n  inset: 0;\r\n  background: rgba(15, 23, 42, 0.55);\r\n  backdrop-filter: blur(3px);\r\n  display: flex;\r\n  align-items: center;\r\n  justify-content: center;\r\n  padding: 16px;\r\n}\r\n\r\n.sn-ob__card {\r\n  background: #fff;\r\n  border-radius: 20px;\r\n  box-shadow: 0 24px 64px rgba(15, 23, 42, 0.22);\r\n  padding: 40px 36px 32px;\r\n  max-width: 420px;\r\n  width: 100%;\r\n  text-align: center;\r\n  display: flex;\r\n  flex-direction: column;\r\n  align-items: center;\r\n  gap: 0;\r\n  animation: sn-ob-in 0.25s ease;\r\n}\r\n\r\n@keyframes sn-ob-in {\r\n  from { opacity: 0; transform: translateY(12px) scale(0.97); }\r\n  to   { opacity: 1; transform: translateY(0) scale(1); }\r\n}\r\n\r\n.sn-ob__icon {\r\n  color: #0d5a6d;\r\n  margin-bottom: 20px;\r\n  opacity: 0.9;\r\n}\r\n\r\n.sn-ob__title {\r\n  font-size: 20px;\r\n  font-weight: 700;\r\n  color: #0f172a;\r\n  margin: 0 0 12px;\r\n  line-height: 1.3;\r\n}\r\n\r\n.sn-ob__body {\r\n  font-size: 14px;\r\n  color: #475569;\r\n  margin: 0 0 24px;\r\n  line-height: 1.6;\r\n}\r\n\r\n.sn-ob__bullets {\r\n  list-style: none;\r\n  padding: 0;\r\n  margin: 0 0 24px;\r\n  text-align: left;\r\n  width: 100%;\r\n  display: flex;\r\n  flex-direction: column;\r\n  gap: 10px;\r\n}\r\n\r\n.sn-ob__bullets li {\r\n  font-size: 13.5px;\r\n  color: #334155;\r\n  padding: 8px 12px;\r\n  background: #f8fafc;\r\n  border-radius: 8px;\r\n  border: 1px solid #e2e8f0;\r\n  line-height: 1.4;\r\n}\r\n\r\n.sn-ob__actions {\r\n  display: flex;\r\n  flex-direction: column;\r\n  gap: 8px;\r\n  width: 100%;\r\n  margin-bottom: 20px;\r\n}\r\n\r\n.sn-ob__btn {\r\n  padding: 11px 20px;\r\n  border-radius: 10px;\r\n  font-size: 14px;\r\n  font-weight: 600;\r\n  cursor: pointer;\r\n  border: none;\r\n  transition: background 0.15s, transform 0.1s, box-shadow 0.15s;\r\n  width: 100%;\r\n}\r\n\r\n.sn-ob__btn:active {\r\n  transform: scale(0.98);\r\n}\r\n\r\n.sn-ob__btn--primary {\r\n  background: #0d5a6d;\r\n  color: #fff;\r\n  box-shadow: 0 2px 8px rgba(13, 90, 109, 0.3);\r\n}\r\n\r\n.sn-ob__btn--primary:hover {\r\n  background: #0a4a5a;\r\n  box-shadow: 0 4px 12px rgba(13, 90, 109, 0.4);\r\n}\r\n\r\n.sn-ob__btn--ghost {\r\n  background: transparent;\r\n  color: #64748b;\r\n  border: 1px solid #e2e8f0;\r\n}\r\n\r\n.sn-ob__btn--ghost:hover {\r\n  background: #f8fafc;\r\n  color: #475569;\r\n}\r\n\r\n.sn-ob__dots {\r\n  display: flex;\r\n  gap: 6px;\r\n  justify-content: center;\r\n}\r\n\r\n.sn-ob__dot {\r\n  width: 6px;\r\n  height: 6px;\r\n  border-radius: 50%;\r\n  background: #cbd5e1;\r\n  transition: background 0.2s, width 0.2s;\r\n}\r\n\r\n.sn-ob__dot--active {\r\n  background: #0d5a6d;\r\n  width: 18px;\r\n  border-radius: 3px;\r\n}\r\n";
 
   // Assistant/ui/styles.js
   var VALID_THEMES = ["light", "dark", "eu_blue", "custom", "parliament", "noirGraphite", "midnightSteel", "obsidianGold"];
@@ -17273,6 +17800,8 @@ ${value}` : value;
     toasts_default,
     animations_default,
     edgePanel_default,
+    iconography_default,
+    brand_icon_default,
     responsive_default,
     epLinks_default,
     workNotes_enhanced_default,
@@ -17280,6 +17809,7 @@ ${value}` : value;
     findCi_default,
     workNotes_apply_default,
     launcher_positioning_default,
+    launcher_edit_default,
     onboarding_default
   ].join("\n");
   function ensureStyles2(hostDocument) {
@@ -17412,7 +17942,7 @@ ${value}` : value;
   }
   function formatIcsDateTime(date) {
     if (!(date instanceof Date) || Number.isNaN(date.getTime())) return "";
-    return date.getFullYear() + pad(date.getMonth() + 1) + pad(date.getDate()) + "T" + pad(date.getHours()) + pad(date.getMinutes()) + pad(date.getSeconds());
+    return date.getUTCFullYear() + pad(date.getUTCMonth() + 1) + pad(date.getUTCDate()) + "T" + pad(date.getUTCHours()) + pad(date.getUTCMinutes()) + pad(date.getUTCSeconds()) + "Z";
   }
   function escapeIcsField(value) {
     return String(value || "").replace(/\\/g, "\\\\").replace(/\r?\n/g, "\\n").replace(/,/g, "\\,").replace(/;/g, "\\;");
@@ -33684,20 +34214,16 @@ Are you sure you want to download this calendar event?`
   function emitPdfTestHook(rootWindow, payload = {}) {
     try {
       const hook = rootWindow?.__SN_ASSISTANT_TEST_HOOKS__?.onPdfGenerated;
-      if (typeof hook === "function") {
-        return hook(payload);
-      }
-    } catch (error2) {
+      if (typeof hook === "function") return hook(payload);
+    } catch {
     }
     return null;
   }
   function emitPdfErrorHook(rootWindow, payload = {}) {
     try {
       const hook = rootWindow?.__SN_ASSISTANT_TEST_HOOKS__?.onPdfError;
-      if (typeof hook === "function") {
-        return hook(payload);
-      }
-    } catch (error2) {
+      if (typeof hook === "function") return hook(payload);
+    } catch {
     }
     return null;
   }
@@ -33717,9 +34243,7 @@ Are you sure you want to download this calendar event?`
   function sanitizeConfigurationItem(...values2) {
     for (const value of values2) {
       const text2 = cleanText(value);
-      if (!text2) continue;
-      if (looksLikeTicketIdentifier4(text2)) continue;
-      if (looksLikeSysId3(text2)) continue;
+      if (!text2 || looksLikeTicketIdentifier4(text2) || looksLikeSysId3(text2)) continue;
       return text2;
     }
     return "";
@@ -33745,11 +34269,7 @@ Are you sure you want to download this calendar event?`
   function normalizePdfContext(rootWindow, context = {}) {
     const detected = detectRecordContext(rootWindow);
     const extracted = extractPdfServiceNowContext(rootWindow, context);
-    const merged = {
-      ...detected,
-      ...extracted,
-      ...context
-    };
+    const merged = { ...detected, ...extracted, ...context };
     merged.requestedFor = {
       ...detected.requestedFor || {},
       ...extracted.requestedFor || {},
@@ -33775,15 +34295,9 @@ Are you sure you want to download this calendar event?`
       detected.configurationItemRaw?.display,
       merged.configurationItem
     );
-    merged.ticketNumber = cleanText(
-      extracted.ticketNumber || context.ticketNumber || detected.sourceNumber || detected.currentNumber
-    );
-    merged.ticketType = cleanText(
-      extracted.ticketType || context.ticketType || detected.sourceType || detected.currentType
-    ).toUpperCase();
-    merged.ticketSource = cleanText(
-      extracted.ticketSource || context.ticketSource || detected.source
-    );
+    merged.ticketNumber = cleanText(extracted.ticketNumber || context.ticketNumber || detected.sourceNumber || detected.currentNumber);
+    merged.ticketType = cleanText(extracted.ticketType || context.ticketType || detected.sourceType || detected.currentType).toUpperCase();
+    merged.ticketSource = cleanText(extracted.ticketSource || context.ticketSource || detected.source);
     merged.table = cleanText(merged.table || merged.pageType || detected.pageType);
     return merged;
   }
@@ -33806,24 +34320,15 @@ Are you sure you want to download this calendar event?`
       };
     }
     if (cleanText(context.pageType).toLowerCase() === "sc_task" && cleanText(context.currentNumber)) {
-      return {
-        ticketNumber: cleanText(context.currentNumber),
-        ticketType: "SCTASK",
-        ticketSource: "sc_task"
-      };
+      return { ticketNumber: cleanText(context.currentNumber), ticketType: "SCTASK", ticketSource: "sc_task" };
     }
-    return {
-      ticketNumber: "",
-      ticketType: cleanText(context.ticketType).toUpperCase(),
-      ticketSource: cleanText(context.ticketSource).toLowerCase()
-    };
+    return { ticketNumber: "", ticketType: cleanText(context.ticketType).toUpperCase(), ticketSource: cleanText(context.ticketSource).toLowerCase() };
   }
-  function promptForConfigurationItem(rootWindow, currentValue = "") {
-    const promptValue = rootWindow?.prompt?.(
-      "Which PI/CI should be used for the PDF?",
-      cleanText(currentValue)
-    );
-    return cleanText(promptValue);
+  async function requestConfigurationItem(rootWindow, hostDocument, currentValue = "") {
+    return cleanText(await openPdfConfigurationPrompt({
+      hostDocument: hostDocument || getHostDocument(rootWindow),
+      currentValue: cleanText(currentValue)
+    }));
   }
   function shouldForcePiPrompt(templateType, context = {}) {
     if (cleanText(templateType).toLowerCase() !== "return") return false;
@@ -33832,16 +34337,15 @@ Are you sure you want to download this calendar event?`
   function writePdfWorkNote(resolvedContext = {}, logger = null) {
     const table = cleanText(resolvedContext.table || resolvedContext.pageType);
     if (!table) return { ok: false, reason: "missing-table" };
-    return insertWorkNote("Form has been successfully created and is now available for use.", {
-      ...resolvedContext,
-      table
-    });
+    return writeWorkNoteToField(
+      "Form has been successfully created and is now available for use.",
+      { ...resolvedContext, table },
+      { append: true }
+    );
   }
   async function generatePdf({ rootWindow = window, hostDocument = null, templateType, context = {}, logger = null, notify = null } = {}) {
     const templateConfig = getPdfTemplateConfig(templateType);
-    if (!templateConfig) {
-      throw new Error(`Unsupported PDF form type: ${cleanText(templateType)}`);
-    }
+    if (!templateConfig) throw new Error(`Unsupported PDF form type: ${cleanText(templateType)}`);
     const resolvedContext = normalizePdfContext(rootWindow, context);
     const sourceTicket = getSourceTicket(resolvedContext);
     const isScTask = cleanText(resolvedContext.pageType).toLowerCase() === "sc_task";
@@ -33863,11 +34367,11 @@ Are you sure you want to download this calendar event?`
       return { ok: false, message, sourceContext: resolvedContext };
     }
     let validationError = validatePdfContext(resolvedContext, templateType);
+    const currentCi = cleanText(
+      resolvedContext.selected_ci_name || resolvedContext.asset_tag || resolvedContext.configurationItem || resolvedContext.configurationItemDisplay
+    );
     if (shouldForcePiPrompt(templateType, resolvedContext)) {
-      const enteredPi = promptForConfigurationItem(
-        rootWindow,
-        cleanText(resolvedContext.selected_ci_name || resolvedContext.asset_tag || resolvedContext.configurationItem || resolvedContext.configurationItemDisplay)
-      );
+      const enteredPi = await requestConfigurationItem(rootWindow, hostDocument, currentCi);
       if (enteredPi) {
         resolvedContext.configurationItem = enteredPi;
         resolvedContext.configurationItemDisplay = enteredPi;
@@ -33878,10 +34382,7 @@ Are you sure you want to download this calendar event?`
         return { ok: false, canceled: true, message };
       }
     } else if (validationError === "Configuration Item is missing.") {
-      const enteredPi = promptForConfigurationItem(
-        rootWindow,
-        cleanText(resolvedContext.selected_ci_name || resolvedContext.asset_tag || resolvedContext.configurationItem || resolvedContext.configurationItemDisplay)
-      );
+      const enteredPi = await requestConfigurationItem(rootWindow, hostDocument, currentCi);
       if (enteredPi) {
         resolvedContext.configurationItem = enteredPi;
         resolvedContext.configurationItemDisplay = enteredPi;
@@ -33926,9 +34427,7 @@ Are you sure you want to download this calendar event?`
       }
     });
     const fileName = buildPdfFilename(ticketNumber);
-    if (!fileName) {
-      throw new Error("Unable to create PDF filename.");
-    }
+    if (!fileName) throw new Error("Unable to create PDF filename.");
     const testHookResult = emitPdfTestHook(rootWindow, {
       templateType,
       fileName,
@@ -33973,19 +34472,9 @@ Are you sure you want to download this calendar event?`
       fieldMap: result.fieldMap || {}
     };
   }
-  async function openPdfFlow({
-    rootWindow = window,
-    hostDocument = null,
-    anchorElement = null,
-    state = null,
-    logger = null,
-    notify = null
-  } = {}) {
+  async function openPdfFlow({ rootWindow = window, hostDocument = null, anchorElement = null, state = null, logger = null, notify = null } = {}) {
     const resolvedHostDocument = hostDocument || getHostDocument(rootWindow);
-    const selectedType = await openPdfSelection({
-      hostDocument: resolvedHostDocument,
-      anchorElement
-    });
+    const selectedType = await openPdfSelection({ hostDocument: resolvedHostDocument, anchorElement });
     if (!selectedType) {
       const message = "PDF generation canceled: no template selected.";
       logger?.info("pdf canceled", { reason: "no-template-selected" });
@@ -34006,16 +34495,9 @@ Are you sure you want to download this calendar event?`
       emitPdfErrorHook(rootWindow, {
         templateType: selectedType,
         message,
-        error: {
-          name: error2?.name || "Error",
-          stack: error2?.stack || "",
-          details: String(error2 || "")
-        }
+        error: { name: error2?.name || "Error", stack: error2?.stack || "", details: String(error2 || "") }
       });
-      logger?.error("pdf generation failed", {
-        message,
-        templateType: selectedType
-      });
+      logger?.error("pdf generation failed", { message, templateType: selectedType });
       notify?.(`PDF error: ${message}`, "error");
       return { ok: false, error: true, message };
     }
@@ -34920,11 +35402,27 @@ Verification completed with ${requestedFor}. Ticket moved to Resolved.`;
         scheduleAutoHideTimer();
         scheduleRecovery("find-ci-close", 0);
       },
-      onSelectFindCi(sysId, name) {
+      async onSelectFindCi(sysId, name) {
         if (!sysId || !name) return;
         const ciResult = (state.ui.findCiResults || []).find((r) => r.sys_id === sysId);
         const assetTag = cleanText(ciResult?.asset_tag);
         const configurationItem = assetTag || name;
+        const gForm = getBestGForm(rootWindow)?.gForm;
+        const existingValue = cleanText(gForm?.getValue?.("cmdb_ci") || state.context?.configurationItemValue);
+        const existingDisplay = cleanText(
+          gForm?.getDisplayBox?.("cmdb_ci")?.value || state.context?.configurationItemDisplay || state.context?.configurationItem
+        );
+        if (existingValue && existingValue !== sysId) {
+          const confirmed = await showConfirmationModal(state.host.document, {
+            title: "Replace Configuration Item",
+            description: "This ticket already has a Configuration Item. Replace it with the selected CI?",
+            details: [
+              { label: "Current", value: existingDisplay || existingValue },
+              { label: "New", value: configurationItem || name }
+            ]
+          });
+          if (!confirmed) return;
+        }
         setCurrentCmdbCi(rootWindow, sysId, name);
         store.dispatch(patchContext, {
           configurationItem,
@@ -34941,6 +35439,20 @@ Verification completed with ${requestedFor}. Ticket moved to Resolved.`;
         if (!text2) return;
         copyToClipboard(text2, state.host.document).then((copied) => {
           store.dispatch(setFindCiCopiedSysId, copied ? sysId || "" : "");
+          if (!copied) {
+            showToast(state.host.document, {
+              message: "Clipboard copy failed. Please copy the CI manually.",
+              tone: "warning"
+            });
+          }
+          scheduleRecovery("find-ci-copy-inline", 0);
+        }).catch((error2) => {
+          logger.warn("find-ci:copy-failed", error2);
+          store.dispatch(setFindCiCopiedSysId, "");
+          showToast(state.host.document, {
+            message: "Clipboard copy failed. Please copy the CI manually.",
+            tone: "warning"
+          });
           scheduleRecovery("find-ci-copy-inline", 0);
         });
       },
@@ -34990,9 +35502,7 @@ Verification completed with ${requestedFor}. Ticket moved to Resolved.`;
       return TICKET_NUMBER_PATTERN.test(String(value || "").trim());
     }
     function closeWithDelay(delayMs = TIMING.ciLookupBlurMs) {
-      if (blurTimer) {
-        window.clearTimeout(blurTimer);
-      }
+      if (blurTimer) window.clearTimeout(blurTimer);
       blurTimer = window.setTimeout(() => {
         blurTimer = 0;
         store.dispatch(closeCiLookup);
@@ -35035,11 +35545,25 @@ Verification completed with ${requestedFor}. Ticket moved to Resolved.`;
       onCiLookupBlur() {
         closeWithDelay();
       },
-      onSelectCiSuggestion(sysId, name) {
+      async onSelectCiSuggestion(sysId, name) {
         if (!sysId || !name) return;
         if (blurTimer) {
           window.clearTimeout(blurTimer);
           blurTimer = 0;
+        }
+        const currentCi = getCurrentCmdbCi(rootWindow);
+        const existingValue = cleanText(currentCi?.value || state.context?.configurationItemValue);
+        const existingDisplay = cleanText(currentCi?.display || state.context?.configurationItemDisplay || state.context?.configurationItem);
+        if (existingValue && existingValue !== sysId) {
+          const confirmed = await showConfirmationModal(state.host.document, {
+            title: "Replace Configuration Item",
+            description: "This ticket already has a Configuration Item. Replace it with the selected CI?",
+            details: [
+              { label: "Current", value: existingDisplay || existingValue },
+              { label: "New", value: name }
+            ]
+          });
+          if (!confirmed) return;
         }
         setCurrentCmdbCi(rootWindow, sysId, name);
         store.dispatch(patchContext, {
@@ -35129,21 +35653,13 @@ Verification completed with ${requestedFor}. Ticket moved to Resolved.`;
           }
           logger.info("user-info:loaded", { sysId: resolved?.sysId || "", hasData: Boolean(data) });
           state.caches.userByRecord[cacheKey] = data;
-          store.dispatch(setUserInfoData, {
-            data,
-            resolved,
-            copyBlocked: false
-          });
+          store.dispatch(setUserInfoData, { data, resolved, copyBlocked: false });
           window.clearTimeout(timeoutId);
           scheduleRecovery("user-info-loaded", 0);
           if (data?.userId) {
             copyToClipboard(data.userId, state.host.document).then((copied) => {
               if (getCurrentLoadToken() !== token) return;
-              store.dispatch(setUserInfoData, {
-                data,
-                resolved,
-                copyBlocked: !copied
-              });
+              store.dispatch(setUserInfoData, { data, resolved, copyBlocked: !copied });
               showToast(state.host.document, {
                 message: copied ? `User ID copied: ${data.userId}` : "Copy blocked. Click the User ID value or Copy button.",
                 tone: copied ? "info" : "warning"
@@ -35152,11 +35668,7 @@ Verification completed with ${requestedFor}. Ticket moved to Resolved.`;
             }).catch((error2) => {
               if (getCurrentLoadToken() !== token) return;
               logger.warn("user-info:copy-failed", error2);
-              store.dispatch(setUserInfoData, {
-                data,
-                resolved,
-                copyBlocked: true
-              });
+              store.dispatch(setUserInfoData, { data, resolved, copyBlocked: true });
               showToast(state.host.document, {
                 message: "Copy blocked. Click the User ID value or Copy button.",
                 tone: "warning"
@@ -35165,13 +35677,11 @@ Verification completed with ${requestedFor}. Ticket moved to Resolved.`;
             });
           }
         } catch (error2) {
-          if (getCurrentLoadToken() && state.ui.userInfoOpen) {
-            if (state.ui.userInfoData) {
-              state.ui.userInfoLoading = false;
-              state.ui.userInfoError = "";
-              scheduleRecovery("user-info-loaded", 0);
-              return;
-            }
+          if (getCurrentLoadToken() && state.ui.userInfoOpen && state.ui.userInfoData) {
+            state.ui.userInfoLoading = false;
+            state.ui.userInfoError = "";
+            scheduleRecovery("user-info-loaded", 0);
+            return;
           }
           store.dispatch(setUserInfoError, "Unable to load user info for this record.");
           logger.warn("user-info:failed", error2);
@@ -35188,13 +35698,29 @@ Verification completed with ${requestedFor}. Ticket moved to Resolved.`;
       async onCopyUserInfoValue(key) {
         const value = cleanText(state.ui.userInfoData?.[key]);
         if (!value) return;
-        const copied = await copyToClipboard(value, state.host.document);
-        if (copied) showToast(state.host.document, { message: `${key} copied`, tone: "info" });
+        try {
+          const copied = await copyToClipboard(value, state.host.document);
+          showToast(state.host.document, {
+            message: copied ? `${key} copied` : "Clipboard copy failed. Please copy the value manually.",
+            tone: copied ? "info" : "warning"
+          });
+        } catch (error2) {
+          logger.warn("user-info:copy-value-failed", error2);
+          showToast(state.host.document, { message: "Clipboard copy failed. Please copy the value manually.", tone: "warning" });
+        }
       },
       async onCopyUserInfoSummary() {
         const summary = buildUserInfoSummary(state.ui.userInfoData || {});
-        const copied = await copyToClipboard(summary, state.host.document);
-        if (copied) showToast(state.host.document, { message: "User summary copied", tone: "info" });
+        try {
+          const copied = await copyToClipboard(summary, state.host.document);
+          showToast(state.host.document, {
+            message: copied ? "User summary copied" : "Clipboard copy failed. Please copy the summary manually.",
+            tone: copied ? "info" : "warning"
+          });
+        } catch (error2) {
+          logger.warn("user-info:copy-summary-failed", error2);
+          showToast(state.host.document, { message: "Clipboard copy failed. Please copy the summary manually.", tone: "warning" });
+        }
       },
       onOpenUserInfoProfile() {
         const sysId = cleanText(state.ui.userInfoData?.sysId || state.ui.userInfoResolved?.sysId);
@@ -35294,15 +35820,85 @@ Verification completed with ${requestedFor}. Ticket moved to Resolved.`;
     "ep-private",
     "wifi certificate"
   ];
+  var DELIVERY_KEYWORDS = [
+    "schedule smartphone delivery",
+    "delivery of the items",
+    "device delivered",
+    "delivery",
+    "livraison",
+    "handover",
+    "remise de",
+    "remis \xE0",
+    "delivery and closure"
+  ];
+  var SMARTPHONE_KEYWORDS = ["smartphone", "iphone", "apple iphone", "attribution smartphone"];
+  var LAPTOP_KEYWORDS = ["laptop", "notebook", "ordinateur portable", "pc"];
+  var CONFIGURATION_KEYWORDS = ["device configuration", "configuration du poste", "setup device", "install software", "logiciel", "configuration r\xE9seau"];
+  var REPLACEMENT_KEYWORDS = ["device replacement", "remplacement", "swap device", "replacement device", "broken device", "faulty device"];
+  var STRONG_SHORT_DESCRIPTION_KEYWORDS = [
+    ...RETURN_KEYWORDS,
+    "password reset",
+    "user cannot login",
+    "access denied",
+    "login",
+    "access request",
+    "account locked",
+    "vpn access",
+    "droits d'acc\xE8s",
+    "acc\xE8s refus\xE9",
+    "mot de passe",
+    "r\xE9initialisation",
+    "credentials",
+    "identifiants",
+    ...REPLACEMENT_KEYWORDS,
+    ...MDM_KEYWORDS,
+    "move",
+    "relocation",
+    "d\xE9m\xE9nagement",
+    "desk move",
+    "office move",
+    "site change",
+    "changement de site",
+    "new location",
+    ...NETWORK_KEYWORDS,
+    ...CONFIGURATION_KEYWORDS,
+    ...DELIVERY_KEYWORDS,
+    "attribution et livraison device"
+  ];
+  var DEVICE_CONTEXT_MARKER = /\s+(?:(?:pi|configuration item|asset(?:\s+tag)?|remarque|remark|remarks|description|requested\s+for|assigned\s+to|catalog\s+item)\s*[:\-]|(?:originally|previously|currently|ready\s+for|prepared\s+for|scheduled\s+for)\b)/i;
+  var DEVICE_TRAILING_WORDS = /\s+\b(?:ready|prepared|delivered|delivery|handover|replacement|return|returned|available|assigned|requested)\b.*$/i;
+  function escapeRegex2(value) {
+    return String(value || "").replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  }
   function containsAny(text2, values2) {
-    return values2.some((value) => text2.includes(value));
+    const source = String(text2 || "");
+    return values2.some((value) => {
+      const keyword = cleanText(value);
+      if (!keyword) return false;
+      return new RegExp(`\\b${escapeRegex2(keyword)}\\b`, "i").test(source);
+    });
+  }
+  function cleanDeviceCandidate(value = "") {
+    let candidate = cleanText(value).replace(/\b\d{2}PI[A-Z0-9-]+\b.*$/i, "").replace(DEVICE_CONTEXT_MARKER, " __STOP__ ").split("__STOP__")[0].replace(DEVICE_TRAILING_WORDS, "").replace(/[.,;:|\-]+$/g, "").replace(/\s{2,}/g, " ").trim();
+    const tokens = candidate.split(/\s+/).filter(Boolean);
+    if (tokens.length > 7) candidate = tokens.slice(0, 7).join(" ");
+    return cleanText(candidate);
   }
   function extractCleanDevice(description = "") {
     const text2 = cleanText(description).replace(/\b\d{2}PI[A-Z0-9-]+\b/gi, " ").replace(/\b[A-Z]{2,}\d{3,}\b/g, " ").replace(/\s{2,}/g, " ").trim();
-    const patterns = [/apple\s+iphone\s+[a-z0-9 ]+/i, /hp\s+elitebook[ a-z0-9-]*/i, /hp\s+elite\s*x360[ a-z0-9-]*/i, /dell\s+monitor[ a-z0-9-]*/i, /(iphone|ipad|smartphone|laptop|monitor|tablet)[ a-z0-9-]*/i];
+    const patterns = [
+      /\bapple\s+iphone\s+\d{1,2}[a-z]?(?:\s+(?:pro(?:\s+max)?|plus|mini))?(?:\s+\d{2,4}\s*gb)?(?:\s+(?:black|white|blue|green|pink|yellow|red|silver|gold|natural(?:\s+titanium)?|titanium))?\b/i,
+      /\bhp\s+elitebook\s+[a-z0-9-]+(?:\s+[a-z0-9-]+){0,2}\b/i,
+      /\bhp\s+elite\s*x360(?:\s+[a-z0-9-]+){0,3}\b/i,
+      /\bdell\s+monitor(?:\s+[a-z0-9-]+){0,3}\b/i,
+      /\b(?:iphone|ipad|smartphone|laptop|monitor|tablet)(?:\s+[a-z0-9-]+){0,4}\b/i
+    ];
     for (const pattern of patterns) {
       const match = text2.match(pattern);
-      if (match?.[0]) return cleanText(match[0]);
+      if (match?.[0]) {
+        const candidate = cleanDeviceCandidate(match[0]);
+        if (candidate) return candidate;
+      }
     }
     return "the device";
   }
@@ -35318,9 +35914,12 @@ Verification completed with ${requestedFor}. Ticket moved to Resolved.`;
   function extractDeviceName(description = "", shortDescription = "", cmdbCi = "") {
     const text2 = cleanText([shortDescription, description, cmdbCi].filter(Boolean).join(" "));
     const exact = text2.match(/attribution\s+et\s+livraison\s+device\s*:\s*([^\n,;]+)/i);
-    if (exact?.[1]) return cleanText(exact[1]).toUpperCase();
-    const iphone = text2.match(/\bAPPLE\s+IPHONE\s+[A-Z0-9 ]+\b/i);
-    if (iphone?.[0]) return cleanText(iphone[0]).toUpperCase();
+    if (exact?.[1]) {
+      const candidate = cleanDeviceCandidate(exact[1]);
+      if (candidate) return candidate.toUpperCase();
+    }
+    const iphone = text2.match(/\bapple\s+iphone\s+\d{1,2}[a-z]?(?:\s+(?:pro(?:\s+max)?|plus|mini))?(?:\s+\d{2,4}\s*gb)?(?:\s+(?:black|white|blue|green|pink|yellow|red|silver|gold|natural(?:\s+titanium)?|titanium))?\b/i);
+    if (iphone?.[0]) return cleanDeviceCandidate(iphone[0]).toUpperCase();
     return extractCleanDevice(text2).toUpperCase();
   }
   function extractAssetTag(description = "", cmdbCi = "", assetTag = "") {
@@ -35332,17 +35931,39 @@ Verification completed with ${requestedFor}. Ticket moved to Resolved.`;
   }
   function classifyServiceNowTicket(text2 = "") {
     const t = cleanText(text2).toLowerCase();
-    if (containsAny(t, ["smartphone", "iphone", "apple iphone", "attribution et livraison device", "replacement plan", "attribution smartphone"])) return "delivery_smartphone";
-    if (containsAny(t, ["laptop", "notebook", "ordinateur portable", "pc delivery", "laptop delivery"])) return "delivery_laptop";
     if (containsAny(t, RETURN_KEYWORDS)) return CATEGORY.RETURN;
+    if (containsAny(t, ACCESS_KEYWORDS)) return CATEGORY.ACCESS;
+    if (containsAny(t, REPLACEMENT_KEYWORDS)) return CATEGORY.REPLACEMENT;
     if (containsAny(t, MDM_KEYWORDS)) return CATEGORY.MDM;
     if (containsAny(t, MOVE_KEYWORDS)) return CATEGORY.MOVE;
     if (containsAny(t, NETWORK_KEYWORDS)) return CATEGORY.NETWORK;
-    if (containsAny(t, ["schedule smartphone delivery", "delivery of the items", "device delivered", "livraison", "handover", "remise de", "remis \xE0"])) return CATEGORY.DELIVERY;
-    if (containsAny(t, ["device configuration", "configuration du poste", "setup device", "install software", "logiciel", "configuration r\xE9seau"])) return CATEGORY.CONFIGURATION;
-    if (containsAny(t, ["device replacement", "remplacement", "swap device", "replacement device", "broken device", "faulty device"])) return CATEGORY.REPLACEMENT;
-    if (containsAny(t, ACCESS_KEYWORDS)) return CATEGORY.ACCESS;
+    if (containsAny(t, CONFIGURATION_KEYWORDS)) return CATEGORY.CONFIGURATION;
+    const hasDeliveryAction = containsAny(t, DELIVERY_KEYWORDS) || containsAny(t, ["attribution et livraison device"]);
+    if (hasDeliveryAction && containsAny(t, SMARTPHONE_KEYWORDS)) return "delivery_smartphone";
+    if (hasDeliveryAction && containsAny(t, LAPTOP_KEYWORDS)) return "delivery_laptop";
+    if (hasDeliveryAction) return CATEGORY.DELIVERY;
     return CATEGORY.INCIDENT;
+  }
+  function classifyServiceNowContext({ shortDescription = "", description = "", cmdbCi = "", deviceName = "" } = {}) {
+    const shortText = cleanText(shortDescription);
+    const detailedText = cleanText(description);
+    const shortHasStrongIntent = shortText && containsAny(shortText, STRONG_SHORT_DESCRIPTION_KEYWORDS);
+    if (shortHasStrongIntent) {
+      const shortType = classifyServiceNowTicket(cleanText([shortText, deviceName, cmdbCi].filter(Boolean).join(" ")));
+      if (shortType !== CATEGORY.INCIDENT) {
+        return {
+          type: shortType,
+          source: "short_description",
+          classifierText: cleanText([shortText, deviceName, cmdbCi].filter(Boolean).join(" "))
+        };
+      }
+    }
+    const classifierText = cleanText([shortText, detailedText, cmdbCi].filter(Boolean).join(" "));
+    return {
+      type: classifyServiceNowTicket(classifierText),
+      source: shortText ? "combined" : "description",
+      classifierText
+    };
   }
   function generateServiceNowTemplateBundle(context = {}) {
     const number = normalizeTicketNumber(context.number || context.ticketNumber || context.recordNumber);
@@ -35357,8 +35978,8 @@ Verification completed with ${requestedFor}. Ticket moved to Resolved.`;
     const cmdbCi = cleanText(context.cmdb_ci || context.configurationItem || context.configurationItemDisplay || "N/A");
     const cleanDevice = extractDeviceName(description, shortDescription, cmdbCi);
     const piAsset = extractAssetTag(description, cmdbCi, context.assetTag || context.asset_tag);
-    const classifierText = cleanText([shortDescription, description, cmdbCi].join(" ")).toLowerCase();
-    const type = containsAny(classifierText, ["smartphone", "iphone", "apple iphone", "replacement plan", "attribution et livraison device", "delivery and closure"]) ? "delivery_smartphone" : classifyServiceNowTicket(classifierText);
+    const classification = classifyServiceNowContext({ shortDescription, description, cmdbCi, deviceName: cleanDevice });
+    const type = classification.type;
     const reminder = Boolean(context.reminder);
     const internalTask = Boolean(context.internal_task);
     const emailMap = {
@@ -35638,6 +36259,8 @@ ${assignedTo}`]
     const closeWorkNote = closeWorkNoteMap[type] ?? `The request from ${requestedFor} has been completed and the outcome verified. Ticket ready for closure.`;
     return {
       type,
+      classificationSource: classification.source,
+      classifierText: classification.classifierText,
       cleanDevice,
       piAsset,
       email,
@@ -35668,6 +36291,11 @@ ${assignedTo}`
   }
 
   // Assistant/handlers/email.js
+  function resolveGeneratedEmailRecipient(context = {}) {
+    return cleanText(
+      context.user?.email || context.requestedFor?.email || context.requested_for?.email || context.requestedForEmail || context.email || ""
+    );
+  }
   function createEmailHandlers({
     state,
     store,
@@ -35681,13 +36309,13 @@ ${assignedTo}`
     runReminderFlow: runReminderFlow2
   }) {
     return {
-      async confirmReplaceCloseNotesIfNeeded({
-        title,
-        description,
-        details,
-        gForm
-      }) {
+      async confirmReplaceCloseNotesIfNeeded({ title, description, details, gForm }) {
         const existing = cleanText(gForm?.getValue?.("close_notes") || gForm?.getValue?.("u_close_notes"));
+        if (!existing) return true;
+        return showConfirmationModal(state.host.document, { title, description, details });
+      },
+      async confirmReplaceWorkNotesIfNeeded({ title, description, details, gForm }) {
+        const existing = cleanText(gForm?.getValue?.("work_notes"));
         if (!existing) return true;
         return showConfirmationModal(state.host.document, { title, description, details });
       },
@@ -35697,9 +36325,7 @@ ${assignedTo}`
             ticket: state.context?.ticketNumber || state.context?.recordNumber || "unknown"
           });
           const opened = await runDraftFlow2({ categoryOverride: "email" });
-          if (opened) {
-            showToast(state.host.document, { message: "Draft opened", tone: "info" });
-          }
+          if (opened) showToast(state.host.document, { message: "Draft opened", tone: "info" });
         });
       },
       onQuickDraftTop3() {
@@ -35730,9 +36356,7 @@ ${assignedTo}`
             ticket: state.context?.ticketNumber || state.context?.recordNumber || "unknown"
           });
           const opened = await runReminderFlow2();
-          if (opened) {
-            showToast(state.host.document, { message: "Reminder draft opened", tone: "info" });
-          }
+          if (opened) showToast(state.host.document, { message: "Reminder draft opened", tone: "info" });
         });
       },
       onIncidentResolutionNotes() {
@@ -35742,9 +36366,7 @@ ${assignedTo}`
             hydrateUser: true,
             categoryOverride: "close_note"
           });
-          if (!renderedTemplate) {
-            throw new Error("No close note template selected");
-          }
+          if (!renderedTemplate) throw new Error("No close note template selected");
           logger.info("audit:close-note", {
             ticket: state.context?.ticketNumber || state.context?.recordNumber || "unknown",
             template: selection.selectedTemplateId || "unknown"
@@ -35774,9 +36396,7 @@ ${assignedTo}`
             if (!confirmed) return;
           }
           const result = insertRenderedTemplate(resolutionTemplate, ctx);
-          if (!result.ok) {
-            throw new Error("Could not write Resolution notes field");
-          }
+          if (!result.ok) throw new Error("Could not write Resolution notes field");
           logger.info("resolution notes inserted", { templateId: selection.selectedTemplateId });
           showToast(state.host.document, {
             message: "Close note prepared \xB7 " + (renderedTemplate.label || selection.selectedTemplateId || "template"),
@@ -35788,21 +36408,15 @@ ${assignedTo}`
       onCopy() {
         runAction("copy", async () => {
           const { renderedTemplate, selection } = await getRenderedSelection2({ hydrateUser: true });
-          if (!renderedTemplate) {
-            throw new Error("No template selected");
-          }
+          if (!renderedTemplate) throw new Error("No template selected");
           const copied = await copyToClipboard(renderedTemplate.clipboardText, state.host.document);
-          if (!copied) {
-            throw new Error("Clipboard copy failed");
-          }
+          if (!copied) throw new Error("Clipboard copy failed");
           logger.info("template rendered successfully", { templateId: selection.selectedTemplateId });
           logGeneratedArtifacts(renderedTemplate, state.context, getEffectiveSettings(), logger);
           if (state.settings.toggles.autoOpenDraft && isDraftCapableCategory(renderedTemplate.category)) {
             const emailTemplate = renderedTemplate.category === "email" ? renderedTemplate : { ...renderedTemplate, category: "email" };
             const result = openDraft(emailTemplate);
-            if (!result.ok) {
-              throw new Error("Draft could not be opened");
-            }
+            if (!result.ok) throw new Error("Draft could not be opened");
             showToast(state.host.document, { message: "Template copied and draft opened", tone: "info" });
             return;
           }
@@ -35812,16 +36426,12 @@ ${assignedTo}`
       onInsert() {
         runAction("insert", async () => {
           const { renderedTemplate, selection } = await getRenderedSelection2({ hydrateUser: true });
-          if (!renderedTemplate) {
-            throw new Error("No template selected");
-          }
+          if (!renderedTemplate) throw new Error("No template selected");
           if (state.settings.toggles.autoCopyToClipboard) {
             await copyToClipboard(renderedTemplate.clipboardText, state.host.document);
           }
           const result = insertRenderedTemplate(renderedTemplate, state.context);
-          if (!result.ok) {
-            throw new Error("No compatible target field was found");
-          }
+          if (!result.ok) throw new Error("No compatible target field was found");
           logger.info("template rendered successfully", { templateId: selection.selectedTemplateId });
           showToast(state.host.document, { message: `Inserted into ${result.targetField}` });
         });
@@ -35829,16 +36439,12 @@ ${assignedTo}`
       onDraft() {
         runAction("draft", async () => {
           const opened = await runDraftFlow2({ categoryOverride: "email" });
-          if (opened) {
-            showToast(state.host.document, { message: "Draft opened", tone: "info" });
-          }
+          if (opened) showToast(state.host.document, { message: "Draft opened", tone: "info" });
         });
       },
       onPiSearch() {
         runAction("piSearch", async () => {
-          if (!state.context?.supported) {
-            throw new Error("No supported context available");
-          }
+          if (!state.context?.supported) throw new Error("No supported context available");
           const piValue = await runPiSearch({
             context: state.context,
             hostDocument: state.host.document,
@@ -35851,14 +36457,28 @@ ${assignedTo}`
       },
       onGenerateEmailDraft() {
         runAction("generate-email-draft", async () => {
-          const bundle = generateServiceNowTemplateBundle(buildTicketContext());
-          if (bundle.email === "(none)") return showToast(state.host.document, { message: "Internal task: no email generated", tone: "info" });
+          const context = buildTicketContext();
+          const bundle = generateServiceNowTemplateBundle(context);
+          if (bundle.email === "(none)") {
+            showToast(state.host.document, { message: "Internal task: no email generated", tone: "info" });
+            return;
+          }
           state.ui.lastDraftSubject = bundle.email.subject;
           state.ui.lastDraftBody = bundle.email.body;
-          await copyWithToast({ value: `Subject: ${bundle.email.subject}
+          await copyWithToast({
+            value: `Subject: ${bundle.email.subject}
 
-${bundle.email.body}`, hostDocument: state.host.document });
-          showToast(state.host.document, { message: "Email draft generated", tone: "success" });
+${bundle.email.body}`,
+            hostDocument: state.host.document
+          });
+          const draftResult = openDraft({
+            category: "email",
+            recipient: resolveGeneratedEmailRecipient(context),
+            subject: bundle.email.subject,
+            body: bundle.email.body
+          });
+          if (!draftResult.ok) throw new Error("Draft could not be opened");
+          showToast(state.host.document, { message: "Email draft generated and opened", tone: "success" });
         });
       },
       onGenerateCloseNotes() {
@@ -35883,16 +36503,11 @@ ${bundle.email.body}`, hostDocument: state.host.document });
             ctx
           );
           if (!result.ok) {
-            if (gForm?.setValue) {
-              gForm.setValue("close_notes", closeBody);
-            } else {
-              throw new Error("Could not write close notes field");
-            }
+            if (gForm?.setValue) gForm.setValue("close_notes", closeBody);
+            else throw new Error("Could not write close notes field");
           }
           const closeWorkNote = bundle.closeWorkNotes;
-          if (closeWorkNote) {
-            writeWorkNoteToField(closeWorkNote, ctx, { append: false });
-          }
+          if (closeWorkNote) writeWorkNoteToField(closeWorkNote, ctx, { append: false });
           showToast(state.host.document, { message: "Close notes and work note generated", tone: "success" });
         });
       },
@@ -35905,6 +36520,14 @@ ${bundle.email.body}`, hostDocument: state.host.document });
             showToast(state.host.document, { message: "No work notes template available", tone: "warning" });
             return;
           }
+          const gForm = getBestGForm(rootWindow)?.gForm;
+          const confirmed = await this.confirmReplaceWorkNotesIfNeeded({
+            title: "Replace Work Notes",
+            description: "This will replace the existing work notes with generated text.",
+            details: [{ label: "Action", value: "Replace work notes field" }],
+            gForm
+          });
+          if (!confirmed) return;
           const result = writeWorkNoteToField(workNotesText, context, { append: false });
           if (!result.ok) throw new Error("Could not write work notes");
           showToast(state.host.document, { message: "Work notes generated", tone: "success" });
@@ -35914,13 +36537,22 @@ ${bundle.email.body}`, hostDocument: state.host.document });
         runAction("generate-all-notes", async () => {
           const context = buildTicketContext();
           const bundle = generateServiceNowTemplateBundle(context);
-          if (bundle.email !== "(none)" && bundle.email?.subject) {
+          const generated = [];
+          const hasEmail = bundle.email !== "(none)" && Boolean(bundle.email?.subject);
+          if (hasEmail) {
             state.ui.lastDraftSubject = bundle.email.subject;
             state.ui.lastDraftBody = bundle.email.body;
+            await copyWithToast({
+              value: `Subject: ${bundle.email.subject}
+
+${bundle.email.body}`,
+              hostDocument: state.host.document
+            });
+            generated.push("email copied");
           }
           const closeBody = bundle.closeNotes?.body;
           const workNotesText = bundle.closeWorkNotes || bundle.workNotes;
-          if (!closeBody && !workNotesText) {
+          if (!hasEmail && !closeBody && !workNotesText) {
             showToast(state.host.document, { message: "No generated content available for this ticket", tone: "warning" });
             return;
           }
@@ -35933,19 +36565,33 @@ ${bundle.email.body}`, hostDocument: state.host.document });
               gForm
             });
             if (!confirmed) return;
+          }
+          if (workNotesText) {
+            const confirmed = await this.confirmReplaceWorkNotesIfNeeded({
+              title: "Replace Work Notes",
+              description: "This will replace the existing work notes with generated text.",
+              details: [{ label: "Action", value: "Replace work notes field" }],
+              gForm
+            });
+            if (!confirmed) return;
+          }
+          if (closeBody) {
             const closeResult = insertRenderedTemplate(
               { body: closeBody, category: "close_note", target: "close_notes" },
               context
             );
-            if (!closeResult.ok && gForm?.setValue) {
-              gForm.setValue("close_notes", closeBody);
-            }
+            if (!closeResult.ok && gForm?.setValue) gForm.setValue("close_notes", closeBody);
+            generated.push("close notes");
           }
           if (workNotesText) {
             const result = writeWorkNoteToField(workNotesText, context, { append: false });
             if (!result.ok) throw new Error("Could not write work notes");
+            generated.push("work notes");
           }
-          showToast(state.host.document, { message: "Notes generated", tone: "success" });
+          showToast(state.host.document, {
+            message: `Generated: ${generated.join(", ")}`,
+            tone: "success"
+          });
         });
       }
     };
@@ -36024,14 +36670,6 @@ ${bundle.email.body}`, hostDocument: state.host.document });
         });
         const phrase = extractPhrases(templateText)[0] || "";
         pushPhrase(phrase);
-        const writeResult = writeWorkNoteToField(templateText, currentContext, { append: false });
-        if (writeResult.ok) {
-          logger.info("work-notes:auto-write", {
-            ticketNumber: currentContext?.ticketNumber || currentContext?.recordNumber || "",
-            selectedTemplateId: selectedId,
-            targetField: writeResult.targetField || "work_notes"
-          });
-        }
         logger.info("work-notes:template-selected", {
           ticketNumber: state.context?.ticketNumber || state.context?.recordNumber || "",
           selectedTemplateId: selectedId,
@@ -36154,7 +36792,6 @@ ${addition}` : addition;
           });
         });
       },
-      /** Appends a canned phrase to the current work note draft text. */
       onCannedPhrase(phrase) {
         const text2 = cleanText(phrase);
         if (!text2) return;
@@ -36174,8 +36811,6 @@ ${text2}` : text2;
         saveRecentWorkNotePhrases(rootWindow, next);
         scheduleRecovery("work-notes-quick-phrase-remove", 0);
       },
-      // Quick-write: applies a template and writes directly to the SN work notes
-      // field without opening the full work notes panel.
       onQuickWriteWorkNote(templateId) {
         runAction("workNotes", async () => {
           const currentContext = state.context || getCurrentContext(rootWindow);
@@ -36209,6 +36844,19 @@ ${text2}` : text2;
   // Assistant/application/templates/custom-templates.js
   function createCustomTemplateId(category) {
     return `custom_${cleanText(category || "email")}_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
+  }
+  function looksGeneratedCustomId(value = "") {
+    return /^custom_(?:email|reminder|close_note|work_note|appointment)_[a-z0-9]+_[a-z0-9]+$/i.test(cleanText(value));
+  }
+  function templateFingerprint(template = {}) {
+    return JSON.stringify([
+      cleanText(template.category),
+      cleanText(template.label),
+      cleanText(template.target),
+      cleanText(template.subject),
+      String(template.body || ""),
+      cleanText(template.paragraphSpacing || "standard")
+    ]);
   }
   function getDefaultCustomTemplate(category) {
     const rawCategory = cleanText(category);
@@ -36281,13 +36929,23 @@ ${text2}` : text2;
       isCustom: true
     };
   }
-  function upsertCustomTemplate(draft, template) {
+  function upsertCustomTemplate(draft, template, { previousId = "" } = {}) {
     const next = Array.isArray(draft.customTemplates) ? [...draft.customTemplates] : [];
-    const index = next.findIndex((item) => item.id === template.id);
+    const normalizedTemplate = { ...template, id: cleanText(template?.id) };
+    if (!normalizedTemplate.id) return;
+    let index = next.findIndex((item) => item.id === normalizedTemplate.id);
+    if (index < 0 && cleanText(previousId)) {
+      index = next.findIndex((item) => item.id === cleanText(previousId));
+    }
+    if (index < 0 && normalizedTemplate.isCustom && !looksGeneratedCustomId(normalizedTemplate.id)) {
+      const fingerprint = templateFingerprint(normalizedTemplate);
+      const matches = next.map((item, candidateIndex) => ({ item, candidateIndex })).filter(({ item }) => item?.isCustom && templateFingerprint(item) === fingerprint);
+      if (matches.length === 1) index = matches[0].candidateIndex;
+    }
     if (index >= 0) {
-      next[index] = template;
+      next[index] = normalizedTemplate;
     } else {
-      next.push(template);
+      next.push(normalizedTemplate);
     }
     draft.customTemplates = next;
   }
@@ -36318,6 +36976,10 @@ ${text2}` : text2;
       "force-close": "#f87171"
     }
   };
+  function normalizeCustomTemplateId(value = "", fallback = "") {
+    const normalized = cleanText(value).replace(/[^A-Za-z0-9_-]+/g, "_").replace(/^_+|_+$/g, "").slice(0, 80);
+    return normalized || cleanText(fallback);
+  }
   function applyDraftFieldChange(state, name, value) {
     const draft = cloneSettings(ensureSettingsDraft(state));
     if (name === "officeProfile") {
@@ -36354,11 +37016,8 @@ ${text2}` : text2;
       const buttonId = name.split(":")[1];
       const currentColors = typeof draft.buttonColors === "object" ? { ...draft.buttonColors } : {};
       const safeColor = cleanText(value);
-      if (safeColor && safeColor !== DEFAULT_BUTTON_COLOR) {
-        currentColors[buttonId] = safeColor;
-      } else {
-        delete currentColors[buttonId];
-      }
+      if (safeColor && safeColor !== DEFAULT_BUTTON_COLOR) currentColors[buttonId] = safeColor;
+      else delete currentColors[buttonId];
       draft.buttonColors = currentColors;
       setSettingsDraft(state, sanitizeSettings(draft));
       return { rerender: false };
@@ -36366,11 +37025,8 @@ ${text2}` : text2;
     if (name.startsWith("launcherBtn:")) {
       const buttonId = name.split(":")[1];
       const currentHidden = Array.isArray(draft.hiddenButtons) ? draft.hiddenButtons : [];
-      if (value) {
-        draft.hiddenButtons = currentHidden.filter((id) => id !== buttonId);
-      } else if (!currentHidden.includes(buttonId)) {
-        draft.hiddenButtons = [...currentHidden, buttonId];
-      }
+      if (value) draft.hiddenButtons = currentHidden.filter((id) => id !== buttonId);
+      else if (!currentHidden.includes(buttonId)) draft.hiddenButtons = [...currentHidden, buttonId];
       setSettingsDraft(state, sanitizeSettings(draft));
       return { rerender: false };
     }
@@ -36405,10 +37061,26 @@ ${text2}` : text2;
       if (customTemplate) {
         const updatedTemplate = { ...customTemplate };
         if (fieldName === "id") {
-          updatedTemplate.id = cleanText(value) || updatedTemplate.id;
-        } else {
-          updatedTemplate[fieldName] = String(value || "");
+          const nextId = normalizeCustomTemplateId(value, templateId);
+          const collision = (draft.customTemplates || []).some(
+            (template) => template.id === nextId && template.id !== templateId
+          );
+          if (collision) {
+            return {
+              rerender: true,
+              error: `Template ID already exists: ${nextId}`
+            };
+          }
+          updatedTemplate.id = nextId;
+          upsertCustomTemplate(draft, updatedTemplate, { previousId: templateId });
+          setSettingsDraft(state, sanitizeSettings(draft));
+          setSelectedTemplate(state, category, nextId);
+          if (state.ui.editingTemplate?.category === category && state.ui.editingTemplate?.templateId === templateId) {
+            state.ui.editingTemplate = { category, templateId: nextId };
+          }
+          return { rerender: true, renamedTemplateId: nextId };
         }
+        updatedTemplate[fieldName] = String(value || "");
         upsertCustomTemplate(draft, updatedTemplate);
         setSettingsDraft(state, sanitizeSettings(draft));
         return { rerender: false };
@@ -36419,34 +37091,36 @@ ${text2}` : text2;
       setSettingsDraft(state, sanitizeSettings(draft));
       return { rerender: false };
     }
-    if (["officeName", "officeRoom", "officeLabel"].includes(name)) {
-      draft.officeProfile = "custom";
-    }
+    if (["officeName", "officeRoom", "officeLabel"].includes(name)) draft.officeProfile = "custom";
     draft[name] = String(value || "");
     setSettingsDraft(state, sanitizeSettings(draft));
     return { rerender: false };
   }
-  function createSettingsHandlers({
-    state,
-    store,
-    logger,
-    rootWindow,
-    scheduleRecovery,
-    scheduleAutoHideTimer
-  }) {
+  function createSettingsHandlers({ state, store, logger, rootWindow, scheduleRecovery, scheduleAutoHideTimer }) {
+    function applyColor(settings, buttonId, color) {
+      const id = cleanText(buttonId);
+      if (!id) return sanitizeSettings(settings);
+      const next = cloneSettings(settings);
+      const currentColors = typeof next.buttonColors === "object" ? { ...next.buttonColors } : {};
+      const safeColor = cleanText(color);
+      if (safeColor && safeColor !== DEFAULT_BUTTON_COLOR) currentColors[id] = safeColor;
+      else delete currentColors[id];
+      next.buttonColors = currentColors;
+      return sanitizeSettings(next);
+    }
     function setColorOnDraft(buttonId, color) {
       const id = cleanText(buttonId);
       if (!id) return;
-      const draft = cloneSettings(ensureSettingsDraft(state));
-      const currentColors = typeof draft.buttonColors === "object" ? { ...draft.buttonColors } : {};
-      const safeColor = cleanText(color);
-      if (safeColor && safeColor !== DEFAULT_BUTTON_COLOR) {
-        currentColors[id] = safeColor;
-      } else {
-        delete currentColors[id];
+      setSettingsDraft(state, applyColor(ensureSettingsDraft(state), id, color));
+    }
+    function persistInlineButtonColor(buttonId, color) {
+      const id = cleanText(buttonId);
+      if (!id) return;
+      const persistedSettings = saveSettings(rootWindow, applyColor(state.settings, id, color), logger);
+      setSettings(state, persistedSettings);
+      if (state.ui.settingsDraft) {
+        setSettingsDraft(state, applyColor(state.ui.settingsDraft, id, color));
       }
-      draft.buttonColors = currentColors;
-      setSettingsDraft(state, sanitizeSettings(draft));
     }
     return {
       onOpenSettings() {
@@ -36457,12 +37131,7 @@ ${text2}` : text2;
       onCloseSettings() {
         const draft = state.ui.settingsDraft;
         const isDirty = draft && JSON.stringify(state.settings) !== JSON.stringify(draft);
-        if (isDirty) {
-          showToast(state.host.document, {
-            message: "Unsaved changes discarded.",
-            tone: "info"
-          });
-        }
+        if (isDirty) showToast(state.host.document, { message: "Unsaved changes discarded.", tone: "info" });
         store.dispatch(closeSettingsModal);
         scheduleAutoHideTimer();
         scheduleRecovery("settings-close", 0);
@@ -36477,23 +37146,21 @@ ${text2}` : text2;
         scheduleRecovery("template-category", 0);
       },
       onSelectTemplate(templateId) {
-        store.dispatch(setSelectedTemplate2, {
-          category: state.ui.activeCategory,
-          templateId
-        });
+        store.dispatch(setSelectedTemplate2, { category: state.ui.activeCategory, templateId });
         scheduleRecovery("template-select", 0);
       },
       onFieldChange(name, value) {
         const result = applyDraftFieldChange(state, name, value);
         const draftSettings = sanitizeSettings(state.ui.settingsDraft || state.settings);
+        if (result.error) {
+          showToast(state.host.document, { message: result.error, tone: "error" });
+        }
         if (name === "theme" || name === "enableThemeSkin") {
           applyThemeToAll(rootWindow, draftSettings.theme, draftSettings.enableThemeSkin);
           scheduleRecovery("settings-theme-preview", TIMING.themePreviewMs);
           return;
         }
-        if (result.rerender) {
-          scheduleRecovery("settings-field-change", 0);
-        }
+        if (result.rerender) scheduleRecovery("settings-field-change", 0);
       },
       onTemplateManagerCategory(category) {
         store.dispatch(setTemplateManagerCategory, category);
@@ -36504,10 +37171,7 @@ ${text2}` : text2;
       onSelectSettingsTemplate(category, templateId) {
         store.dispatch(setSelectedTemplate2, { category, templateId });
         store.dispatch(setActiveCategory2, category);
-        showToast(state.host.document, {
-          message: `Template selected: ${templateId}`,
-          tone: "info"
-        });
+        showToast(state.host.document, { message: `Template selected: ${templateId}`, tone: "info" });
         scheduleRecovery("settings-template-selected", 0);
       },
       onEditTemplate(category, templateId) {
@@ -36523,9 +37187,7 @@ ${text2}` : text2;
       },
       onRestoreTemplate(category, templateId) {
         const draft = cloneSettings(ensureSettingsDraft(state));
-        if (draft.templateOverrides?.[category]) {
-          delete draft.templateOverrides[category][templateId];
-        }
+        if (draft.templateOverrides?.[category]) delete draft.templateOverrides[category][templateId];
         const sanitized = sanitizeSettings(draft);
         store.dispatch(setSettingsDraft2, sanitized);
         setSettings(state, saveSettings(rootWindow, sanitized, logger));
@@ -36542,10 +37204,7 @@ ${text2}` : text2;
         store.dispatch(setTemplateManagerCategory, template.category);
         store.dispatch(setSelectedTemplate2, { category: template.category, templateId: template.id });
         store.dispatch(setEditingTemplate, { category: template.category, templateId: template.id });
-        showToast(state.host.document, {
-          message: `New template created: ${template.label}`,
-          tone: "info"
-        });
+        showToast(state.host.document, { message: `New template created: ${template.label}`, tone: "info" });
         scheduleRecovery("settings-template-created", 0);
       },
       onDuplicateTemplate(category, templateId) {
@@ -36561,10 +37220,7 @@ ${text2}` : text2;
         store.dispatch(setTemplateManagerCategory, template.category);
         store.dispatch(setSelectedTemplate2, { category: template.category, templateId: template.id });
         store.dispatch(setEditingTemplate, { category: template.category, templateId: template.id });
-        showToast(state.host.document, {
-          message: `Template duplicated: ${template.label}`,
-          tone: "info"
-        });
+        showToast(state.host.document, { message: `Template duplicated: ${template.label}`, tone: "info" });
         scheduleRecovery("settings-template-duplicated", 0);
       },
       onDeleteCustomTemplate(category, templateId) {
@@ -36575,10 +37231,7 @@ ${text2}` : text2;
         store.dispatch(setSettingsDraft2, sanitized);
         setSettings(state, saveSettings(rootWindow, sanitized, logger));
         if (state.ui.selectedTemplates?.[category] === templateId) {
-          store.dispatch(setSelectedTemplate2, {
-            category,
-            templateId: getFirstTemplateId(category, sanitized)
-          });
+          store.dispatch(setSelectedTemplate2, { category, templateId: getFirstTemplateId(category, sanitized) });
         }
         if (state.ui.editingTemplate?.category === category && state.ui.editingTemplate?.templateId === templateId) {
           store.dispatch(clearEditingTemplate);
@@ -36587,7 +37240,7 @@ ${text2}` : text2;
         scheduleRecovery("settings-template-deleted", 0);
       },
       onSetButtonColor(buttonId, color) {
-        setColorOnDraft(buttonId, color);
+        persistInlineButtonColor(buttonId, color);
         scheduleRecovery("launcher-button-color-inline", 0);
       },
       onResetButtonColor(buttonId) {
@@ -36605,11 +37258,7 @@ ${text2}` : text2;
       onAddCustomLink() {
         const draft = cloneSettings(ensureSettingsDraft(state));
         const currentLinks = Array.isArray(draft.customLinks) ? draft.customLinks : [];
-        const newLink = {
-          id: `link_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
-          label: "New link",
-          url: "https://"
-        };
+        const newLink = { id: `link_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`, label: "New link", url: "https://" };
         draft.customLinks = [...currentLinks, newLink];
         store.dispatch(setSettingsDraft2, sanitizeSettings(draft));
         scheduleRecovery("settings-launcher-custom-link", 0);
@@ -36640,10 +37289,7 @@ ${text2}` : text2;
       },
       onResetSettings() {
         store.dispatch(setSettingsDraft2, getDefaultSettings());
-        showToast(state.host.document, {
-          message: "Defaults restored. Save settings to apply.",
-          tone: "info"
-        });
+        showToast(state.host.document, { message: "Defaults restored. Save settings to apply.", tone: "info" });
         scheduleRecovery("settings-reset-draft", 0);
       },
       async onImportSettingsFile(file) {
@@ -36652,10 +37298,7 @@ ${text2}` : text2;
           const importedSettings = await importSettingsPackage(file);
           store.dispatch(setSettingsDraft2, importedSettings);
           setSettings(state, saveSettings(rootWindow, importedSettings, logger));
-          showToast(state.host.document, {
-            message: "Import loaded. Save settings to apply.",
-            tone: "info"
-          });
+          showToast(state.host.document, { message: "Import loaded. Save settings to apply.", tone: "info" });
           scheduleRecovery("settings-imported", 0);
         } catch (error2) {
           logger.error("settings import failed", error2);
@@ -36664,10 +37307,7 @@ ${text2}` : text2;
       },
       async onExportSettings() {
         try {
-          const result = await exportSettingsPackage(
-            rootWindow,
-            sanitizeSettings(state.ui.settingsDraft || state.settings)
-          );
+          const result = await exportSettingsPackage(rootWindow, sanitizeSettings(state.ui.settingsDraft || state.settings));
           if (!result.ok && result.canceled) return;
           const message = result.mode === "filesystem" ? `Templates exported to ${result.path}` : `Templates exported as ${result.fileName}`;
           showToast(state.host.document, { message, tone: "info" });
@@ -36685,10 +37325,7 @@ ${text2}` : text2;
         const safeSettings = sanitizeSettings(state.ui.settingsDraft || state.settings);
         if (!hasRequiredSettings(safeSettings)) {
           openSettings(state, true);
-          showToast(state.host.document, {
-            message: "Office profile, room, label and language are required",
-            tone: "error"
-          });
+          showToast(state.host.document, { message: "Office profile, room, label and language are required", tone: "error" });
           scheduleRecovery("settings-invalid", 0);
           return;
         }
@@ -36726,11 +37363,6 @@ ${text2}` : text2;
   }
 
   // Assistant/handlers/launcher.js
-  var NEVER_HIDE = [
-    LAUNCHER_BUTTON_IDS.openSettings,
-    LAUNCHER_BUTTON_IDS.openReminder,
-    LAUNCHER_BUTTON_IDS.findCi
-  ];
   function createLauncherHandlers({
     state,
     store,
@@ -36747,11 +37379,8 @@ ${text2}` : text2;
       onToggleEdgePanelPinned(pinned) {
         const wasPinned = Boolean(pinned);
         store.dispatch(setEdgePanelPinned, wasPinned);
-        if (wasPinned) {
-          clearAutoHideTimer();
-        } else {
-          scheduleAutoHideTimer();
-        }
+        if (wasPinned) clearAutoHideTimer();
+        else scheduleAutoHideTimer();
         scheduleRecovery("launcher-pin", 0);
       },
       onEdgePanelToggle() {
@@ -36761,11 +37390,7 @@ ${text2}` : text2;
         state.ui.edgePanelMode = next;
         state.ui.assistantHidden = false;
         if (state.ui.edgePanelPinned) {
-          savePinState(rootWindow, {
-            pinned: true,
-            lastOpenState: next !== "tab",
-            mode: next
-          });
+          savePinState(rootWindow, { pinned: true, lastOpenState: next !== "tab", mode: next });
         }
         scheduleRecovery("launcher-mode", 0);
       },
@@ -36774,11 +37399,7 @@ ${text2}` : text2;
         state.ui.edgePanelMode = next;
         state.ui.assistantHidden = false;
         if (state.ui.edgePanelPinned) {
-          savePinState(rootWindow, {
-            pinned: true,
-            lastOpenState: true,
-            mode: next
-          });
+          savePinState(rootWindow, { pinned: true, lastOpenState: true, mode: next });
         }
         scheduleRecovery("launcher-mode", 0);
       },
@@ -36798,7 +37419,7 @@ ${text2}` : text2;
       },
       onHideLauncherButton(buttonId) {
         const id = cleanText(buttonId);
-        if (!id || NEVER_HIDE.includes(id)) return;
+        if (!id || !HIDEABLE_BUTTON_IDS.includes(id)) return;
         const currentHidden = Array.isArray(state.settings?.hiddenButtons) ? state.settings.hiddenButtons : [];
         if (currentHidden.includes(id)) return;
         const nextSettings = saveSettings(rootWindow, {
@@ -37081,10 +37702,26 @@ ${text2}` : text2;
       saveUserGroup(rootWindow, picked);
       return picked;
     }
+    async function confirmReassignmentIfNeeded(currentUserSysId, group) {
+      const gForm = getBestGForm(rootWindow)?.gForm;
+      const assignedTo = cleanText(gForm?.getValue?.("assigned_to"));
+      const assignmentGroup = cleanText(gForm?.getValue?.("assignment_group"));
+      const changesOwner = assignedTo && assignedTo !== currentUserSysId;
+      const changesGroup = assignmentGroup && assignmentGroup !== cleanText(group?.group_sys_id);
+      if (!changesOwner && !changesGroup) return true;
+      const assignedDisplay = cleanText(gForm?.getDisplayBox?.("assigned_to")?.value) || assignedTo || "Unassigned";
+      const groupDisplay = cleanText(gForm?.getDisplayBox?.("assignment_group")?.value) || assignmentGroup || "Unassigned";
+      return showConfirmationModal(hostDocument(), {
+        title: "Replace existing assignment",
+        description: "This ticket is already assigned. Continue and replace the current assignment?",
+        details: [
+          { label: "Current assignee", value: assignedDisplay },
+          { label: "Current group", value: groupDisplay },
+          { label: "New group", value: group?.name || "Configured group" }
+        ]
+      });
+    }
     return {
-      // Launcher "Assign to me" button: assigns the record to the operator and
-      // their group. The group is always the one they configured earlier; the
-      // picker only appears the very first time, since a group is required.
       onAssignToMyGroup() {
         return runAction("assign", async () => {
           const currentUserSysId = getCurrentUserSysId(rootWindow);
@@ -37094,6 +37731,7 @@ ${text2}` : text2;
           }
           const group = await ensureGroupConfigured();
           if (!group) return;
+          if (!await confirmReassignmentIfNeeded(currentUserSysId, group)) return;
           const result = await assignToMyGroup({ rootWindow, currentUserSysId, userGroup: group });
           if (!result.ok) {
             const message = result.kind === "invalid-group" ? "Your saved group has an invalid sys_id \u2014 reconfigure it with the gear button." : "Could not fill the assignment fields. Make sure the ticket form is open and try again.";
@@ -37115,61 +37753,6 @@ ${text2}` : text2;
         return true;
       }
     };
-  }
-
-  // Assistant/application/headerCounts/dashboardScan.js
-  function parseNumberNear(text2) {
-    const m = String(text2 || "").match(/\b(\d{1,5})\b/);
-    return m ? Number(m[1]) : NaN;
-  }
-  function collectCandidateDocuments(rootWindow) {
-    const docs = [];
-    const pushDoc = (w) => {
-      try {
-        const d = w?.document;
-        if (d && !docs.includes(d)) docs.push(d);
-      } catch {
-      }
-    };
-    pushDoc(rootWindow);
-    pushDoc(rootWindow?.top);
-    pushDoc(rootWindow?.top?.frames?.gsft_main);
-    try {
-      for (const f of Array.from(rootWindow?.frames || [])) pushDoc(f);
-    } catch {
-    }
-    return docs;
-  }
-  function findCatalogTaskCountFromDashboard(rootWindow) {
-    const docs = collectCandidateDocuments(rootWindow);
-    const labels = ["my catalog tasks (sctask)", "my catalog tasks", "sctask"];
-    const exactLabel = "my catalog tasks (sctask)";
-    const numberPattern = /\b(\d{1,5})\b/;
-    for (const doc of docs) {
-      const widgetNodes = Array.from(
-        doc.querySelectorAll(
-          ".grid-widget,.widget,.sn-widget,.panel,.card,[data-widget],[widget],.highcharts-container,.highcharts-root"
-        )
-      );
-      const nodes = widgetNodes.length > 0 ? widgetNodes : Array.from(doc.querySelectorAll("div,span,h1,h2,h3,h4,h5,h6,a,button"));
-      for (const node of nodes) {
-        const text2 = cleanText(node.textContent || "").toLowerCase();
-        if (!text2) continue;
-        if (!labels.some((l) => text2.includes(l))) continue;
-        const container = node.closest("[data-widget],[widget],.panel,.card,.grid-widget,.widget,.sn-widget") || node.parentElement || node;
-        const blob = cleanText(container?.textContent || node.textContent || "");
-        let n = NaN;
-        if (text2.includes(exactLabel)) {
-          const m = blob.match(numberPattern);
-          n = m ? Number(m[1]) : NaN;
-        }
-        if (!Number.isFinite(n)) {
-          n = parseNumberNear(blob);
-        }
-        if (Number.isFinite(n) && n >= 0) return n;
-      }
-    }
-    return null;
   }
 
   // Assistant/application/headerCounts/refreshHeaderCounts.js
@@ -37213,6 +37796,13 @@ ${text2}` : text2;
       return { ok: false, kind: "no-record" };
     }
     const current = state?.ui?.headerCounts;
+    if (current?.loading) {
+      return {
+        ok: true,
+        kind: "in-flight",
+        counts: { inc: current?.inc || 0, task: current?.task || 0 }
+      };
+    }
     const now = Date.now();
     const isFresh = Number(current?.fetchedAt || 0) > 0 && now - Number(current?.fetchedAt || 0) < HEADER_COUNTS_REFRESH_MS;
     if (!forceRefresh && current?.ready && current?.recordKey === recordKey && isFresh) {
@@ -37232,18 +37822,13 @@ ${text2}` : text2;
         fetchCount({ table: "incident", query: INC_QUERY, rootWindow })
       ]);
       counts = { inc, task };
-      const dashboardTask = findCatalogTaskCountFromDashboard(rootWindow);
-      if (Number.isFinite(dashboardTask) && dashboardTask >= 0) {
-        counts.task = dashboardTask;
-        logger?.info?.("[SN Assistant][Dashboard] task count overridden from dashboard", { dashboardTask });
-      }
     } catch (error2) {
       logger?.warn?.("header-counts:fetch-failed", { recordKey, error: error2 });
       store?.dispatch?.(setHeaderCountsError, { recordKey });
       return { ok: false, kind: "fetch-failed", error: error2 };
     }
     const elapsed = ((typeof performance !== "undefined" ? performance.now() : Date.now()) - perfT0).toFixed(1);
-    logger?.info?.(`[SN Assistant][Perf] dashboard scan took ${elapsed}ms`, { counts });
+    logger?.info?.(`[SN Assistant][Perf] header counts REST fetch took ${elapsed}ms`, { counts });
     store?.dispatch?.(setHeaderCounts, {
       inc: counts.inc,
       task: counts.task,
