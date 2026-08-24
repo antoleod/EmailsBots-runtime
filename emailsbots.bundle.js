@@ -4902,17 +4902,42 @@
   function extractEquipmentFromDescription(text2 = "") {
     const raw = cleanText(text2);
     if (!raw) return { equipmentAssetTag: "", equipmentModel: "", equipmentSummary: "" };
-    const line = raw.split(/\r?\n/).map(cleanText).find(Boolean) || raw;
-    const assetMatch = line.match(/\b((?:\d{2})?PI\d{6,}|[A-Z]{2,}\d{8,})\b/i);
-    const equipmentAssetTag = cleanText(assetMatch?.[1] || "");
-    let equipmentModel = "";
-    if (equipmentAssetTag) {
-      const idx = line.indexOf(equipmentAssetTag);
-      equipmentModel = cleanText(line.slice(idx + equipmentAssetTag.length).replace(/^[\s,;:-]+/, ""));
+    const assetPattern = /\b((?:\d{2})?PI\d{6,}|[A-Z]{2,}\d{8,})\b/i;
+    const equipmentItems = raw.split(/\r?\n/).map(cleanText).filter(Boolean).map((line) => {
+      const assetMatch = line.match(assetPattern);
+      const equipmentAssetTag = cleanText(assetMatch?.[1] || "");
+      if (!equipmentAssetTag) return null;
+      const assetIndex = line.toUpperCase().indexOf(equipmentAssetTag.toUpperCase());
+      const afterAsset = assetIndex >= 0 ? cleanText(line.slice(assetIndex + equipmentAssetTag.length).replace(/^[\s,;:-]+/, "")) : "";
+      const equipmentModel2 = cleanText(afterAsset.split(",")[0] || "").replace(/\b(APPLE)\s+\1\b/i, "$1").replace(/\b(HP)\s+\1\b/i, "$1");
+      return {
+        equipmentAssetTag,
+        equipmentModel: equipmentModel2 || "Device"
+      };
+    }).filter(Boolean);
+    if (!equipmentItems.length) {
+      return { equipmentAssetTag: "", equipmentModel: "", equipmentSummary: "" };
     }
-    equipmentModel = equipmentModel.replace(/\b(HP)\s+\1\b/i, "$1");
-    const equipmentSummary = [equipmentModel, equipmentAssetTag ? `asset tag ${equipmentAssetTag}` : ""].filter(Boolean).join(", ");
-    return { equipmentAssetTag, equipmentModel, equipmentSummary };
+    if (equipmentItems.length === 1) {
+      const item = equipmentItems[0];
+      return {
+        equipmentAssetTag: item.equipmentAssetTag,
+        equipmentModel: item.equipmentModel,
+        equipmentSummary: `${item.equipmentModel}, asset tag ${item.equipmentAssetTag}`
+      };
+    }
+    const equipmentModel = equipmentItems.map((item, index) => {
+      const isLast = index === equipmentItems.length - 1;
+      return isLast ? item.equipmentModel : `${item.equipmentModel}
+Asset tag: ${item.equipmentAssetTag}`;
+    }).join("\n\n");
+    const lastItem = equipmentItems[equipmentItems.length - 1];
+    const equipmentSummary = equipmentItems.map((item) => `${item.equipmentModel}, asset tag ${item.equipmentAssetTag}`).join("\n");
+    return {
+      equipmentAssetTag: lastItem.equipmentAssetTag,
+      equipmentModel,
+      equipmentSummary
+    };
   }
   function getChoiceFieldDisplayValue(fieldName, rootWindow = getRootWindow()) {
     const displayValue = safeGetDisplayValue(fieldName, rootWindow) || getFieldDisplayValue(fieldName, rootWindow);
@@ -5377,6 +5402,20 @@
     }
     return "";
   }
+  function resolveEquipmentDetails({ description = "", configurationItem = "" } = {}) {
+    const parsed = extractEquipmentFromDescription(description);
+    const equipmentAssetTag = cleanText(parsed?.equipmentAssetTag || configurationItem);
+    const equipmentModel = cleanText(parsed?.equipmentModel).split(",").map((part) => cleanText(part)).find(Boolean) || "";
+    const equipmentSummary = [
+      equipmentModel,
+      equipmentAssetTag ? `asset tag ${equipmentAssetTag}` : ""
+    ].filter(Boolean).join(", ");
+    return {
+      equipmentAssetTag,
+      equipmentModel,
+      equipmentSummary
+    };
+  }
   function resolveScTaskRequestItemNumber(rootWindow = getRootWindow()) {
     const direct = cleanText(safeGetDisplayValue("request_item", rootWindow));
     const directMatch = direct.toUpperCase().match(/\bRITM\d{4,}\b/);
@@ -5472,6 +5511,7 @@
     const configurationItem = cleanText(
       (!looksLikeTicketIdentifier(fieldConfigurationItem) ? fieldConfigurationItem : "") || (!looksLikeTicketIdentifier(visibleCmdbCi) ? visibleCmdbCi : "") || (!looksLikeTicketIdentifier(currentCmdbCi.display) ? currentCmdbCi.display : "") || (!looksLikeTicketIdentifier(currentCmdbCi.value) ? currentCmdbCi.value : "")
     );
+    const description = getDescription(table, rootWindow);
     const rawModel = getDeviceModel(table, rootWindow);
     const deviceModel = looksLikeRecordIdentifier(rawModel) ? "" : rawModel;
     const rawPhone = getPhoneNumber(table, rootWindow) || user?.phone || "";
@@ -5488,8 +5528,8 @@
       safeGetValue("incident", rootWindow)
     ]) || ticketNumber : ticketNumber;
     const sourceType = sourceNumber.startsWith("INC") ? "INC" : sourceNumber.startsWith("REQ") ? "REQ" : sourceNumber.startsWith("RITM") ? "RITM" : ticketNumber.startsWith("INC") ? "INC" : ticketNumber.startsWith("REQ") ? "REQ" : ticketNumber.startsWith("RITM") ? "RITM" : "";
-    const returnDate = extractReturnDateFromText(getShortDescription(table, rootWindow) || getDescription(table, rootWindow));
-    const equipment = extractEquipmentFromDescription(getDescription(table, rootWindow) || "");
+    const returnDate = extractReturnDateFromText(getShortDescription(table, rootWindow) || description);
+    const equipment = resolveEquipmentDetails({ description, configurationItem });
     const solution = cleanText(
       safeGetValue("solution", rootWindow) || safeGetDisplayValue("solution", rootWindow) || safeGetValue("u_solution", rootWindow) || safeGetDisplayValue("u_solution", rootWindow) || safeGetValue("resolution", rootWindow) || safeGetDisplayValue("resolution", rootWindow) || safeGetValue("u_resolution", rootWindow) || safeGetDisplayValue("u_resolution", rootWindow) || safeGetValue("resolution_notes", rootWindow) || safeGetDisplayValue("resolution_notes", rootWindow) || safeGetValue("u_resolution_notes", rootWindow) || safeGetDisplayValue("u_resolution_notes", rootWindow)
     );
@@ -5529,7 +5569,7 @@
       sourceType,
       source: sourceType ? "parent" : "",
       shortDescription: getShortDescription(table, rootWindow),
-      description: getDescription(table, rootWindow),
+      description,
       solution,
       resolution: solution,
       resolutionNotes: solution,
@@ -6849,7 +6889,7 @@
   }
 
   // Assistant/version.js
-  var VERSION = "V2.7";
+  var VERSION = "V2.7.2";
 
   // Assistant/templates/intelligence.js
   var TYPE_KEYWORDS = [
@@ -11837,13 +11877,42 @@ ${value}` : value;
   function normalizeSearchText(value) {
     return cleanText3(value).toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
   }
-  function matchesSearch(template, searchTerm) {
-    const needle = normalizeSearchText(searchTerm);
-    if (!needle) return true;
-    const haystack = normalizeSearchText(
-      [template?.id, template?.label, template?.target, template?.body].filter(Boolean).join(" ")
+  function flattenSearchValue(value) {
+    if (Array.isArray(value)) return value.map(flattenSearchValue).filter(Boolean).join(" ");
+    if (value && typeof value === "object") {
+      return Object.values(value).map(flattenSearchValue).filter(Boolean).join(" ");
+    }
+    return cleanText3(value);
+  }
+  function buildWorkNoteSearchText(template = {}) {
+    return normalizeSearchText(
+      [
+        template?.id,
+        template?.label,
+        template?.title,
+        template?.target,
+        template?.body,
+        template?.category,
+        template?.subcategory,
+        template?.notes,
+        flattenSearchValue(template?.keywords)
+      ].filter(Boolean).join(" ")
     );
-    return haystack.includes(needle);
+  }
+  function getSearchTokens(value) {
+    return normalizeSearchText(value).replace(/[^a-z0-9à-ÿ_-]+/gi, " ").split(/\s+/).map(cleanText3).filter(Boolean);
+  }
+  function matchesWorkNoteSearch(template, searchTerm) {
+    const tokens = getSearchTokens(searchTerm);
+    if (!tokens.length) return true;
+    const haystack = buildWorkNoteSearchText(template);
+    return tokens.every((token) => haystack.includes(token));
+  }
+  function matchesSearchCorpus(haystack, searchTerm) {
+    const tokens = getSearchTokens(searchTerm);
+    if (!tokens.length) return true;
+    const corpus = normalizeSearchText(haystack);
+    return tokens.every((token) => corpus.includes(token));
   }
   function uniqueTemplates(templates, preferredId) {
     const ordered = [];
@@ -11873,11 +11942,7 @@ ${value}` : value;
       context?.intent
     ].filter(Boolean).join(" "));
     if (!text2) return 0;
-    const corpus = normalizeSearchText([
-      template?.id,
-      template?.label,
-      template?.body
-    ].filter(Boolean).join(" "));
+    const corpus = buildWorkNoteSearchText(template);
     let score = 0;
     if (/schedule smartphone delivery|smartphone delivery|iphone delivery|phone delivery/.test(text2) && /(phone|smartphone|delivery|handover|device_ready|device_delivered|swap_phone)/.test(corpus)) score += 9;
     if (/\bswap\b/.test(text2) && /\bswap\b/.test(corpus)) score += 6;
@@ -11956,7 +12021,7 @@ ${value}` : value;
       class="${classes}"
       data-action="work-notes-select-template"
       data-template-id="${escapeHtml(template.id)}"
-      data-template-search="${escapeHtml(normalizeSearchText([template.id, template.label, template.target, template.body].filter(Boolean).join(" ")))}"
+      data-template-search="${escapeHtml(buildWorkNoteSearchText(template))}"
       title="${escapeHtml(template.label)}"
     >
       ${escapeHtml(template.label)}
@@ -11969,22 +12034,21 @@ ${value}` : value;
     const selectedTemplate = model.templates.find((template) => template.id === model.selectedTemplateId);
     const previewText = cleanText3(state.ui.workNotesText) || model.draftText;
     const searchText = cleanText3(state.ui.workNotesSearch);
-    const filteredTemplates = model.templates.filter((template) => matchesSearch(template, searchText));
     const selectedLabel = selectedTemplate?.label || "Smart suggestion";
     const recommendedTemplate = model.templates.find((template) => template.id === model.recommendedTemplateId) || model.recommendation.template || null;
-    const displayTemplates = searchText ? filteredTemplates : [
-      ...recommendedTemplate ? [recommendedTemplate] : [],
-      ...model.templates.filter((template) => template.id !== model.recommendedTemplateId)
-    ];
     const shortTitle = context.ticketNumber || context.recordNumber || context.tableLabel || "Work Notes";
     const userName = cleanText3(context?.user?.fullName || context?.requestedFor || context?.caller || "");
     const subHeading = userName ? `${selectedLabel} - ${userName.split(" ")[0]}` : selectedLabel;
     const { usageMap } = model;
-    const recentTemplates = !searchText ? model.templates.filter((template) => template.id !== model.recommendedTemplateId && getUsageScore(usageMap, template.id) > 0).slice(0, 3) : [];
+    const recentTemplates = model.templates.filter((template) => template.id !== model.recommendedTemplateId && getUsageScore(usageMap, template.id) > 0).slice(0, 4);
+    const suggestedTemplates = uniqueTemplates(
+      [recommendedTemplate, selectedTemplate, ...recentTemplates].filter(Boolean),
+      model.recommendedTemplateId
+    ).slice(0, 5);
     const recentPhrases = Array.isArray(state?.ui?.workNotesRecentPhrases) ? state.ui.workNotesRecentPhrases.map(cleanText3).filter(Boolean) : [];
     const cannedPhrases = [...new Set(recentPhrases)].slice(0, 5);
     const charCount = previewText.length;
-    const templateSectionLabel = searchText ? `${displayTemplates.length} result${displayTemplates.length !== 1 ? "s" : ""}` : recentTemplates.length ? "All templates" : "Templates";
+    const initialSearchCount = searchText ? model.templates.filter((template) => matchesWorkNoteSearch(template, searchText)).length : model.templates.length;
     return `
     <div class="sn-assistant-panel sn-assistant-worknotes-panel" data-work-notes-panel="true">
       <div class="sn-assistant-panel__header">
@@ -12011,36 +12075,51 @@ ${value}` : value;
             <span class="sn-assistant-field__label">Note</span>
             <span class="sn-assistant-worknotes__char-count" data-work-notes-char-count${charCount ? "" : " hidden"}>${escapeHtml(`${charCount} char${charCount !== 1 ? "s" : ""}`)}</span>
           </div>
-          <textarea class="sn-assistant-textarea sn-assistant-worknotes__textarea" name="workNotesText" data-action="work-notes-text" rows="6" placeholder="Write or edit the note to apply to the ticket...">${escapeHtml(previewText)}</textarea>
+          <textarea class="sn-assistant-textarea sn-assistant-worknotes__textarea" name="workNotesText" data-action="work-notes-text" rows="5" placeholder="Write or edit the note to apply to the ticket...">${escapeHtml(previewText)}</textarea>
         </div>
 
         <div class="sn-assistant-worknotes__picker">
           <div class="sn-assistant-searchbar">
             <span class="sn-assistant-searchbar__icon" aria-hidden="true"></span>
-            <input class="sn-assistant-input sn-assistant-searchbar__input" name="workNotesSearch" value="${escapeHtml(searchText)}" placeholder="Search templates..." />
+            <input
+              class="sn-assistant-input sn-assistant-searchbar__input"
+              name="workNotesSearch"
+              type="search"
+              autocomplete="off"
+              spellcheck="false"
+              value="${escapeHtml(searchText)}"
+              placeholder="Search name, text or keyword..."
+            />
           </div>
-          ${recentTemplates.length ? `
-            <div class="sn-assistant-worknotes__templates" data-work-notes-recent>
-              <div class="sn-assistant-worknotes__templates-header">Recent</div>
-              <div class="sn-assistant-worknotes__chips">
-                ${recentTemplates.map((template) => renderTemplateButton(template, template.id === model.selectedTemplateId, false)).join("")}
-              </div>
+
+          <div class="sn-assistant-worknotes__templates" data-work-notes-suggested${searchText ? " hidden" : ""}>
+            <div class="sn-assistant-worknotes__templates-header">
+              <span>Suggested</span>
+              <span class="sn-assistant-worknotes__section-hint">Smart match + recent</span>
             </div>
-          ` : ""}
-          <div class="sn-assistant-worknotes__templates" data-work-notes-all-templates>
-            <div class="sn-assistant-worknotes__templates-header" data-work-notes-templates-header>
-              <span data-work-notes-templates-label>${escapeHtml(templateSectionLabel)}</span>
-            </div>
-            <div class="sn-assistant-worknotes__chips" data-work-notes-template-chips>
-              ${displayTemplates.map((template) => renderTemplateButton(template, template.id === model.selectedTemplateId, template.id === model.recommendedTemplateId)).join("")}
-              <div class="sn-assistant-note sn-assistant-note--empty" data-work-notes-empty${displayTemplates.length ? " hidden" : ""}>No templates match.</div>
+            <div class="sn-assistant-worknotes__chips sn-assistant-worknotes__chips--suggested">
+              ${suggestedTemplates.map((template) => renderTemplateButton(template, template.id === model.selectedTemplateId, template.id === model.recommendedTemplateId)).join("")}
             </div>
           </div>
+
+          <details class="sn-assistant-worknotes__browse" data-work-notes-browse${searchText ? " open" : ""}>
+            <summary class="sn-assistant-worknotes__browse-summary">
+              <span data-work-notes-templates-label>${searchText ? `${initialSearchCount} result${initialSearchCount !== 1 ? "s" : ""}` : "Browse all templates"}</span>
+              <span class="sn-assistant-worknotes__browse-count" data-work-notes-template-count>${initialSearchCount}</span>
+            </summary>
+            <div class="sn-assistant-worknotes__chips sn-assistant-worknotes__chips--browse" data-work-notes-template-chips>
+              ${model.templates.map((template) => renderTemplateButton(template, template.id === model.selectedTemplateId, template.id === model.recommendedTemplateId)).join("")}
+              <div class="sn-assistant-note sn-assistant-note--empty" data-work-notes-empty hidden>No templates match.</div>
+            </div>
+          </details>
         </div>
 
         ${cannedPhrases.length ? `
-          <div class="sn-assistant-worknotes__canned">
-            <div class="sn-assistant-worknotes__templates-header">Quick phrases</div>
+          <details class="sn-assistant-worknotes__quick" data-work-notes-quick>
+            <summary class="sn-assistant-worknotes__browse-summary">
+              <span>Quick phrases</span>
+              <span class="sn-assistant-worknotes__browse-count">${cannedPhrases.length}</span>
+            </summary>
             <div class="sn-assistant-worknotes__chips sn-assistant-worknotes__canned-chips">
               ${cannedPhrases.map((phrase) => `
                 <span class="sn-assistant-worknotes__chip sn-assistant-worknotes__canned-chip" title="${escapeHtml(phrase)}">
@@ -12049,13 +12128,13 @@ ${value}` : value;
                 </span>
               `).join("")}
             </div>
-          </div>
+          </details>
         ` : ""}
 
         <div class="sn-assistant-panel__footer sn-assistant-worknotes__footer">
           <div class="sn-assistant-worknotes__footer-actions">
             <button type="button" class="sn-assistant-button sn-assistant-button--primary" data-action="work-notes-append" title="Append below existing work notes">Append</button>
-            <button type="button" class="sn-assistant-button sn-assistant-button--secondary" data-action="work-notes-write" title="Replace all work notes">Replace</button>
+            <button type="button" class="sn-assistant-button sn-assistant-button--secondary" data-action="work-notes-write" title="Replace all work notes">Replace all</button>
           </div>
           <div class="sn-assistant-worknotes__footer-tools">
             <button type="button" class="sn-assistant-mini-button" data-action="work-notes-copy" title="Copy note" aria-label="Copy note">
@@ -12083,21 +12162,33 @@ ${value}` : value;
     counter.textContent = `${length} char${length !== 1 ? "s" : ""}`;
   }
   function filterWorkNotesTemplates(root, searchValue) {
-    const needle = normalizeSearchText(searchValue);
-    const recentSection = root.querySelector("[data-work-notes-recent]");
-    if (recentSection) recentSection.hidden = Boolean(needle);
-    const chips = root.querySelectorAll('[data-work-notes-all-templates] [data-action="work-notes-select-template"]');
+    const hasSearch = getSearchTokens(searchValue).length > 0;
+    const suggestedSection = root.querySelector("[data-work-notes-suggested]");
+    const quickSection = root.querySelector("[data-work-notes-quick]");
+    const browseSection = root.querySelector("[data-work-notes-browse]");
+    if (suggestedSection) suggestedSection.hidden = hasSearch;
+    if (quickSection) quickSection.hidden = hasSearch;
+    if (browseSection && hasSearch && !browseSection.open) {
+      browseSection.open = true;
+      browseSection.dataset.searchExpanded = "true";
+    } else if (browseSection && !hasSearch && browseSection.dataset.searchExpanded === "true") {
+      browseSection.open = false;
+      delete browseSection.dataset.searchExpanded;
+    }
+    const chips = root.querySelectorAll('[data-work-notes-browse] [data-action="work-notes-select-template"]');
     let visibleCount = 0;
     chips.forEach((chip) => {
       const haystack = chip.dataset.templateSearch || "";
-      const visible = !needle || haystack.includes(needle);
+      const visible = matchesSearchCorpus(haystack, searchValue);
       chip.hidden = !visible;
       if (visible) visibleCount += 1;
     });
     const label = root.querySelector("[data-work-notes-templates-label]");
     if (label) {
-      label.textContent = needle ? `${visibleCount} result${visibleCount !== 1 ? "s" : ""}` : recentSection ? "All templates" : "Templates";
+      label.textContent = hasSearch ? `${visibleCount} result${visibleCount !== 1 ? "s" : ""}` : "Browse all templates";
     }
+    const count = root.querySelector("[data-work-notes-template-count]");
+    if (count) count.textContent = String(visibleCount);
     const emptyNote = root.querySelector("[data-work-notes-empty]");
     if (emptyNote) emptyNote.hidden = visibleCount > 0;
   }
@@ -17671,7 +17762,7 @@ ${value}` : value;
   var epLinks_default = "/* \u2500\u2500\u2500 EP Links floating panel \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500 */\r\n.sn-ep-links-root {\r\n  position: fixed;\r\n  right: 72px;\r\n  top: 50%;\r\n  transform: translateY(-50%);\r\n  z-index: 2147483640;\r\n  font-family: var(--sn-assistant-font);\r\n}\r\n\r\n.sn-ep-links__panel {\r\n  background: var(--sn-assistant-panel);\r\n  border: 1px solid var(--sn-assistant-border);\r\n  border-radius: var(--sn-assistant-radius);\r\n  box-shadow: var(--sn-assistant-shadow);\r\n  min-width: 260px;\r\n  max-width: 340px;\r\n  overflow: hidden;\r\n}\r\n\r\n.sn-ep-links__header {\r\n  display: flex;\r\n  align-items: center;\r\n  justify-content: space-between;\r\n  gap: 8px;\r\n  padding: 10px 12px 8px;\r\n  border-bottom: 1px solid var(--sn-assistant-border);\r\n}\r\n\r\n.sn-ep-links__title {\r\n  font-size: 13px;\r\n  font-weight: 600;\r\n  color: var(--sn-assistant-ink);\r\n  white-space: nowrap;\r\n  overflow: hidden;\r\n  text-overflow: ellipsis;\r\n}\r\n\r\n.sn-ep-links__body {\r\n  padding: 8px 0 4px;\r\n  max-height: min(60vh, 420px);\r\n  overflow-y: auto;\r\n}\r\n\r\n.sn-ep-links__section {\r\n  padding: 4px 0 8px;\r\n}\r\n\r\n.sn-ep-links__section + .sn-ep-links__section {\r\n  border-top: 1px solid var(--sn-assistant-border);\r\n  margin-top: 4px;\r\n}\r\n\r\n.sn-ep-links__section-label {\r\n  font-size: 10px;\r\n  font-weight: 700;\r\n  text-transform: uppercase;\r\n  letter-spacing: 0.06em;\r\n  color: var(--sn-assistant-muted);\r\n  padding: 0 12px 4px;\r\n}\r\n\r\n.sn-ep-links__item {\r\n  display: flex;\r\n  align-items: center;\r\n  gap: 8px;\r\n  padding: 7px 12px;\r\n  color: var(--sn-assistant-ink);\r\n  text-decoration: none;\r\n  font-size: 13px;\r\n  transition: background 120ms;\r\n  cursor: pointer;\r\n}\r\n\r\n.sn-ep-links__item:hover {\r\n  background: var(--sn-assistant-surface);\r\n  color: var(--sn-assistant-accent);\r\n}\r\n\r\n.sn-ep-links__icon {\r\n  font-size: 12px;\r\n  opacity: 0.5;\r\n  flex-shrink: 0;\r\n}\r\n\r\n.sn-ep-links__label {\r\n  overflow: hidden;\r\n  text-overflow: ellipsis;\r\n  white-space: nowrap;\r\n}\r\n\r\n.sn-ep-links__footer-hint {\r\n  font-size: 10px;\r\n  color: var(--sn-assistant-muted);\r\n  padding: 6px 12px 8px;\r\n  border-top: 1px solid var(--sn-assistant-border);\r\n  margin-top: 4px;\r\n}\r\n\r\n/* \u2500\u2500\u2500 Custom links row in Launcher settings section \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500 */\r\n.sn-assistant-custom-link-row {\r\n  display: flex;\r\n  align-items: center;\r\n  gap: 6px;\r\n}\r\n\r\n.sn-assistant-custom-link-row .sn-assistant-input {\r\n  padding: 5px 8px;\r\n  font-size: 12px;\r\n}\r\n\r\n/* \u2500\u2500\u2500 Launcher footer + copy summary button \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500 */\r\n.sn-ep__footer {\r\n  display: flex;\r\n  align-items: center;\r\n  justify-content: space-between;\r\n  gap: 6px;\r\n  padding: 6px 8px;\r\n  border-top: 1px solid var(--ep-border, var(--sn-assistant-border));\r\n  flex-shrink: 0;\r\n}\r\n\r\n.sn-ep__copy-summary-btn {\r\n  flex-shrink: 0;\r\n  font-size: 9px;\r\n  font-weight: 600;\r\n  letter-spacing: 0.02em;\r\n  background: var(--sn-assistant-accent-soft);\r\n  color: var(--sn-assistant-accent);\r\n  border: 1px solid transparent;\r\n  border-radius: 6px;\r\n  padding: 3px 7px;\r\n  cursor: pointer;\r\n  font-family: inherit;\r\n  transition: background 0.15s, border-color 0.15s;\r\n  white-space: nowrap;\r\n}\r\n\r\n.sn-ep__copy-summary-btn:hover {\r\n  background: var(--sn-assistant-accent);\r\n  color: #fff;\r\n}\r\n\r\n/* \u2500\u2500\u2500 SLA warning indicator \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500 */\r\n.sn-ep__sla-dot {\r\n  position: absolute;\r\n  top: 5px;\r\n  right: 5px;\r\n  width: 8px;\r\n  height: 8px;\r\n  border-radius: 50%;\r\n  background: #e53e3e;\r\n  box-shadow: 0 0 0 2px var(--sn-assistant-panel, #fff);\r\n  animation: sla-pulse 1.8s infinite;\r\n  pointer-events: none;\r\n}\r\n\r\n@keyframes sla-pulse {\r\n  0%, 100% { opacity: 1; transform: scale(1); }\r\n  50% { opacity: 0.6; transform: scale(1.3); }\r\n}\r\n\r\n@keyframes shake {\r\n  0%, 100% { transform: translateX(0); }\r\n  20% { transform: translateX(-1.8px); }\r\n  40% { transform: translateX(1.8px); }\r\n  60% { transform: translateX(-1.2px); }\r\n  80% { transform: translateX(1.2px); }\r\n}\r\n\r\n.sn-ep--edit-mode .sn-ep__action {\r\n  animation: shake 0.3s ease-in-out infinite;\r\n}\r\n\r\n.sn-ep__tab {\r\n  position: relative; /* needed for .sn-ep__sla-dot absolute positioning */\r\n}\r\n\r\n.sn-ep__sla-badge {\r\n  display: inline-flex;\r\n  align-items: center;\r\n  padding: 1px 5px;\r\n  border-radius: 4px;\r\n  background: #e53e3e;\r\n  color: #fff;\r\n  font-size: 9px;\r\n  font-weight: 700;\r\n  letter-spacing: 0.06em;\r\n  margin-left: 5px;\r\n  vertical-align: middle;\r\n}\r\n";
 
   // Assistant/ui/styles/workNotes-enhanced.css
-  var workNotes_enhanced_default = "/* \u2500\u2500\u2500 Work Notes canned phrase chips \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500 */\r\n.sn-assistant-worknotes__canned {\r\n  margin-bottom: 2px;\r\n}\r\n\r\n.sn-assistant-worknotes__canned-chips {\r\n  flex-wrap: wrap;\r\n  gap: 4px;\r\n  max-height: 64px;\r\n  padding: 0;\r\n}\r\n\r\n.sn-assistant-worknotes__canned-chip {\r\n  font-size: 10px;\r\n  padding: 4px 8px;\r\n  border-radius: 7px;\r\n  background: color-mix(in srgb, var(--sn-assistant-accent-soft) 75%, var(--sn-assistant-panel));\r\n  color: color-mix(in srgb, var(--sn-assistant-accent-strong) 85%, var(--sn-assistant-ink));\r\n  border-color: color-mix(in srgb, var(--sn-assistant-accent) 12%, transparent);\r\n}\r\n\r\n.sn-assistant-worknotes__canned-chip:hover {\r\n  background: var(--sn-assistant-accent);\r\n  color: #fff;\r\n}\r\n\r\n.sn-assistant-worknotes__canned-chip {\r\n  display: inline-flex;\r\n  align-items: center;\r\n  gap: 6px;\r\n}\r\n\r\n.sn-assistant-worknotes__canned-label {\r\n  max-width: 170px;\r\n  overflow: hidden;\r\n  text-overflow: ellipsis;\r\n  white-space: nowrap;\r\n}\r\n\r\n.sn-assistant-worknotes__canned-remove {\r\n  display: inline-flex;\r\n  align-items: center;\r\n  justify-content: center;\r\n  width: 14px;\r\n  height: 14px;\r\n  border-radius: 999px;\r\n  font-size: 11px;\r\n  line-height: 1;\r\n  font-weight: 700;\r\n  background: rgba(0, 0, 0, 0.12);\r\n}\r\n\r\n/* \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\r\n   WORK NOTES \u2014 IMPROVED LAYOUT\r\n   \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500 */\r\n.sn-assistant-worknotes__editor-header {\r\n  display: flex;\r\n  align-items: center;\r\n  justify-content: space-between;\r\n  margin-bottom: 3px;\r\n}\r\n\r\n.sn-assistant-worknotes__char-count {\r\n  font-size: 10px;\r\n  color: var(--sn-assistant-muted);\r\n  font-weight: 500;\r\n  flex-shrink: 0;\r\n  font-variant-numeric: tabular-nums;\r\n}\r\n\r\n.sn-assistant-worknotes__textarea {\r\n  min-height: 120px;\r\n  resize: vertical;\r\n  line-height: 1.45;\r\n  padding: 10px 11px;\r\n}\r\n\r\n.sn-assistant-worknotes__editor--primary {\r\n  order: -1;\r\n}\r\n\r\n.sn-assistant-worknotes__picker {\r\n  display: flex;\r\n  flex-direction: column;\r\n  gap: 8px;\r\n  padding: 10px;\r\n  border-radius: 10px;\r\n  background: color-mix(in srgb, var(--sn-assistant-surface) 55%, transparent);\r\n  border: 1px solid color-mix(in srgb, var(--sn-assistant-border) 75%, transparent);\r\n}\r\n\r\n.sn-assistant-worknotes__editor--primary .sn-assistant-worknotes__textarea {\r\n  min-height: 140px;\r\n}\r\n\r\n.sn-assistant-worknotes__footer {\r\n  flex-direction: row;\r\n  align-items: center;\r\n  justify-content: space-between;\r\n  gap: 10px;\r\n}\r\n\r\n.sn-assistant-worknotes__footer-actions {\r\n  display: flex;\r\n  flex: 1;\r\n  gap: 8px;\r\n}\r\n\r\n.sn-assistant-worknotes__footer-actions .sn-assistant-button {\r\n  flex: 1;\r\n  min-width: 0;\r\n  height: 34px;\r\n}\r\n\r\n.sn-assistant-worknotes__footer-tools {\r\n  display: inline-flex;\r\n  align-items: center;\r\n  gap: 4px;\r\n  flex-shrink: 0;\r\n}\r\n\r\n.sn-assistant-worknotes__footer-tools .sn-assistant-mini-button {\r\n  width: 32px;\r\n  height: 32px;\r\n  border-radius: 8px;\r\n}\r\n\r\n.sn-assistant-worknotes__footer-primary,\r\n.sn-assistant-worknotes__footer-secondary {\r\n  display: flex;\r\n  gap: 8px;\r\n  flex: 1;\r\n}\r\n";
+  var workNotes_enhanced_default = '/* \u2500\u2500\u2500 Work Notes canned phrase chips \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500 */\r\n.sn-assistant-worknotes__canned {\r\n  margin-bottom: 2px;\r\n}\r\n\r\n.sn-assistant-worknotes__canned-chips {\r\n  flex-wrap: wrap;\r\n  gap: 4px;\r\n  max-height: 64px;\r\n  padding: 6px 0 0;\r\n}\r\n\r\n.sn-assistant-worknotes__canned-chip {\r\n  font-size: 10px;\r\n  padding: 4px 8px;\r\n  border-radius: 7px;\r\n  background: color-mix(in srgb, var(--sn-assistant-accent-soft) 75%, var(--sn-assistant-panel));\r\n  color: color-mix(in srgb, var(--sn-assistant-accent-strong) 85%, var(--sn-assistant-ink));\r\n  border-color: color-mix(in srgb, var(--sn-assistant-accent) 12%, transparent);\r\n  display: inline-flex;\r\n  align-items: center;\r\n  gap: 6px;\r\n}\r\n\r\n.sn-assistant-worknotes__canned-chip:hover {\r\n  background: var(--sn-assistant-accent);\r\n  color: #fff;\r\n}\r\n\r\n.sn-assistant-worknotes__canned-label {\r\n  max-width: 170px;\r\n  overflow: hidden;\r\n  text-overflow: ellipsis;\r\n  white-space: nowrap;\r\n}\r\n\r\n.sn-assistant-worknotes__canned-remove {\r\n  display: inline-flex;\r\n  align-items: center;\r\n  justify-content: center;\r\n  width: 14px;\r\n  height: 14px;\r\n  border-radius: 999px;\r\n  font-size: 11px;\r\n  line-height: 1;\r\n  font-weight: 700;\r\n  background: rgba(0, 0, 0, 0.12);\r\n}\r\n\r\n/* \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\r\n   WORK NOTES \u2014 COMPACT / FOCUSED LAYOUT\r\n   \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500 */\r\n.sn-assistant-worknotes__editor-header {\r\n  display: flex;\r\n  align-items: center;\r\n  justify-content: space-between;\r\n  margin-bottom: 3px;\r\n}\r\n\r\n.sn-assistant-worknotes__char-count {\r\n  font-size: 10px;\r\n  color: var(--sn-assistant-muted);\r\n  font-weight: 500;\r\n  flex-shrink: 0;\r\n  font-variant-numeric: tabular-nums;\r\n}\r\n\r\n.sn-assistant-worknotes__textarea {\r\n  min-height: 112px;\r\n  resize: vertical;\r\n  line-height: 1.45;\r\n  padding: 9px 10px;\r\n}\r\n\r\n.sn-assistant-worknotes__editor--primary {\r\n  order: -1;\r\n}\r\n\r\n.sn-assistant-worknotes__editor--primary .sn-assistant-worknotes__textarea {\r\n  min-height: 124px;\r\n}\r\n\r\n/* Keep the picker visually quiet: editor first, search second, templates on demand. */\r\n.sn-assistant-worknotes__picker {\r\n  display: flex;\r\n  flex-direction: column;\r\n  gap: 7px;\r\n  padding: 0;\r\n  border: 0;\r\n  border-radius: 0;\r\n  background: transparent;\r\n}\r\n\r\n.sn-assistant-worknotes__picker .sn-assistant-searchbar {\r\n  min-height: 32px;\r\n  border-radius: 8px;\r\n  background: color-mix(in srgb, var(--sn-assistant-surface) 42%, var(--sn-assistant-panel));\r\n}\r\n\r\n.sn-assistant-worknotes__picker .sn-assistant-searchbar:focus-within {\r\n  background: var(--sn-assistant-panel);\r\n}\r\n\r\n.sn-assistant-worknotes__templates {\r\n  gap: 4px;\r\n}\r\n\r\n.sn-assistant-worknotes__templates-header {\r\n  min-height: 18px;\r\n}\r\n\r\n.sn-assistant-worknotes__section-hint {\r\n  font-size: 9px;\r\n  font-weight: 500;\r\n  color: var(--sn-assistant-muted);\r\n  opacity: 0.72;\r\n}\r\n\r\n.sn-assistant-worknotes__chips--suggested {\r\n  max-height: none;\r\n  overflow: visible;\r\n  gap: 4px;\r\n}\r\n\r\n.sn-assistant-worknotes__chip {\r\n  font-size: 10.5px;\r\n  line-height: 1.2;\r\n  padding: 4px 8px;\r\n  border-radius: 7px;\r\n  gap: 4px;\r\n}\r\n\r\n.sn-assistant-worknotes__chip-badge {\r\n  min-width: 16px;\r\n  height: 13px;\r\n  padding: 0 3px;\r\n  font-size: 8px;\r\n}\r\n\r\n/* Native details keep the complete catalog available without flooding the panel. */\r\n.sn-assistant-worknotes__browse,\r\n.sn-assistant-worknotes__quick {\r\n  margin: 0;\r\n  padding: 0;\r\n  border: 1px solid color-mix(in srgb, var(--sn-assistant-border) 72%, transparent);\r\n  border-radius: 8px;\r\n  background: color-mix(in srgb, var(--sn-assistant-surface) 30%, transparent);\r\n  overflow: hidden;\r\n}\r\n\r\n.sn-assistant-worknotes__browse-summary {\r\n  min-height: 30px;\r\n  padding: 0 9px;\r\n  display: flex;\r\n  align-items: center;\r\n  gap: 8px;\r\n  cursor: pointer;\r\n  list-style: none;\r\n  user-select: none;\r\n  font-size: 10.5px;\r\n  font-weight: 600;\r\n  color: color-mix(in srgb, var(--sn-assistant-ink) 82%, var(--sn-assistant-muted));\r\n}\r\n\r\n.sn-assistant-worknotes__browse-summary::-webkit-details-marker {\r\n  display: none;\r\n}\r\n\r\n.sn-assistant-worknotes__browse-summary::after {\r\n  content: "\u203A";\r\n  margin-left: 2px;\r\n  color: var(--sn-assistant-muted);\r\n  font-size: 14px;\r\n  line-height: 1;\r\n  transform: rotate(90deg);\r\n  transition: transform 120ms ease;\r\n}\r\n\r\n.sn-assistant-worknotes__browse[open] > .sn-assistant-worknotes__browse-summary::after,\r\n.sn-assistant-worknotes__quick[open] > .sn-assistant-worknotes__browse-summary::after {\r\n  transform: rotate(-90deg);\r\n}\r\n\r\n.sn-assistant-worknotes__browse-summary:hover {\r\n  background: color-mix(in srgb, var(--sn-assistant-ink) 3%, transparent);\r\n}\r\n\r\n.sn-assistant-worknotes__browse-count {\r\n  margin-left: auto;\r\n  min-width: 20px;\r\n  height: 18px;\r\n  padding: 0 6px;\r\n  border-radius: 999px;\r\n  display: inline-flex;\r\n  align-items: center;\r\n  justify-content: center;\r\n  background: color-mix(in srgb, var(--sn-assistant-surface) 78%, transparent);\r\n  color: var(--sn-assistant-muted);\r\n  font-size: 9px;\r\n  font-weight: 700;\r\n  font-variant-numeric: tabular-nums;\r\n}\r\n\r\n.sn-assistant-worknotes__chips--browse {\r\n  max-height: min(22vh, 150px);\r\n  overflow-y: auto;\r\n  padding: 6px 8px 8px;\r\n  border-top: 1px solid color-mix(in srgb, var(--sn-assistant-border) 60%, transparent);\r\n  gap: 4px;\r\n}\r\n\r\n.sn-assistant-worknotes__browse:not([open]) .sn-assistant-worknotes__chips--browse,\r\n.sn-assistant-worknotes__quick:not([open]) .sn-assistant-worknotes__canned-chips {\r\n  display: none;\r\n}\r\n\r\n.sn-assistant-worknotes__quick .sn-assistant-worknotes__canned-chips {\r\n  max-height: 76px;\r\n  overflow-y: auto;\r\n  padding: 6px 8px 8px;\r\n  border-top: 1px solid color-mix(in srgb, var(--sn-assistant-border) 60%, transparent);\r\n}\r\n\r\n.sn-assistant-worknotes__footer {\r\n  flex-direction: row;\r\n  align-items: center;\r\n  justify-content: space-between;\r\n  gap: 8px;\r\n}\r\n\r\n.sn-assistant-worknotes__footer-actions {\r\n  display: flex;\r\n  flex: 1;\r\n  gap: 6px;\r\n}\r\n\r\n.sn-assistant-worknotes__footer-actions .sn-assistant-button {\r\n  flex: 1;\r\n  min-width: 0;\r\n  height: 32px;\r\n  padding-inline: 10px;\r\n}\r\n\r\n.sn-assistant-worknotes__footer-tools {\r\n  display: inline-flex;\r\n  align-items: center;\r\n  gap: 3px;\r\n  flex-shrink: 0;\r\n}\r\n\r\n.sn-assistant-worknotes__footer-tools .sn-assistant-mini-button {\r\n  width: 30px;\r\n  height: 30px;\r\n  border-radius: 7px;\r\n}\r\n\r\n.sn-assistant-worknotes__footer-primary,\r\n.sn-assistant-worknotes__footer-secondary {\r\n  display: flex;\r\n  gap: 8px;\r\n  flex: 1;\r\n}\r\n';
 
   // Assistant/ui/styles/userTickets.css
   var userTickets_default = "/* \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\r\n   PANEL BODY \u2014 FLUSH (no padding, used for tables / lists)\r\n   \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500 */\r\n.sn-assistant-panel__body--flush {\r\n  padding: 0;\r\n  gap: 0;\r\n}\r\n\r\n/* \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\r\n   USER OPEN TICKETS PANEL\r\n   \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500 */\r\n.sn-assistant-panel--user-tickets {\r\n  width: 520px;\r\n  max-width: calc(100vw - 24px);\r\n}\r\n\r\n.sn-assistant-tickets-table-wrapper {\r\n  overflow-x: auto;\r\n  overflow-y: auto;\r\n  max-height: min(55vh, 440px);\r\n}\r\n\r\n.sn-assistant-tickets-table {\r\n  width: 100%;\r\n  border-collapse: collapse;\r\n  font-size: 11.5px;\r\n  font-family: inherit;\r\n}\r\n\r\n.sn-assistant-tickets-table thead tr {\r\n  background: var(--sn-assistant-surface);\r\n  position: sticky;\r\n  top: 0;\r\n  z-index: 1;\r\n}\r\n\r\n.sn-assistant-tickets-table th {\r\n  padding: 7px 10px;\r\n  text-align: left;\r\n  font-size: 10px;\r\n  font-weight: 700;\r\n  letter-spacing: 0.06em;\r\n  text-transform: uppercase;\r\n  color: var(--sn-assistant-muted);\r\n  border-bottom: 1px solid var(--sn-assistant-border);\r\n  white-space: nowrap;\r\n}\r\n\r\n.sn-assistant-tickets-table td {\r\n  padding: 8px 10px;\r\n  border-bottom: 1px solid var(--sn-assistant-border);\r\n  vertical-align: middle;\r\n  color: var(--sn-assistant-ink);\r\n}\r\n\r\n.sn-assistant-tickets-table__row {\r\n  cursor: pointer;\r\n  transition: background 120ms ease;\r\n}\r\n\r\n.sn-assistant-tickets-table__row:hover td,\r\n.sn-assistant-tickets-table__row:focus td {\r\n  background: var(--sn-assistant-accent-soft);\r\n}\r\n\r\n.sn-assistant-tickets-table__row:last-child td {\r\n  border-bottom: none;\r\n}\r\n\r\n.sn-assistant-tickets-table__number {\r\n  white-space: nowrap;\r\n  display: flex;\r\n  align-items: center;\r\n  gap: 5px;\r\n}\r\n\r\n.sn-assistant-tickets-table__badge {\r\n  display: inline-flex;\r\n  align-items: center;\r\n  padding: 2px 5px;\r\n  border-radius: 4px;\r\n  font-size: 9px;\r\n  font-weight: 800;\r\n  letter-spacing: 0.04em;\r\n  background: var(--sn-assistant-accent-soft);\r\n  color: var(--sn-assistant-accent);\r\n  flex-shrink: 0;\r\n}\r\n\r\n.sn-assistant-tickets-table__badge--incident {\r\n  background: rgba(220, 38, 38, 0.08);\r\n  color: #dc2626;\r\n}\r\n\r\n.sn-assistant-tickets-table__badge--sc_req_item {\r\n  background: rgba(5, 150, 105, 0.08);\r\n  color: #059669;\r\n}\r\n\r\n.sn-assistant-tickets-table__badge--sc_request {\r\n  background: rgba(217, 119, 6, 0.08);\r\n  color: #d97706;\r\n}\r\n\r\n.sn-assistant-tickets-table__num-val {\r\n  font-weight: 700;\r\n  color: var(--sn-assistant-accent);\r\n  font-size: 11px;\r\n}\r\n\r\n.sn-assistant-tickets-table__desc {\r\n  max-width: 220px;\r\n  overflow: hidden;\r\n  text-overflow: ellipsis;\r\n  white-space: nowrap;\r\n  color: var(--sn-assistant-ink);\r\n}\r\n\r\n.sn-assistant-tickets-table__state {\r\n  white-space: nowrap;\r\n}\r\n\r\n.sn-assistant-tickets-table__state-pill {\r\n  display: inline-flex;\r\n  align-items: center;\r\n  padding: 2px 7px;\r\n  border-radius: 999px;\r\n  font-size: 10px;\r\n  font-weight: 600;\r\n  white-space: nowrap;\r\n  line-height: 1.5;\r\n}\r\n\r\n.sn-assistant-tickets-table__state-pill--new {\r\n  background: rgba(37, 99, 235, 0.1);\r\n  color: #2563eb;\r\n}\r\n\r\n.sn-assistant-tickets-table__state-pill--inprogress {\r\n  background: rgba(5, 150, 105, 0.1);\r\n  color: #059669;\r\n}\r\n\r\n.sn-assistant-tickets-table__state-pill--pending {\r\n  background: rgba(217, 119, 6, 0.1);\r\n  color: #d97706;\r\n}\r\n\r\n.sn-assistant-tickets-table__state-pill--resolved {\r\n  background: rgba(107, 114, 128, 0.1);\r\n  color: #6b7280;\r\n}\r\n\r\n.sn-assistant-tickets-table__state-pill--closed {\r\n  background: rgba(107, 114, 128, 0.06);\r\n  color: #9ca3af;\r\n}\r\n\r\n.sn-assistant-tickets-table__state-pill--default {\r\n  color: var(--sn-assistant-muted);\r\n}\r\n\r\n.sn-assistant-tickets-table__date {\r\n  white-space: nowrap;\r\n  font-size: 11px;\r\n  color: var(--sn-assistant-muted);\r\n  font-variant-numeric: tabular-nums;\r\n}\r\n\r\n.sn-assistant-tickets-loading,\r\n.sn-assistant-ci-loading {\r\n  padding: 20px 16px;\r\n  text-align: center;\r\n  font-size: 12px;\r\n  color: var(--sn-assistant-muted);\r\n  font-style: italic;\r\n}\r\n";
