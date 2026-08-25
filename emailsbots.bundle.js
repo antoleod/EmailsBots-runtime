@@ -35478,11 +35478,126 @@ Verification completed with ${requestedFor}. Ticket moved to Resolved.`;
   }
 
   // Assistant/sn/userTickets.js
+  var RX_SYSID2 = /^[0-9a-f]{32}$/i;
+  var SUBJECT_FIELDS_BY_TABLE = {
+    incident: ["u_affected_end_user", "u_affected_user", "caller_id", "opened_for", "requested_for"],
+    sc_req_item: ["requested_for", "request.requested_for", "variables.requested_for"],
+    sc_request: ["requested_for", "opened_for", "user"],
+    sc_task: [
+      "sc_task.request_item.request.requested_for",
+      "request_item.request.requested_for",
+      "request_item.requested_for",
+      "request_item.u_requested_for",
+      "requested_for",
+      "u_affected_end_user",
+      "u_affected_user",
+      "caller_id"
+    ]
+  };
   var TABLES2 = [
-    { table: "incident", type: "Incident", userFields: ["u_affected_end_user", "caller_id", "opened_for"] },
+    { table: "incident", type: "Incident", userFields: ["u_affected_end_user", "u_affected_user", "caller_id", "opened_for"] },
     { table: "sc_req_item", type: "RITM", userFields: ["requested_for", "request.requested_for"] },
     { table: "sc_task", type: "SCTASK", userFields: ["request_item.requested_for", "request_item.request.requested_for"] }
   ];
+  function safe2(fn, fallback = "") {
+    try {
+      return fn();
+    } catch {
+      return fallback;
+    }
+  }
+  function clean2(value) {
+    return String(value || "").replace(/\s+/g, " ").trim();
+  }
+  function collectWindows(rootWindow) {
+    const top = safe2(() => rootWindow?.top, null) || rootWindow || globalThis.window;
+    const result = [];
+    const seen = /* @__PURE__ */ new Set();
+    (function walk(win) {
+      if (!win || seen.has(win)) return;
+      seen.add(win);
+      result.push(win);
+      const length = safe2(() => win.frames?.length, 0) || 0;
+      for (let i = 0; i < length; i += 1) walk(safe2(() => win.frames[i], null));
+    })(top);
+    return result;
+  }
+  function getHiddenSysId(doc, table, field) {
+    if (!doc?.querySelector) return "";
+    const selectors = [
+      `input[id="sys_original.${table}.${field}"]`,
+      `input[name="sys_original.${table}.${field}"]`,
+      `input[id*="sys_original."][id$=".${field}"]`,
+      `input[name*="sys_original."][name$=".${field}"]`
+    ];
+    for (const selector of selectors) {
+      const value = clean2(safe2(() => doc.querySelector(selector)?.value, ""));
+      if (RX_SYSID2.test(value)) return value;
+    }
+    return "";
+  }
+  function getDisplayValue(doc, table, field, gForm) {
+    const fromForm = clean2(safe2(() => gForm?.getDisplayValue?.(field), ""));
+    if (fromForm && !RX_SYSID2.test(fromForm)) return fromForm;
+    return clean2(
+      safe2(() => doc?.getElementById?.(`sys_display.${table}.${field}`)?.value, "") || safe2(() => doc?.getElementById?.(`sys_display.${field}`)?.value, "")
+    );
+  }
+  function sysIdFromPreviewLink(doc, table) {
+    const ids = table === "sc_task" ? [
+      "viewr.sc_task.request_item.request.requested_for",
+      "viewr.sc_task.request_item.requested_for",
+      "viewr.sc_task.requested_for"
+    ] : table === "sc_req_item" ? ["viewr.sc_req_item.requested_for", "viewr.sc_req_item.request.requested_for"] : table === "incident" ? ["viewr.incident.u_affected_end_user", "viewr.incident.u_affected_user", "viewr.incident.caller_id"] : [];
+    for (const id of ids) {
+      const el = safe2(() => doc?.getElementById?.(id), null);
+      const href = clean2(el?.href || safe2(() => el?.getAttribute?.("href"), ""));
+      const match = href.match(/[?&]sys_id=([0-9a-f]{32})/i);
+      if (match) {
+        return {
+          sysId: match[1],
+          display: clean2(el?.title || safe2(() => el?.getAttribute?.("aria-label"), "")),
+          field: id.replace(/^viewr\./, ""),
+          source: "preview_link"
+        };
+      }
+    }
+    return null;
+  }
+  function resolveTicketSubjectUser(rootWindow) {
+    for (const win of collectWindows(rootWindow)) {
+      const gForm = safe2(() => win.g_form, null);
+      if (!gForm?.getValue) continue;
+      const table = clean2(safe2(() => gForm.getTableName?.(), "")).toLowerCase();
+      const fields = SUBJECT_FIELDS_BY_TABLE[table] || [];
+      const doc = safe2(() => win.document, null);
+      for (const field of fields) {
+        const raw = clean2(safe2(() => gForm.getValue(field), ""));
+        if (RX_SYSID2.test(raw)) {
+          return {
+            sysId: raw,
+            display: getDisplayValue(doc, table, field, gForm),
+            field,
+            table,
+            source: "g_form"
+          };
+        }
+        const hidden = getHiddenSysId(doc, table, field);
+        if (RX_SYSID2.test(hidden)) {
+          return {
+            sysId: hidden,
+            display: getDisplayValue(doc, table, field, gForm),
+            field,
+            table,
+            source: "hidden_original"
+          };
+        }
+      }
+      const preview = sysIdFromPreviewLink(doc, table);
+      if (preview?.sysId) return { ...preview, table };
+    }
+    return null;
+  }
   function toTimestamp(value) {
     const raw = normalizeServiceNowValue(value);
     if (!raw) return 0;
@@ -35545,8 +35660,8 @@ Verification completed with ${requestedFor}. Ticket moved to Resolved.`;
     return (Array.isArray(json?.result) ? json.result : []).map((row) => normalizeTicketRecord(row, config)).filter((row) => row.number && row.sysId);
   }
   async function fetchViaTableApi({ rootWindow, closed = false, limit = 20 }) {
-    const resolved = resolveCurrentRecordUser(rootWindow);
-    if (!resolved?.sysId) throw new Error("Unable to resolve user for ticket lookup");
+    const resolved = resolveTicketSubjectUser(rootWindow);
+    if (!resolved?.sysId) throw new Error("Unable to resolve end user/requested-for user for ticket lookup");
     const perTableLimit = Math.max(limit, 10);
     const settled = await Promise.allSettled(TABLES2.map((config) => queryTable({
       rootWindow,
@@ -37731,8 +37846,8 @@ ${text2}` : text2;
         scheduleRecovery("settings-close", 0);
       },
       onSettingsSection(section) {
-        const safe2 = SETTINGS_SECTIONS.includes(section) ? section : "templates";
-        store.dispatch(setSettingsSection, safe2);
+        const safe3 = SETTINGS_SECTIONS.includes(section) ? section : "templates";
+        store.dispatch(setSettingsSection, safe3);
         scheduleRecovery("settings-section", 0);
       },
       onSelectCategory(category) {
