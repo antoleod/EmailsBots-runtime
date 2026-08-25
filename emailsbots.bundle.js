@@ -12533,25 +12533,59 @@ ${value}` : value;
     hostDocument.getElementById(UI_IDS.findCi)?.remove();
   }
 
+  // Assistant/sn/serviceNowValues.js
+  function normalizeByKeys(value, keys, seen = /* @__PURE__ */ new Set()) {
+    if (value === null || value === void 0) return "";
+    if (typeof value === "string") return value.trim();
+    if (typeof value === "number" || typeof value === "boolean" || typeof value === "bigint") {
+      return String(value).trim();
+    }
+    if (typeof value !== "object") return String(value).trim();
+    if (seen.has(value)) return "";
+    seen.add(value);
+    for (const key of keys) {
+      if (!Object.prototype.hasOwnProperty.call(value, key)) continue;
+      const candidate = normalizeByKeys(value[key], keys, seen);
+      if (candidate) return candidate;
+    }
+    return "";
+  }
+  function normalizeServiceNowValue(value) {
+    return normalizeByKeys(value, ["display_value", "displayValue", "name", "value"]);
+  }
+  function normalizeAssignedTo(value) {
+    return normalizeByKeys(value, ["display_value", "displayValue", "name", "user_name", "value"]);
+  }
+  function normalizeServiceNowBoolean(value) {
+    const normalized = normalizeServiceNowValue(value).toLowerCase();
+    if (!normalized) return "";
+    if (["true", "1", "yes", "active"].includes(normalized)) return "Yes";
+    if (["false", "0", "no", "inactive"].includes(normalized)) return "No";
+    return normalizeServiceNowValue(value);
+  }
+
   // Assistant/application/userInfo/panel.js
   var ROWS = [
     ["userId", "User ID"],
     ["email", "Email"],
     ["location", "Location"],
     ["department", "Department"],
-    ["codictId", "Codict ID"],
-    ["codictExpiration", "Codict Expiration"],
+    ["dgPg", "DG/PG"],
+    ["company", "Company"],
+    ["title", "Title"],
     ["manager", "Manager"],
     ["phone", "Phone"],
+    ["mobile", "Mobile"],
+    ["codictId", "Codict ID"],
+    ["codictExpiration", "Codict Expiration"],
+    ["active", "Active"],
+    ["vip", "VIP"],
     ["sysId", "Sys ID"]
   ];
-  function valueOrFallback(value) {
-    return String(value || "").trim() || "Not found";
-  }
   function renderExternalButtons(key, value) {
     if (key !== "userId") return "";
-    const userId = String(value || "").trim();
-    if (!userId || userId === "Not found") return "";
+    const userId = normalizeServiceNowValue(value);
+    if (!userId) return "";
     const safeId = escapeHtml(userId);
     return `
     <button type="button" class="sn-assistant-button sn-assistant-button--secondary sn-assistant-button--compact sn-assistant-button--eprime" data-action="open-eprime-mailbox" data-user-id="${safeId}" title="Open Eprime mailbox (copies username)">E-</button>
@@ -12563,28 +12597,27 @@ ${value}` : value;
     const data = state.ui.userInfoData || {};
     const loading = Boolean(state.ui.userInfoLoading);
     const error2 = String(state.ui.userInfoError || "").trim();
-    const title = loading ? "User Info" : String(data.name || data.userId || "User Info").trim() || "User Info";
-    const subtitle = loading ? "" : String(data.userId || data.email || "").trim();
+    const title = loading ? "User Info" : normalizeServiceNowValue(data.name) || normalizeServiceNowValue(data.userId) || "User Info";
+    const subtitle = loading ? "" : normalizeServiceNowValue(data.userId) || normalizeServiceNowValue(data.email);
     const showCopyBlocked = Boolean(state.ui.userInfoCopyBlocked);
-    const rowsMarkup = ROWS.map(([key, label]) => {
-      const value = valueOrFallback(data[key]);
+    const rowsMarkup = ROWS.map(([key, label]) => [key, label, normalizeServiceNowValue(data[key])]).filter(([, , value]) => value).map(([key, label, value]) => {
       const warn = showCopyBlocked && key === "userId";
       return `
-      <div class="sn-assistant-ci-item ${warn ? "sn-assistant-note sn-assistant-note--warning" : ""}">
-        <div class="sn-assistant-ci-item__info" data-action="user-info-copy-value" data-key="${escapeHtml(key)}" tabindex="0" role="button">
-          <div class="sn-assistant-ci-item__name">${escapeHtml(label)}</div>
-          <div class="sn-assistant-ci-item__meta">${escapeHtml(value)}</div>
+        <div class="sn-assistant-ci-item ${warn ? "sn-assistant-note sn-assistant-note--warning" : ""}">
+          <div class="sn-assistant-ci-item__info" data-action="user-info-copy-value" data-key="${escapeHtml(key)}" tabindex="0" role="button">
+            <div class="sn-assistant-ci-item__name">${escapeHtml(label)}</div>
+            <div class="sn-assistant-ci-item__meta">${escapeHtml(value)}</div>
+          </div>
+          <div class="sn-assistant-ci-item__actions">
+            <button type="button" class="sn-assistant-button sn-assistant-button--secondary sn-assistant-button--compact" data-action="user-info-copy-value" data-key="${escapeHtml(key)}">Copy</button>
+            ${renderExternalButtons(key, value)}
+          </div>
         </div>
-        <div class="sn-assistant-ci-item__actions">
-          <button type="button" class="sn-assistant-button sn-assistant-button--secondary sn-assistant-button--compact" data-action="user-info-copy-value" data-key="${escapeHtml(key)}">Copy</button>
-          ${renderExternalButtons(key, value)}
-        </div>
-      </div>
-    `;
+      `;
     }).join("");
     const content = loading ? `<div class="sn-assistant-note">Loading user info...</div>` : error2 ? `<div class="sn-assistant-note sn-assistant-note--error">${escapeHtml(error2)}</div>` : `
       ${showCopyBlocked ? '<div class="sn-assistant-note sn-assistant-note--warning">Copy blocked. Click the User ID value or Copy button.</div>' : ""}
-      <div class="sn-assistant-ci-list">${rowsMarkup}</div>
+      ${rowsMarkup ? `<div class="sn-assistant-ci-list">${rowsMarkup}</div>` : '<div class="sn-assistant-note sn-assistant-note--empty">No user details available.</div>'}
       <div class="sn-assistant-panel__footer">
         <button type="button" class="sn-assistant-button sn-assistant-button--secondary" data-action="user-info-copy-summary">Copy Summary</button>
         <button type="button" class="sn-assistant-button sn-assistant-button--secondary" data-action="user-info-open-profile">Open Profile</button>
@@ -12600,9 +12633,7 @@ ${value}` : value;
           <div class="sn-assistant-panel__subheading">${escapeHtml(subtitle)}</div>
         </div>
         <div class="sn-assistant-panel__header-actions">
-          <button type="button" class="sn-assistant-mini-button sn-assistant-mini-button--danger" data-action="user-info-close" title="Close" aria-label="Close">
-            <span class="sn-assistant-icon sn-assistant-icon--close" aria-hidden="true"></span>
-          </button>
+          <button type="button" class="sn-assistant-mini-button sn-assistant-mini-button--danger" data-action="user-info-close" title="Close" aria-label="Close"><span class="sn-assistant-icon sn-assistant-icon--close" aria-hidden="true"></span></button>
         </div>
       </div>
       <div class="sn-assistant-panel__body sn-assistant-panel__body--flush">${content}</div>
@@ -12643,56 +12674,68 @@ ${value}` : value;
   }
 
   // Assistant/application/userTickets/panel.js
-  function formatDate2(dateStr) {
+  var CLOSED_VIEW = "__closed__";
+  function formatDate2(value) {
+    const dateStr = normalizeServiceNowValue(value);
     if (!dateStr) return "";
+    const simple = dateStr.match(/^(\d{4})-(\d{2})-(\d{2})/);
+    if (simple) {
+      const [, yyyy, mm, dd] = simple;
+      const d = new Date(Number(yyyy), Number(mm) - 1, Number(dd));
+      return d.toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" });
+    }
     try {
       const d = new Date(dateStr);
-      if (isNaN(d.getTime())) return String(dateStr).split(" ")[0] || "";
-      return d.toLocaleDateString("en-GB", { day: "2-digit", month: "short" });
+      if (isNaN(d.getTime())) return dateStr.split(" ")[0] || "";
+      return d.toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" });
     } catch {
-      return String(dateStr).split(" ")[0] || "";
+      return dateStr.split(" ")[0] || "";
     }
   }
   function getTableBadge(table) {
-    const map = { incident: "INC", sc_req_item: "RITM", sc_request: "REQ", sc_task: "TASK" };
-    return map[table] || String(table).toUpperCase().slice(0, 6);
+    const map = { incident: "INC", sc_req_item: "RITM", sc_request: "REQ", sc_task: "SCTASK" };
+    return map[table] || String(table || "").toUpperCase().slice(0, 6);
   }
   function getStateClass(state) {
-    const s = String(state || "").toLowerCase();
+    const s = normalizeServiceNowValue(state).toLowerCase();
     if (/\bnew\b/.test(s)) return "new";
     if (/in progress|assigned|open|work in progress/.test(s)) return "inprogress";
     if (/pending|awaiting|hold|wait/.test(s)) return "pending";
     if (/resolved|complete|done/.test(s)) return "resolved";
-    if (/closed|cancelled/.test(s)) return "closed";
+    if (/closed|cancelled|canceled/.test(s)) return "closed";
     return "default";
   }
-  function renderTicketRow(ticket) {
-    const badge = getTableBadge(ticket.table);
-    const dateText = formatDate2(ticket.updated);
-    const assignedTo = ticket.assignedTo || "";
-    const assignmentGroup = ticket.assignmentGroup || "";
-    const assignmentText = assignedTo || assignmentGroup || "-";
-    const fullAssignment = [assignedTo, assignmentGroup ? `(${assignmentGroup})` : ""].filter(Boolean).join(" ");
-    const stateKey = getStateClass(ticket.state || "");
-    const descTooltip = ticket.shortDesc ? `${ticket.number}: ${ticket.shortDesc.slice(0, 120)}` : ticket.number;
+  function renderTicketRow(ticket, { closed = false } = {}) {
+    const table = normalizeServiceNowValue(ticket.table);
+    const number = normalizeServiceNowValue(ticket.number);
+    const state = normalizeServiceNowValue(ticket.state);
+    const assignedTo = normalizeAssignedTo(ticket.assignedTo ?? ticket.assigned_to);
+    const assignmentGroup = normalizeServiceNowValue(ticket.assignmentGroup ?? ticket.assignment_group);
+    const assignmentText = assignedTo || "Unassigned";
+    const fullAssignment = [assignmentText, assignmentGroup ? `(${assignmentGroup})` : ""].filter(Boolean).join(" ");
+    const dateText = formatDate2(closed ? ticket.closedAt ?? ticket.closed_at ?? ticket.closed_on : ticket.updated ?? ticket.sys_updated_on);
+    const stateKey = getStateClass(state);
+    const shortDesc = normalizeServiceNowValue(ticket.shortDesc ?? ticket.short_description);
+    const descTooltip = shortDesc ? `${number}: ${shortDesc.slice(0, 120)}` : number;
+    const sysId = normalizeServiceNowValue(ticket.sysId ?? ticket.sys_id);
     return `
     <tr
       class="sn-assistant-tickets-table__row"
       data-action="user-tickets-open"
-      data-sys-id="${escapeHtml(ticket.sysId)}"
-      data-table="${escapeHtml(ticket.table)}"
+      data-sys-id="${escapeHtml(sysId)}"
+      data-table="${escapeHtml(table)}"
       title="${escapeHtml(descTooltip)}"
       role="button"
       tabindex="0"
     >
       <td class="sn-assistant-tickets-table__number">
-        <span class="sn-assistant-tickets-table__badge sn-assistant-tickets-table__badge--${escapeHtml(ticket.table)}">${escapeHtml(badge)}</span>
-        <span class="sn-assistant-tickets-table__num-val">${escapeHtml(ticket.number)}</span>
+        <span class="sn-assistant-tickets-table__badge sn-assistant-tickets-table__badge--${escapeHtml(table)}">${escapeHtml(getTableBadge(table))}</span>
+        <span class="sn-assistant-tickets-table__num-val">${escapeHtml(number)}</span>
       </td>
-      <td class="sn-assistant-tickets-table__type">${escapeHtml(ticket.type || "-")}</td>
-      <td class="sn-assistant-tickets-table__state"><span class="sn-assistant-tickets-table__state-pill sn-assistant-tickets-table__state-pill--${stateKey}">${escapeHtml(ticket.state || "-")}</span></td>
-      <td class="sn-assistant-tickets-table__assigned" title="${escapeHtml(fullAssignment || "-")}">${escapeHtml(assignmentText)}</td>
-      <td class="sn-assistant-tickets-table__date">${escapeHtml(dateText)}</td>
+      <td class="sn-assistant-tickets-table__type">${escapeHtml(normalizeServiceNowValue(ticket.type) || getTableBadge(table))}</td>
+      <td class="sn-assistant-tickets-table__state"><span class="sn-assistant-tickets-table__state-pill sn-assistant-tickets-table__state-pill--${stateKey}">${escapeHtml(state || "-")}</span></td>
+      <td class="sn-assistant-tickets-table__assigned" title="${escapeHtml(fullAssignment)}">${escapeHtml(assignmentText)}</td>
+      <td class="sn-assistant-tickets-table__date">${escapeHtml(dateText || "-")}</td>
     </tr>
   `;
   }
@@ -12701,13 +12744,21 @@ ${value}` : value;
     const isLoading = Boolean(state.ui.userTicketsLoading);
     const allResults = Array.isArray(state.ui.userTicketsResults) ? state.ui.userTicketsResults : [];
     const activeFilter = String(state.ui.userTicketsFilter || "");
-    const results = activeFilter ? allResults.filter((row) => String(row.table) === activeFilter) : allResults;
+    const isClosedView = activeFilter === CLOSED_VIEW;
+    const results = !isClosedView && activeFilter ? allResults.filter((row) => String(row.table) === activeFilter) : allResults;
+    const modeTabsMarkup = `
+    <div class="sn-assistant-tickets-filters" role="tablist" aria-label="Ticket history view">
+      <button type="button" class="sn-assistant-tickets-filter ${!isClosedView ? "is-active" : ""}" data-action="user-tickets-view" data-view="open" role="tab" aria-selected="${!isClosedView}">Open Tickets</button>
+      <button type="button" class="sn-assistant-tickets-filter ${isClosedView ? "is-active" : ""}" data-action="user-tickets-view" data-view="closed" role="tab" aria-selected="${isClosedView}">Last Closed Tickets</button>
+    </div>
+  `;
     const filterChips = [
       { id: "", label: "All", count: allResults.length },
       { id: "incident", label: "INC", count: allResults.filter((r) => r.table === "incident").length },
-      { id: "sc_task", label: "TASK", count: allResults.filter((r) => r.table === "sc_task").length }
+      { id: "sc_req_item", label: "RITM", count: allResults.filter((r) => r.table === "sc_req_item").length },
+      { id: "sc_task", label: "SCTASK", count: allResults.filter((r) => r.table === "sc_task").length }
     ];
-    const filterChipsMarkup = `
+    const filterChipsMarkup = isClosedView ? "" : `
     <div class="sn-assistant-tickets-filters" role="tablist" aria-label="Filter tickets by type">
       ${filterChips.map((chip) => {
       const isActive = chip.id === activeFilter;
@@ -12717,27 +12768,28 @@ ${value}` : value;
   `;
     let bodyContent;
     if (isLoading) {
-      bodyContent = `<div class="sn-assistant-note sn-assistant-tickets-loading">Searching open tickets...</div>`;
+      bodyContent = `${modeTabsMarkup}<div class="sn-assistant-note sn-assistant-tickets-loading">${isClosedView ? "Loading last closed tickets..." : "Searching open tickets..."}</div>`;
     } else if (!results.length) {
-      const emptyLabel = activeFilter ? `No open ${activeFilter === "incident" ? "incidents" : "SCTASKs"} found for this user.` : "No open tickets found for this user.";
-      bodyContent = `${filterChipsMarkup}<div class="sn-assistant-note sn-assistant-note--empty">${escapeHtml(emptyLabel)}</div>`;
+      const emptyLabel = isClosedView ? "No recently closed tickets found for this user." : activeFilter ? `No open ${activeFilter === "incident" ? "incidents" : activeFilter === "sc_req_item" ? "RITMs" : "SCTASKs"} found for this user.` : "No open tickets found for this user.";
+      bodyContent = `${modeTabsMarkup}${filterChipsMarkup}<div class="sn-assistant-note sn-assistant-note--empty">${escapeHtml(emptyLabel)}</div>`;
     } else {
       bodyContent = `
+      ${modeTabsMarkup}
       ${filterChipsMarkup}
       <div class="sn-assistant-tickets-table-wrapper">
         <table class="sn-assistant-tickets-table">
-          <thead><tr><th>Number</th><th>Type</th><th>State</th><th>Assigned</th><th>Date</th></tr></thead>
-          <tbody>${results.map(renderTicketRow).join("")}</tbody>
+          <thead><tr><th>Number</th><th>Type</th><th>State</th><th>Assigned</th><th>${isClosedView ? "Closed date" : "Date"}</th></tr></thead>
+          <tbody>${results.map((row) => renderTicketRow(row, { closed: isClosedView })).join("")}</tbody>
         </table>
       </div>
     `;
     }
-    const countLabel = isLoading ? "Loading..." : activeFilter ? `${results.length} of ${allResults.length} record${allResults.length !== 1 ? "s" : ""}` : `${allResults.length} record${allResults.length !== 1 ? "s" : ""}`;
+    const countLabel = isLoading ? "Loading..." : !isClosedView && activeFilter ? `${results.length} of ${allResults.length} record${allResults.length !== 1 ? "s" : ""}` : `${allResults.length} record${allResults.length !== 1 ? "s" : ""}`;
     return `
     <div class="sn-assistant-panel sn-assistant-panel--user-tickets">
       <div class="sn-assistant-panel__header">
         <div class="sn-assistant-panel__title">
-          <span class="sn-assistant-panel__eyebrow">Open Tickets</span>
+          <span class="sn-assistant-panel__eyebrow">${isClosedView ? "Last Closed Tickets" : "Open Tickets"}</span>
           <div class="sn-assistant-panel__heading">${escapeHtml(userName)}</div>
           <div class="sn-assistant-panel__subheading">${escapeHtml(countLabel)}</div>
         </div>
@@ -12762,6 +12814,10 @@ ${value}` : value;
       }
       if (action === "user-tickets-filter") {
         handlers.onSetUserTicketsFilter?.(target.dataset.filter || "");
+        return;
+      }
+      if (action === "user-tickets-view") {
+        handlers.onSetUserTicketsView?.(target.dataset.view || "open");
         return;
       }
       if (action === "user-tickets-open" && sysId && table) {
@@ -17006,79 +17062,6 @@ ${cleanText(renderedTemplate.body)}` : renderedTemplate.clipboardText;
       }
     }
     return null;
-  }
-  async function loadSysUserProfile(userSysId, hostDocument = document) {
-    const ownerWindow = hostDocument?.defaultView || window;
-    const token = ownerWindow?.g_ck || ownerWindow?.top?.g_ck || "";
-    try {
-      const params = new URLSearchParams({
-        sysparm_fields: "first_name,last_name,user_name,email,location,department,u_codict_id,u_codict_expiration_date,manager,phone,u_population_type",
-        sysparm_display_value: "all"
-      });
-      const response = await fetch(
-        `/api/now/table/sys_user/${encodeURIComponent(String(userSysId))}?${params}`,
-        {
-          method: "GET",
-          credentials: "same-origin",
-          headers: { Accept: "application/json", "X-UserToken": token }
-        }
-      );
-      if (response.ok) {
-        const json = await response.json();
-        const r = json?.result || {};
-        const getVal = (f) => cleanText(r[f]?.display_value || r[f]?.value || r[f] || "");
-        const firstName2 = getVal("first_name");
-        const lastName = getVal("last_name");
-        return {
-          name: cleanText([firstName2, lastName].filter(Boolean).join(" ")),
-          userId: getVal("user_name"),
-          email: getVal("email"),
-          location: getVal("location"),
-          department: getVal("department"),
-          codictId: getVal("u_codict_id"),
-          codictExpiration: getVal("u_codict_expiration_date"),
-          manager: getVal("manager"),
-          phone: getVal("phone"),
-          populationType: getVal("u_population_type"),
-          sysId: userSysId
-        };
-      }
-    } catch {
-    }
-    try {
-      const resolved = resolveUserInfoTarget({}, ownerWindow) || {};
-      if (resolved?.displayName || resolved?.userId || resolved?.email) {
-        return {
-          name: cleanText(resolved.displayName),
-          userId: cleanText(resolved.userId),
-          email: cleanText(resolved.email),
-          location: "",
-          department: "",
-          codictId: "",
-          codictExpiration: "",
-          manager: "",
-          phone: "",
-          populationType: "",
-          sysId: userSysId
-        };
-      }
-    } catch {
-    }
-    throw new Error("Unable to load user profile");
-  }
-  function buildUserInfoSummary(data = {}) {
-    return [
-      `Name: ${cleanText(data.name) || "Not found"}`,
-      `User ID: ${cleanText(data.userId) || "Not found"}`,
-      `Email: ${cleanText(data.email) || "Not found"}`,
-      `Location: ${cleanText(data.location) || "Not found"}`,
-      `Department: ${cleanText(data.department) || "Not found"}`,
-      `Codict ID: ${cleanText(data.codictId) || "Not found"}`,
-      `Codict Expiration: ${cleanText(data.codictExpiration) || "Not found"}`,
-      `Manager: ${cleanText(data.manager) || "Not found"}`,
-      `Phone: ${cleanText(data.phone) || "Not found"}`,
-      `Sys ID: ${cleanText(data.sysId) || "Not found"}`
-    ].join("\n");
   }
 
   // Assistant/ui/styles/variables.css
@@ -35494,6 +35477,106 @@ Verification completed with ${requestedFor}. Ticket moved to Resolved.`;
     return result.ci_ranked.slice(0, 30);
   }
 
+  // Assistant/sn/userTickets.js
+  var TABLES2 = [
+    { table: "incident", type: "Incident", userFields: ["u_affected_end_user", "caller_id", "opened_for"] },
+    { table: "sc_req_item", type: "RITM", userFields: ["requested_for", "request.requested_for"] },
+    { table: "sc_task", type: "SCTASK", userFields: ["request_item.requested_for", "request_item.request.requested_for"] }
+  ];
+  function toTimestamp(value) {
+    const raw = normalizeServiceNowValue(value);
+    if (!raw) return 0;
+    const eu = raw.match(/^(\d{2})\/(\d{2})\/(\d{4})(?:\s+(\d{2}):(\d{2})(?::(\d{2}))?)?/);
+    if (eu) {
+      const [, dd, mm, yyyy, hh = "0", mi = "0", ss = "0"] = eu;
+      return new Date(Number(yyyy), Number(mm) - 1, Number(dd), Number(hh), Number(mi), Number(ss)).getTime();
+    }
+    const serviceNowDate = raw.match(/^(\d{4})-(\d{2})-(\d{2})(?:\s+(\d{2}):(\d{2})(?::(\d{2}))?)?/);
+    if (serviceNowDate) {
+      const [, yyyy, mm, dd, hh = "0", mi = "0", ss = "0"] = serviceNowDate;
+      return new Date(Number(yyyy), Number(mm) - 1, Number(dd), Number(hh), Number(mi), Number(ss)).getTime();
+    }
+    const parsed = Date.parse(raw);
+    return Number.isFinite(parsed) ? parsed : 0;
+  }
+  function normalizeTicketRecord(record = {}, { table = "", type = "" } = {}) {
+    return {
+      table: normalizeServiceNowValue(record.table) || table,
+      type: normalizeServiceNowValue(record.type) || type,
+      number: normalizeServiceNowValue(record.number),
+      state: normalizeServiceNowValue(record.state),
+      assignedTo: normalizeAssignedTo(record.assigned_to ?? record.assignedTo),
+      assignmentGroup: normalizeServiceNowValue(record.assignment_group ?? record.assignmentGroup),
+      updated: normalizeServiceNowValue(record.sys_updated_on ?? record.updated),
+      closedAt: normalizeServiceNowValue(record.closed_at ?? record.closed_on ?? record.closedAt),
+      shortDesc: normalizeServiceNowValue(record.short_description ?? record.shortDesc),
+      sysId: normalizeServiceNowValue(record.sys_id ?? record.sysId),
+      active: normalizeServiceNowValue(record.active)
+    };
+  }
+  function getFetch2(rootWindow) {
+    const candidate = rootWindow?.fetch || globalThis.fetch;
+    return typeof candidate === "function" ? candidate.bind(rootWindow || globalThis) : null;
+  }
+  function buildUserQuery(config, userSysId, closed) {
+    const status = closed ? "active=false^closed_atISNOTEMPTY" : "active=true";
+    return config.userFields.map((field) => `${field}=${userSysId}^${status}`).join("^NQ");
+  }
+  async function queryTable({ rootWindow, userSysId, config, closed, limit }) {
+    const fetchImpl = getFetch2(rootWindow);
+    if (!fetchImpl) throw new Error("Fetch is unavailable");
+    const ownerWindow = rootWindow?.top || rootWindow || globalThis.window;
+    const token = ownerWindow?.g_ck || rootWindow?.g_ck || "";
+    const order = closed ? "ORDERBYDESCclosed_at" : "ORDERBYDESCsys_updated_on";
+    const params = new URLSearchParams({
+      sysparm_query: `${buildUserQuery(config, userSysId, closed)}^${order}`,
+      sysparm_fields: "sys_id,number,state,assigned_to,assignment_group,sys_updated_on,closed_at,closed_on,short_description,active",
+      sysparm_display_value: "all",
+      sysparm_exclude_reference_link: "true",
+      sysparm_limit: String(limit)
+    });
+    const response = await fetchImpl(`/api/now/table/${config.table}?${params.toString()}`, {
+      method: "GET",
+      credentials: "same-origin",
+      headers: { Accept: "application/json", "X-UserToken": token }
+    });
+    if (!response?.ok) throw new Error(`ServiceNow ${config.table} query failed (${response?.status || "unknown"})`);
+    const json = await response.json();
+    return (Array.isArray(json?.result) ? json.result : []).map((row) => normalizeTicketRecord(row, config)).filter((row) => row.number && row.sysId);
+  }
+  async function fetchViaTableApi({ rootWindow, closed = false, limit = 20 }) {
+    const resolved = resolveCurrentRecordUser(rootWindow);
+    if (!resolved?.sysId) throw new Error("Unable to resolve user for ticket lookup");
+    const perTableLimit = Math.max(limit, 10);
+    const settled = await Promise.allSettled(TABLES2.map((config) => queryTable({
+      rootWindow,
+      userSysId: resolved.sysId,
+      config,
+      closed,
+      limit: perTableLimit
+    })));
+    const rows = settled.flatMap((result) => result.status === "fulfilled" ? result.value : []);
+    if (!rows.length && settled.every((result) => result.status === "rejected")) {
+      throw settled[0].reason || new Error("ServiceNow ticket query failed");
+    }
+    const dateKey = closed ? "closedAt" : "updated";
+    return rows.sort((a, b) => toTimestamp(b[dateKey]) - toTimestamp(a[dateKey])).slice(0, limit);
+  }
+  async function fetchOpenTicketsFromUser({ hostDocument, rootWindow, limit = 25 }) {
+    try {
+      return await fetchViaTableApi({ rootWindow, closed: false, limit });
+    } catch {
+      const legacy = await fetchOpenTicketsFromUserRecord({ hostDocument, rootWindow });
+      return (Array.isArray(legacy) ? legacy : []).map((row) => normalizeTicketRecord(row, {
+        table: normalizeServiceNowValue(row?.table),
+        type: normalizeServiceNowValue(row?.type)
+      })).filter((row) => row.number && row.sysId).slice(0, limit);
+    }
+  }
+  async function fetchLastClosedTicketsFromUser({ rootWindow, limit = 15 }) {
+    return fetchViaTableApi({ rootWindow, closed: true, limit: Math.min(Math.max(limit, 10), 20) });
+  }
+
   // Assistant/core/state/actions.js
   function closePanel(state) {
     state.ui.panelOpen = false;
@@ -35734,6 +35817,7 @@ Verification completed with ${requestedFor}. Ticket moved to Resolved.`;
   }
 
   // Assistant/handlers/userTickets.js
+  var CLOSED_VIEW2 = "__closed__";
   function createUserTicketsHandlers({
     state,
     store,
@@ -35744,6 +35828,26 @@ Verification completed with ${requestedFor}. Ticket moved to Resolved.`;
     closeOtherAssistantPanels,
     detectRecordChangeAndClearState
   }) {
+    const loadView = (view = "open") => {
+      const closed = view === "closed";
+      state.ui.userTicketsLoading = true;
+      state.ui.userTicketsResults = [];
+      scheduleRecovery("user-tickets-loading", 0);
+      const request = closed ? fetchLastClosedTicketsFromUser({ rootWindow, limit: 15 }) : fetchOpenTicketsFromUser({ hostDocument: state.host.document, rootWindow, limit: 25 });
+      return request.then((results) => {
+        store.dispatch(setUserTicketsResults, results);
+        scheduleRecovery("user-tickets-loaded", 0);
+        return results;
+      }).catch((error2) => {
+        store.dispatch(setUserTicketsResults, []);
+        showToast(state.host.document, {
+          message: error2?.message || (closed ? "Could not load last closed tickets" : "Could not load open tickets"),
+          tone: "info"
+        });
+        scheduleRecovery("user-tickets-loaded", 0);
+        return [];
+      });
+    };
     return {
       onOpenUserTickets({ filter = "" } = {}) {
         detectRecordChangeAndClearState();
@@ -35751,17 +35855,7 @@ Verification completed with ${requestedFor}. Ticket moved to Resolved.`;
         store.dispatch(openUserTickets, { filter });
         clearAutoHideTimer();
         scheduleRecovery("user-tickets-open", 0);
-        fetchOpenTicketsFromUserRecord({ hostDocument: state.host.document, rootWindow }).then((results) => {
-          store.dispatch(setUserTicketsResults, results);
-          scheduleRecovery("user-tickets-loaded", 0);
-        }).catch((error2) => {
-          store.dispatch(setUserTicketsResults, []);
-          showToast(state.host.document, {
-            message: error2?.message || "Could not load open tickets",
-            tone: "info"
-          });
-          scheduleRecovery("user-tickets-loaded", 0);
-        });
+        loadView("open");
       },
       onCloseUserTickets() {
         store.dispatch(closeUserTickets);
@@ -35771,6 +35865,11 @@ Verification completed with ${requestedFor}. Ticket moved to Resolved.`;
       onSetUserTicketsFilter(filter) {
         store.dispatch(setUserTicketsFilter, filter || "");
         scheduleRecovery("user-tickets-filter", 0);
+      },
+      onSetUserTicketsView(view) {
+        const closed = view === "closed";
+        store.dispatch(setUserTicketsFilter, closed ? CLOSED_VIEW2 : "");
+        return loadView(closed ? "closed" : "open");
       }
     };
   }
@@ -35987,6 +36086,91 @@ Verification completed with ${requestedFor}. Ticket moved to Resolved.`;
     };
   }
 
+  // Assistant/sn/userProfile.js
+  function pick(record, keys) {
+    for (const key of keys) {
+      if (!Object.prototype.hasOwnProperty.call(record || {}, key)) continue;
+      const value = normalizeServiceNowValue(record[key]);
+      if (value) return value;
+    }
+    return "";
+  }
+  function normalizeUserProfileRecord(record = {}, userSysId = "") {
+    const firstName2 = pick(record, ["first_name"]);
+    const lastName = pick(record, ["last_name"]);
+    const activeRaw = Object.prototype.hasOwnProperty.call(record, "active") ? record.active : null;
+    const vipRaw = Object.prototype.hasOwnProperty.call(record, "vip") ? record.vip : record.u_vip;
+    return {
+      name: cleanText([firstName2, lastName].filter(Boolean).join(" ")) || pick(record, ["name"]),
+      userId: pick(record, ["user_name"]),
+      email: pick(record, ["email"]),
+      location: pick(record, ["location"]),
+      department: pick(record, ["department"]),
+      dgPg: pick(record, ["u_dg_pg", "u_dgpg", "dg_pg", "u_dg_pg_code", "u_dg", "u_dg_pg_name"]),
+      company: pick(record, ["company"]),
+      title: pick(record, ["title"]),
+      manager: pick(record, ["manager"]),
+      phone: pick(record, ["phone"]),
+      mobile: pick(record, ["mobile_phone", "mobile"]),
+      codictId: pick(record, ["u_codict_id", "codict_id"]),
+      codictExpiration: pick(record, ["u_codict_expiration_date", "codict_expiration"]),
+      active: activeRaw === null ? "" : normalizeServiceNowBoolean(activeRaw),
+      vip: vipRaw === void 0 ? "" : normalizeServiceNowBoolean(vipRaw),
+      populationType: pick(record, ["u_population_type"]),
+      sysId: cleanText(userSysId || pick(record, ["sys_id"]))
+    };
+  }
+  async function loadFullSysUserProfile(userSysId, hostDocument = document) {
+    const ownerWindow = hostDocument?.defaultView || window;
+    const token = ownerWindow?.g_ck || ownerWindow?.top?.g_ck || "";
+    const params = new URLSearchParams({
+      sysparm_display_value: "all",
+      sysparm_exclude_reference_link: "true"
+    });
+    try {
+      const fetchImpl = ownerWindow?.fetch || globalThis.fetch;
+      const response = await fetchImpl(`/api/now/table/sys_user/${encodeURIComponent(String(userSysId))}?${params}`, {
+        method: "GET",
+        credentials: "same-origin",
+        headers: { Accept: "application/json", "X-UserToken": token }
+      });
+      if (!response.ok) throw new Error(`Unable to load user profile (${response.status})`);
+      const json = await response.json();
+      return normalizeUserProfileRecord(json?.result || {}, userSysId);
+    } catch (error2) {
+      const resolved = resolveUserInfoTarget({}, ownerWindow) || {};
+      if (resolved.displayName || resolved.userId || resolved.email) {
+        return normalizeUserProfileRecord({
+          name: resolved.displayName,
+          user_name: resolved.userId,
+          email: resolved.email
+        }, userSysId);
+      }
+      throw error2;
+    }
+  }
+  var SUMMARY_FIELDS = [
+    ["name", "Name"],
+    ["userId", "User ID"],
+    ["email", "Email"],
+    ["location", "Location"],
+    ["department", "Department"],
+    ["dgPg", "DG/PG"],
+    ["company", "Company"],
+    ["title", "Title"],
+    ["manager", "Manager"],
+    ["phone", "Phone"],
+    ["mobile", "Mobile"],
+    ["codictId", "Codict ID"],
+    ["codictExpiration", "Codict Expiration"],
+    ["active", "Active"],
+    ["vip", "VIP"],
+    ["sysId", "Sys ID"]
+  ];
+  function buildFullUserInfoSummary(data = {}) {
+    return SUMMARY_FIELDS.map(([key, label]) => [label, normalizeServiceNowValue(data[key])]).filter(([, value]) => value).map(([label, value]) => `${label}: ${value}`).join("\n");
+  }
+
   // Assistant/handlers/userInfo.js
   function createUserInfoHandlers({
     state,
@@ -36046,7 +36230,7 @@ Verification completed with ${requestedFor}. Ticket moved to Resolved.`;
             scheduleRecovery("user-info-loaded", 0);
             return;
           }
-          const data = await loadSysUserProfile(resolved.sysId, state.host.document);
+          const data = await loadFullSysUserProfile(resolved.sysId, state.host.document);
           if (getCurrentLoadToken() !== token) {
             window.clearTimeout(timeoutId);
             return;
@@ -36120,7 +36304,7 @@ Verification completed with ${requestedFor}. Ticket moved to Resolved.`;
         }
       },
       async onCopyUserInfoSummary() {
-        const summary = buildUserInfoSummary(state.ui.userInfoData || {});
+        const summary = buildFullUserInfoSummary(state.ui.userInfoData || {});
         try {
           const copied = await copyToClipboard(summary, state.host.document);
           showToast(state.host.document, {
