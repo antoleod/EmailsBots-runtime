@@ -5406,15 +5406,8 @@ Asset tag: ${item.equipmentAssetTag}`;
     const parsed = extractEquipmentFromDescription(description);
     const equipmentAssetTag = cleanText(parsed?.equipmentAssetTag || configurationItem);
     const equipmentModel = cleanText(parsed?.equipmentModel).split(",").map((part) => cleanText(part)).find(Boolean) || "";
-    const equipmentSummary = [
-      equipmentModel,
-      equipmentAssetTag ? `asset tag ${equipmentAssetTag}` : ""
-    ].filter(Boolean).join(", ");
-    return {
-      equipmentAssetTag,
-      equipmentModel,
-      equipmentSummary
-    };
+    const equipmentSummary = [equipmentModel, equipmentAssetTag ? `asset tag ${equipmentAssetTag}` : ""].filter(Boolean).join(", ");
+    return { equipmentAssetTag, equipmentModel, equipmentSummary };
   }
   function resolveScTaskRequestItemNumber(rootWindow = getRootWindow()) {
     const direct = cleanText(safeGetDisplayValue("request_item", rootWindow));
@@ -5433,10 +5426,7 @@ Asset tag: ${item.equipmentAssetTag}`;
   }
   function detectPageKey(rootWindow = getRootWindow()) {
     const bestGForm = getBestGForm(rootWindow);
-    const windows = [
-      ...bestGForm?.window ? [bestGForm.window] : [],
-      ...getAccessibleWindows(rootWindow)
-    ];
+    const windows = [...bestGForm?.window ? [bestGForm.window] : [], ...getAccessibleWindows(rootWindow)];
     for (const win of windows) {
       try {
         const href = extractNestedUri(win.location.href);
@@ -5512,6 +5502,7 @@ Asset tag: ${item.equipmentAssetTag}`;
       (!looksLikeTicketIdentifier(fieldConfigurationItem) ? fieldConfigurationItem : "") || (!looksLikeTicketIdentifier(visibleCmdbCi) ? visibleCmdbCi : "") || (!looksLikeTicketIdentifier(currentCmdbCi.display) ? currentCmdbCi.display : "") || (!looksLikeTicketIdentifier(currentCmdbCi.value) ? currentCmdbCi.value : "")
     );
     const description = getDescription(table, rootWindow);
+    const shortDescription = getShortDescription(table, rootWindow);
     const rawModel = getDeviceModel(table, rootWindow);
     const deviceModel = looksLikeRecordIdentifier(rawModel) ? "" : rawModel;
     const rawPhone = getPhoneNumber(table, rootWindow) || user?.phone || "";
@@ -5528,7 +5519,7 @@ Asset tag: ${item.equipmentAssetTag}`;
       safeGetValue("incident", rootWindow)
     ]) || ticketNumber : ticketNumber;
     const sourceType = sourceNumber.startsWith("INC") ? "INC" : sourceNumber.startsWith("REQ") ? "REQ" : sourceNumber.startsWith("RITM") ? "RITM" : ticketNumber.startsWith("INC") ? "INC" : ticketNumber.startsWith("REQ") ? "REQ" : ticketNumber.startsWith("RITM") ? "RITM" : "";
-    const returnDate = extractReturnDateFromText(getShortDescription(table, rootWindow) || description);
+    const returnDate = extractReturnDateFromText(shortDescription || description);
     const equipment = resolveEquipmentDetails({ description, configurationItem });
     const solution = cleanText(
       safeGetValue("solution", rootWindow) || safeGetDisplayValue("solution", rootWindow) || safeGetValue("u_solution", rootWindow) || safeGetDisplayValue("u_solution", rootWindow) || safeGetValue("resolution", rootWindow) || safeGetDisplayValue("resolution", rootWindow) || safeGetValue("u_resolution", rootWindow) || safeGetDisplayValue("u_resolution", rootWindow) || safeGetValue("resolution_notes", rootWindow) || safeGetDisplayValue("resolution_notes", rootWindow) || safeGetValue("u_resolution_notes", rootWindow) || safeGetDisplayValue("u_resolution_notes", rootWindow)
@@ -5538,6 +5529,17 @@ Asset tag: ${item.equipmentAssetTag}`;
     );
     const requestedForEmail = cleanText(
       user?.email || safeGetValue("request_item.request.requested_for.email", rootWindow) || safeGetValue("request_item.request.requested_for.u_email", rootWindow) || safeGetValue("request_item.requested_for.email", rootWindow) || safeGetValue("request_item.requested_for.u_email", rootWindow) || safeGetValue("request.requested_for.email", rootWindow) || safeGetValue("request.requested_for.u_email", rootWindow) || safeGetValue("u_requested_for.email", rootWindow) || safeGetValue("u_requested_for.u_email", rootWindow) || safeGetValue("requested_for.email", rootWindow) || safeGetValue("requested_for.u_email", rootWindow) || safeGetDisplayValue("requested_for.email", rootWindow) || safeGetDisplayValue("requested_for.u_email", rootWindow)
+    );
+    const category = cleanText(safeGetDisplayValue("category", rootWindow) || safeGetValue("category", rootWindow));
+    const subcategory = cleanText(safeGetDisplayValue("subcategory", rootWindow) || safeGetValue("subcategory", rootWindow));
+    const businessApplication = cleanText(
+      safeGetDisplayValue("u_business_application", rootWindow) || safeGetValue("u_business_application", rootWindow) || safeGetDisplayValue("business_application", rootWindow) || safeGetValue("business_application", rootWindow)
+    );
+    const applicationSoftware = cleanText(
+      safeGetDisplayValue("u_application", rootWindow) || safeGetValue("u_application", rootWindow) || safeGetDisplayValue("application", rootWindow) || safeGetValue("application", rootWindow) || safeGetDisplayValue("software", rootWindow) || safeGetValue("software", rootWindow)
+    );
+    const onHoldReason = cleanText(
+      safeGetDisplayValue("u_on_hold_reason", rootWindow) || safeGetValue("u_on_hold_reason", rootWindow) || safeGetDisplayValue("hold_reason", rootWindow) || safeGetValue("hold_reason", rootWindow) || safeGetDisplayValue("on_hold_reason", rootWindow) || safeGetValue("on_hold_reason", rootWindow)
     );
     return {
       ready: Boolean(table || ticketNumber || sysId || state),
@@ -5568,7 +5570,8 @@ Asset tag: ${item.equipmentAssetTag}`;
       sourceNumber,
       sourceType,
       source: sourceType ? "parent" : "",
-      shortDescription: getShortDescription(table, rootWindow),
+      shortDescription,
+      short_description: shortDescription,
       description,
       solution,
       resolution: solution,
@@ -5576,22 +5579,10 @@ Asset tag: ${item.equipmentAssetTag}`;
       resolution_notes: solution,
       dueDate: getDueDate(table, rootWindow),
       configurationItem,
-      configurationItemDisplay: cleanText(
-        (!looksLikeTicketIdentifier(fieldConfigurationItem) ? fieldConfigurationItem : "") || (!looksLikeTicketIdentifier(currentCmdbCi.display) ? currentCmdbCi.display : "") || (!looksLikeTicketIdentifier(visibleCmdbCi) ? visibleCmdbCi : "") || configurationItem
-      ),
-      configurationItemValue: cleanText(
-        (!looksLikeTicketIdentifier(currentCmdbCi.value) ? currentCmdbCi.value : "") || configurationItem
-      ),
-      configurationItemRaw: {
-        field: cleanText(fieldConfigurationItem),
-        display: cleanText(currentCmdbCi.display),
-        value: cleanText(currentCmdbCi.value)
-      },
-      rawConfigurationItem: {
-        field: cleanText(fieldConfigurationItem),
-        display: cleanText(currentCmdbCi.display),
-        value: cleanText(currentCmdbCi.value)
-      },
+      configurationItemDisplay: cleanText((!looksLikeTicketIdentifier(fieldConfigurationItem) ? fieldConfigurationItem : "") || (!looksLikeTicketIdentifier(currentCmdbCi.display) ? currentCmdbCi.display : "") || (!looksLikeTicketIdentifier(visibleCmdbCi) ? visibleCmdbCi : "") || configurationItem),
+      configurationItemValue: cleanText((!looksLikeTicketIdentifier(currentCmdbCi.value) ? currentCmdbCi.value : "") || configurationItem),
+      configurationItemRaw: { field: cleanText(fieldConfigurationItem), display: cleanText(currentCmdbCi.display), value: cleanText(currentCmdbCi.value) },
+      rawConfigurationItem: { field: cleanText(fieldConfigurationItem), display: cleanText(currentCmdbCi.display), value: cleanText(currentCmdbCi.value) },
       model: deviceModel,
       deviceModel,
       phone,
@@ -5601,6 +5592,14 @@ Asset tag: ${item.equipmentAssetTag}`;
       assignmentGroup: getAssignmentGroup(table, rootWindow),
       requestItem: getRequestItem(table, rootWindow),
       followUp: getFollowUp(table, rootWindow),
+      category,
+      subcategory,
+      businessApplication,
+      business_application: businessApplication,
+      applicationSoftware,
+      application_software: applicationSoftware,
+      onHoldReason,
+      on_hold_reason: onHoldReason,
       user,
       userPhone: phone,
       requestedFor: requestedForName,
@@ -16666,6 +16665,208 @@ ${value2}` : value2;
   }
   var SMART_SHORT_DESCRIPTION_RULES = RULES.map(({ id, templates }) => ({ id, templates: [...templates] }));
 
+  // Assistant/application/email/smartEmailComposer.js
+  var SMART_COMPOSABLE_TEMPLATE_IDS = /* @__PURE__ */ new Set([
+    "generic_ticket_follow_up",
+    "generic_clarification",
+    "incident_follow_up",
+    "incident_software_issue",
+    "incident_hardware_issue",
+    "incident_connectivity_issue"
+  ]);
+  function normalize2(value2 = "") {
+    return cleanText(value2).normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/\s+/g, " ").trim();
+  }
+  function sentenceTopic(value2 = "") {
+    const text2 = cleanText(value2).replace(/[.?!]+$/g, "").trim();
+    return text2 || "the issue you reported";
+  }
+  function getTicketNumber2(context = {}) {
+    return cleanText(
+      context.validTicketNumber || context.customerTicketNumber || context.requestItem || context.ticketNumber || context.recordNumber
+    );
+  }
+  function getUserName(context = {}) {
+    return cleanText(
+      context.user?.fullName || context.requestedFor || context.caller || ""
+    );
+  }
+  function getAgentName2(context = {}) {
+    return cleanText(context.agentName) || "IT Support";
+  }
+  function buildEmail2({ userName, paragraphs, agentName }) {
+    return [
+      `Dear ${userName || "colleague"},`,
+      ...paragraphs.filter(Boolean),
+      "Thank you in advance for your feedback.",
+      `Kind regards,
+${agentName}`
+    ].join("\n\n");
+  }
+  function classifyContext(context = {}) {
+    const shortDescription = cleanText(context.shortDescription || context.short_description);
+    const description = cleanText(context.description);
+    const category = cleanText(context.category);
+    const subcategory = cleanText(context.subcategory);
+    const application = cleanText(context.applicationSoftware || context.application || context.businessApplication);
+    const state = normalize2(context.state);
+    const onHoldReason = normalize2(context.onHoldReason || context.on_hold_reason);
+    const text2 = normalize2([shortDescription, description, category, subcategory, application].filter(Boolean).join(" "));
+    if (/awaiting vendor|waiting vendor|vendor/.test(onHoldReason) && /on hold|hold|pending/.test(state)) {
+      return { family: "waiting-vendor", confidence: 0.98 };
+    }
+    if (/\b(slow|slowness|performance|speed|lag|freeze|freezing)\b/.test(text2) && /\b(laptop|computer|pc|workstation)\b/.test(text2)) {
+      return { family: "device-performance", confidence: 0.96 };
+    }
+    if (/\b(scenario unavailable|unavailable|service down|application unavailable|system unavailable|isalive)\b/.test(text2)) {
+      return { family: "application-unavailable", confidence: 0.94 };
+    }
+    if (/\b(permission denied|access denied|cannot access|unable to access|access issue)\b/.test(text2)) {
+      return { family: "access", confidence: 0.9 };
+    }
+    if (/\b(error|issue|problem|not working|failed|failure|crash|freeze|unavailable)\b/.test(text2) && /\b(application|software|outlook|word|adobe|system|service)\b/.test(text2)) {
+      return { family: "software-troubleshooting", confidence: 0.84 };
+    }
+    return { family: "generic-follow-up", confidence: 0.55 };
+  }
+  function buildKnownFacts(context = {}, family = "") {
+    const description = normalize2(context.description);
+    const facts = [];
+    if (family === "device-performance") {
+      if (/\b(reboot|restart|restarted|rebooted)\b/.test(description)) facts.push("you have already restarted the device");
+      if (/\b(best performance|performance setting|performance mode)\b/.test(description)) facts.push("the performance settings have already been adjusted");
+      if (/\b(wifi|wi-fi|network)\b/.test(description) && /\b(not the problem|confirmed|speed test|tested)\b/.test(description)) facts.push("the network connection has already been checked");
+      if (/\boutlook\b/.test(description) && /\bword\b/.test(description)) facts.push("the slowdown affects multiple applications");
+    }
+    return facts;
+  }
+  function composeForFamily(context = {}, family = "generic-follow-up") {
+    const ticket = getTicketNumber2(context);
+    const shortDescription = sentenceTopic(context.shortDescription || context.short_description);
+    const application = cleanText(context.applicationSoftware || context.application || context.businessApplication);
+    const userName = getUserName(context);
+    const agentName = getAgentName2(context);
+    const intro = ticket ? `I am following up regarding ticket ${ticket} and the issue you reported with ${shortDescription}.` : `I am following up regarding the issue you reported with ${shortDescription}.`;
+    if (family === "waiting-vendor") {
+      return {
+        subject: ticket ? `${ticket} - Status update` : "Status update",
+        body: buildEmail2({
+          userName,
+          agentName,
+          paragraphs: [
+            intro,
+            "Your case is currently on hold while we wait for feedback from the external/vendor support team. No action is required from you at this stage.",
+            "We will continue the investigation as soon as we receive their response and will keep you informed of any relevant update."
+          ]
+        }),
+        reason: "Ticket is on hold awaiting vendor feedback."
+      };
+    }
+    if (family === "device-performance") {
+      const facts = buildKnownFacts(context, family);
+      const known = facts.length ? `From the information already provided, ${facts.join(", and ")}.` : "We have reviewed the information already provided in the ticket.";
+      return {
+        subject: ticket ? `${ticket} - Laptop performance follow-up` : "Laptop performance follow-up",
+        body: buildEmail2({
+          userName,
+          agentName,
+          paragraphs: [
+            intro,
+            known,
+            "Could you please confirm whether the performance issue is still occurring? If it persists, we can arrange an intervention, either on-site or remotely, to investigate further.",
+            "Please let us know your availability, including a few dates and time slots that would suit you best, so that we can schedule the intervention accordingly."
+          ]
+        }),
+        reason: "Performance issue detected from the ticket context."
+      };
+    }
+    if (family === "application-unavailable") {
+      const appText = application ? ` affecting ${application}` : "";
+      return {
+        subject: ticket ? `${ticket} - Application availability follow-up` : "Application availability follow-up",
+        body: buildEmail2({
+          userName,
+          agentName,
+          paragraphs: [
+            `I am following up regarding ${ticket ? `ticket ${ticket} and ` : ""}the application/service availability issue${appText}.`,
+            "Could you please confirm whether the issue is still occurring? If available, the approximate time of the latest occurrence and any current error message would help us continue the investigation.",
+            "If the issue has already been resolved, please let us know so that we can update the ticket accordingly."
+          ]
+        }),
+        reason: "Application/service unavailable intent detected."
+      };
+    }
+    if (family === "access") {
+      return {
+        subject: ticket ? `${ticket} - Access issue follow-up` : "Access issue follow-up",
+        body: buildEmail2({
+          userName,
+          agentName,
+          paragraphs: [
+            intro,
+            "Could you please confirm whether you are still unable to access the requested application or service? If the issue persists, please share the exact error message or the step at which access fails, if available.",
+            "We will use this information to continue the investigation and determine the appropriate next action."
+          ]
+        }),
+        reason: "Access/permission issue detected."
+      };
+    }
+    if (family === "software-troubleshooting") {
+      return {
+        subject: ticket ? `${ticket} - Software issue follow-up` : "Software issue follow-up",
+        body: buildEmail2({
+          userName,
+          agentName,
+          paragraphs: [
+            intro,
+            "Could you please confirm whether you are still experiencing the problem? If it persists, please let us know whether the behaviour is reproducible and share any current error message, if available.",
+            "If necessary, we can arrange an intervention, either on-site or remotely, to investigate further."
+          ]
+        }),
+        reason: "Software/application troubleshooting intent detected."
+      };
+    }
+    return {
+      subject: ticket ? `${ticket} - Follow-up` : "Ticket follow-up",
+      body: buildEmail2({
+        userName,
+        agentName,
+        paragraphs: [
+          intro,
+          "Could you please confirm whether you are still experiencing the problem, or whether the situation has already been resolved?",
+          "If the issue persists, we can arrange an intervention, either on-site or remotely, to investigate further.",
+          "Please let us know your availability, including a few dates and time slots that would suit you best, so that we can schedule this accordingly."
+        ]
+      }),
+      reason: "Low-confidence context: safe generic follow-up used."
+    };
+  }
+  function composeSmartEmail(context = {}) {
+    const classification = classifyContext(context);
+    return {
+      ...composeForFamily(context, classification.family),
+      family: classification.family,
+      confidence: classification.confidence
+    };
+  }
+  function applySmartEmailComposition(renderedTemplate, selection = {}, context = {}) {
+    if (!renderedTemplate || renderedTemplate.category !== "email") return renderedTemplate;
+    if (selection.selectionMode === "manual") return renderedTemplate;
+    if (!SMART_COMPOSABLE_TEMPLATE_IDS.has(cleanText(selection.selectedTemplateId))) return renderedTemplate;
+    const smart = composeSmartEmail(context);
+    return {
+      ...renderedTemplate,
+      subject: smart.subject || renderedTemplate.subject,
+      body: smart.body || renderedTemplate.body,
+      smartEmail: {
+        family: smart.family,
+        confidence: smart.confidence,
+        reason: smart.reason
+      }
+    };
+  }
+  var SMART_EMAIL_COMPOSABLE_TEMPLATE_IDS = [...SMART_COMPOSABLE_TEMPLATE_IDS];
+
   // Assistant/application/email/renderedSelection.js
   function looksLikeTicket(value2) {
     return TICKET_NUMBER_PATTERN.test(cleanText(value2));
@@ -16697,9 +16898,7 @@ ${value2}` : value2;
     const cachedUser = cachedContext?.user || {};
     const user = {
       ...cachedUser,
-      ...Object.fromEntries(
-        Object.entries(liveUser).filter(([, value2]) => cleanText(value2))
-      )
+      ...Object.fromEntries(Object.entries(liveUser).filter(([, value2]) => cleanText(value2)))
     };
     const shortDescription = cleanText(
       liveContext?.shortDescription || liveContext?.short_description || readLiveTextField(rootWindow, "short_description") || cachedContext?.shortDescription || cachedContext?.short_description
@@ -16736,22 +16935,13 @@ ${value2}` : value2;
       state.ui.lastDraftSubject = "";
       state.ui.lastDraftBody = "";
       state.ui.lastDraftOpenFailed = false;
-      logger?.info?.("template-record-reset", {
-        previousRecordKey,
-        recordKey: currentRecordKey
-      });
+      logger?.info?.("template-record-reset", { previousRecordKey, recordKey: currentRecordKey });
     }
     state.ui.templateSelectionRecordKey = currentRecordKey;
   }
   function normalizeRenderedSubject(renderedTemplate, context = {}) {
     if (!renderedTemplate) return renderedTemplate;
-    const ticketCandidates = [
-      context.validTicketNumber,
-      context.customerTicketNumber,
-      context.requestItem,
-      context.ticketNumber,
-      context.recordNumber
-    ];
+    const ticketCandidates = [context.validTicketNumber, context.customerTicketNumber, context.requestItem, context.ticketNumber, context.recordNumber];
     const ticket = ticketCandidates.map((value2) => cleanText(value2).toUpperCase()).find((value2) => /^(?:RITM|INC|REQ|SCTASK)\d{4,}$/.test(value2)) || "";
     let subject = cleanText(renderedTemplate.subject).replace(/\bfollow\s*-\s*up\b/gi, "follow-up").replace(/\s{2,}/g, " ").trim();
     if (ticket) {
@@ -16763,23 +16953,12 @@ ${value2}` : value2;
 ${cleanText(renderedTemplate.body)}` : renderedTemplate.clipboardText;
     return { ...renderedTemplate, subject, clipboardText };
   }
-  async function getRenderedSelection({
-    state,
-    settings,
-    logger,
-    rootWindow,
-    hydrateUser = false,
-    categoryOverride
-  }) {
+  async function getRenderedSelection({ state, settings, logger, rootWindow, hydrateUser = false, categoryOverride }) {
     const cachedContext = state.context || {};
     const liveContext = getCurrentContext(rootWindow);
     const baseContext = liveContext?.supported ? mergeLiveContext(cachedContext, liveContext, rootWindow) : mergeLiveContext({}, cachedContext, rootWindow);
     if (!baseContext?.supported) {
-      return {
-        renderedTemplate: null,
-        selection: resolveTemplateSelection(state, settings, categoryOverride),
-        emailSuggestions: []
-      };
+      return { renderedTemplate: null, selection: resolveTemplateSelection(state, settings, categoryOverride), emailSuggestions: [] };
     }
     state.context = baseContext;
     const currentCi = getCurrentCmdbCi(rootWindow);
@@ -16792,17 +16971,13 @@ ${cleanText(renderedTemplate.body)}` : renderedTemplate.clipboardText;
     if (hydrateUser) {
       const resolvedUser = await resolveUserForContext(context, state, settings, logger);
       const mergedUser = mergeResolvedUser(context?.user, resolvedUser);
-      if (mergedUser.email !== context?.user?.email || mergedUser.fullName !== context?.user?.fullName || mergedUser.firstName !== context?.user?.firstName || mergedUser.lastName !== context?.user?.lastName) {
-        context = { ...context, user: mergedUser };
-      }
+      if (mergedUser.email !== context?.user?.email || mergedUser.fullName !== context?.user?.fullName || mergedUser.firstName !== context?.user?.firstName || mergedUser.lastName !== context?.user?.lastName) context = { ...context, user: mergedUser };
     }
     state.context = context;
     resetStaleTemplateSelection(state, context, logger);
     let selection = resolveTemplateSelection(state, settings, categoryOverride);
     selection = applySmartShortDescriptionOverride(selection, context);
-    const diagnosticSource = cleanText(
-      selection.selectionSource || (selection.emailSelection?.metadata ? "studio-metadata" : "intelligence")
-    );
+    const diagnosticSource = cleanText(selection.selectionSource || (selection.emailSelection?.metadata ? "studio-metadata" : "intelligence"));
     logger?.info?.("template-selection", {
       recordKey: cleanText(context.recordKey),
       category: cleanText(selection.activeCategory),
@@ -16813,18 +16988,23 @@ ${cleanText(renderedTemplate.body)}` : renderedTemplate.clipboardText;
       hasDescription: Boolean(cleanText(context.description)),
       smartShortDescription: Boolean(selection.smartShortDescription)
     });
-    const renderedTemplate = selection.selectedTemplate ? normalizeRenderedSubject(renderTemplate(selection.selectedTemplate, { context, settings }), context) : null;
+    const baseRenderedTemplate = selection.selectedTemplate ? renderTemplate(selection.selectedTemplate, { context, settings }) : null;
+    const smartRenderedTemplate = applySmartEmailComposition(baseRenderedTemplate, selection, context);
+    const renderedTemplate = normalizeRenderedSubject(smartRenderedTemplate, context);
+    if (renderedTemplate?.smartEmail) {
+      logger?.info?.("smart-email-composition", {
+        recordKey: cleanText(context.recordKey),
+        templateId: cleanText(selection.selectedTemplateId),
+        family: cleanText(renderedTemplate.smartEmail.family),
+        confidence: renderedTemplate.smartEmail.confidence,
+        reason: cleanText(renderedTemplate.smartEmail.reason)
+      });
+    }
     const emailSuggestions = selection.activeCategory === "email" && selection.emailSelection?.ambiguous ? (selection.emailSelection.candidates || []).slice(0, 3).map((candidate) => {
       const template = selection.templates.find((item) => item.id === candidate.templateId);
       if (!template) return null;
       const rendered = normalizeRenderedSubject(renderTemplate(template, { context, settings }), context);
-      return {
-        templateId: candidate.templateId,
-        score: candidate.score,
-        label: template.label,
-        subject: rendered?.subject || "",
-        body: rendered?.body || ""
-      };
+      return { templateId: candidate.templateId, score: candidate.score, label: template.label, subject: rendered?.subject || "", body: rendered?.body || "" };
     }).filter(Boolean) : [];
     return { renderedTemplate, selection, emailSuggestions };
   }
@@ -18342,6 +18522,9 @@ ${cleanText(renderedTemplate.body)}` : renderedTemplate.clipboardText;
   // Assistant/ui/styles/onboarding.css
   var onboarding_default = "/* \u2500\u2500\u2500 Onboarding welcome modal \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500 */\r\n#sn-assistant-onboarding {\r\n  position: fixed;\r\n  inset: 0;\r\n  z-index: 2147483640;\r\n  pointer-events: auto;\r\n}\r\n\r\n.sn-ob__backdrop {\r\n  position: absolute;\r\n  inset: 0;\r\n  background: rgba(15, 23, 42, 0.55);\r\n  backdrop-filter: blur(3px);\r\n  display: flex;\r\n  align-items: center;\r\n  justify-content: center;\r\n  padding: 16px;\r\n}\r\n\r\n.sn-ob__card {\r\n  background: #fff;\r\n  border-radius: 20px;\r\n  box-shadow: 0 24px 64px rgba(15, 23, 42, 0.22);\r\n  padding: 40px 36px 32px;\r\n  max-width: 420px;\r\n  width: 100%;\r\n  text-align: center;\r\n  display: flex;\r\n  flex-direction: column;\r\n  align-items: center;\r\n  gap: 0;\r\n  animation: sn-ob-in 0.25s ease;\r\n}\r\n\r\n@keyframes sn-ob-in {\r\n  from { opacity: 0; transform: translateY(12px) scale(0.97); }\r\n  to   { opacity: 1; transform: translateY(0) scale(1); }\r\n}\r\n\r\n.sn-ob__icon {\r\n  color: #0d5a6d;\r\n  margin-bottom: 20px;\r\n  opacity: 0.9;\r\n}\r\n\r\n.sn-ob__title {\r\n  font-size: 20px;\r\n  font-weight: 700;\r\n  color: #0f172a;\r\n  margin: 0 0 12px;\r\n  line-height: 1.3;\r\n}\r\n\r\n.sn-ob__body {\r\n  font-size: 14px;\r\n  color: #475569;\r\n  margin: 0 0 24px;\r\n  line-height: 1.6;\r\n}\r\n\r\n.sn-ob__bullets {\r\n  list-style: none;\r\n  padding: 0;\r\n  margin: 0 0 24px;\r\n  text-align: left;\r\n  width: 100%;\r\n  display: flex;\r\n  flex-direction: column;\r\n  gap: 10px;\r\n}\r\n\r\n.sn-ob__bullets li {\r\n  font-size: 13.5px;\r\n  color: #334155;\r\n  padding: 8px 12px;\r\n  background: #f8fafc;\r\n  border-radius: 8px;\r\n  border: 1px solid #e2e8f0;\r\n  line-height: 1.4;\r\n}\r\n\r\n.sn-ob__actions {\r\n  display: flex;\r\n  flex-direction: column;\r\n  gap: 8px;\r\n  width: 100%;\r\n  margin-bottom: 20px;\r\n}\r\n\r\n.sn-ob__btn {\r\n  padding: 11px 20px;\r\n  border-radius: 10px;\r\n  font-size: 14px;\r\n  font-weight: 600;\r\n  cursor: pointer;\r\n  border: none;\r\n  transition: background 0.15s, transform 0.1s, box-shadow 0.15s;\r\n  width: 100%;\r\n}\r\n\r\n.sn-ob__btn:active {\r\n  transform: scale(0.98);\r\n}\r\n\r\n.sn-ob__btn--primary {\r\n  background: #0d5a6d;\r\n  color: #fff;\r\n  box-shadow: 0 2px 8px rgba(13, 90, 109, 0.3);\r\n}\r\n\r\n.sn-ob__btn--primary:hover {\r\n  background: #0a4a5a;\r\n  box-shadow: 0 4px 12px rgba(13, 90, 109, 0.4);\r\n}\r\n\r\n.sn-ob__btn--ghost {\r\n  background: transparent;\r\n  color: #64748b;\r\n  border: 1px solid #e2e8f0;\r\n}\r\n\r\n.sn-ob__btn--ghost:hover {\r\n  background: #f8fafc;\r\n  color: #475569;\r\n}\r\n\r\n.sn-ob__dots {\r\n  display: flex;\r\n  gap: 6px;\r\n  justify-content: center;\r\n}\r\n\r\n.sn-ob__dot {\r\n  width: 6px;\r\n  height: 6px;\r\n  border-radius: 50%;\r\n  background: #cbd5e1;\r\n  transition: background 0.2s, width 0.2s;\r\n}\r\n\r\n.sn-ob__dot--active {\r\n  background: #0d5a6d;\r\n  width: 18px;\r\n  border-radius: 3px;\r\n}\r\n";
 
+  // Assistant/ui/styles/settings-v2.css
+  var settings_v2_default = '/* Settings V2 \u2014 compact, legible, hierarchy-first overrides.\r\n   This file intentionally does not change field names/actions so the existing\r\n   settings runtime, import/export and persistence paths keep working unchanged. */\r\n\r\n/* ---------- Modal shell ---------- */\r\n.sn-assistant-modal__dialog:has(.sn-assistant-tabs--sections) {\r\n  width: min(1080px, calc(100vw - 32px));\r\n  height: min(90dvh, 900px);\r\n  border-radius: 18px;\r\n}\r\n\r\n.sn-assistant-modal__dialog:has([data-section="profile"].is-active) {\r\n  width: min(980px, calc(100vw - 32px));\r\n  height: min(88dvh, 820px);\r\n}\r\n\r\n.sn-assistant-modal__dialog:has(.sn-assistant-tabs--sections) .sn-assistant-modal__header {\r\n  padding: 14px 18px;\r\n}\r\n\r\n.sn-assistant-modal__dialog:has(.sn-assistant-tabs--sections) .sn-assistant-modal__body {\r\n  gap: 10px;\r\n  padding: 14px 18px 16px;\r\n}\r\n\r\n.sn-assistant-modal__dialog:has(.sn-assistant-tabs--sections) .sn-assistant-modal__footer {\r\n  padding: 12px 18px;\r\n}\r\n\r\n/* ---------- Top navigation ---------- */\r\n.sn-assistant-tabs--sections {\r\n  display: flex;\r\n  align-items: center;\r\n  width: 100%;\r\n  gap: 4px;\r\n  padding: 4px;\r\n  border: 1px solid var(--sn-assistant-border);\r\n  border-radius: 12px;\r\n  background: color-mix(in srgb, var(--sn-assistant-surface) 82%, transparent);\r\n}\r\n\r\n.sn-assistant-tabs--sections .sn-assistant-tab {\r\n  min-height: 32px;\r\n  padding: 0 11px;\r\n  border-radius: 8px;\r\n  font-size: 11px;\r\n  font-weight: 650;\r\n}\r\n\r\n.sn-assistant-tabs--sections .sn-assistant-tab[data-section="simulator"] {\r\n  margin-left: auto;\r\n  position: relative;\r\n}\r\n\r\n.sn-assistant-tabs--sections .sn-assistant-tab[data-section="simulator"]::before {\r\n  content: "";\r\n  position: absolute;\r\n  left: -7px;\r\n  top: 6px;\r\n  bottom: 6px;\r\n  width: 1px;\r\n  background: var(--sn-assistant-border);\r\n}\r\n\r\n.sn-assistant-tabs--sections .sn-assistant-tab[data-section="simulator"],\r\n.sn-assistant-tabs--sections .sn-assistant-tab[data-section="commit"] {\r\n  color: var(--sn-assistant-muted);\r\n}\r\n\r\n.sn-assistant-tabs--sections .sn-assistant-tab.is-active {\r\n  color: var(--sn-assistant-accent-strong);\r\n  background: var(--sn-assistant-panel);\r\n  border-color: color-mix(in srgb, var(--sn-assistant-accent) 22%, var(--sn-assistant-border));\r\n  box-shadow: 0 1px 3px rgba(0,0,0,.06);\r\n}\r\n\r\n/* ---------- Profile hierarchy ---------- */\r\n.sn-assistant-modal__body:has([data-section="profile"].is-active) > .sn-assistant-settings-grid {\r\n  display: grid;\r\n  grid-template-columns: repeat(12, minmax(0, 1fr));\r\n  gap: 10px 12px;\r\n  padding: 14px;\r\n  border: 1px solid var(--sn-assistant-border);\r\n  border-radius: 14px;\r\n  background: var(--sn-assistant-panel);\r\n}\r\n\r\n.sn-assistant-modal__body:has([data-section="profile"].is-active) > .sn-assistant-settings-grid > .sn-assistant-field {\r\n  min-width: 0;\r\n  margin: 0 !important;\r\n}\r\n\r\n.sn-assistant-modal__body:has([data-section="profile"].is-active) > .sn-assistant-settings-grid > .sn-assistant-field:nth-child(1),\r\n.sn-assistant-modal__body:has([data-section="profile"].is-active) > .sn-assistant-settings-grid > .sn-assistant-field:nth-child(2),\r\n.sn-assistant-modal__body:has([data-section="profile"].is-active) > .sn-assistant-settings-grid > .sn-assistant-field:nth-child(3),\r\n.sn-assistant-modal__body:has([data-section="profile"].is-active) > .sn-assistant-settings-grid > .sn-assistant-field:nth-child(4) {\r\n  grid-column: span 6 !important;\r\n}\r\n\r\n.sn-assistant-modal__body:has([data-section="profile"].is-active) > .sn-assistant-settings-grid > .sn-assistant-field:nth-child(n+5) {\r\n  grid-column: 1 / -1 !important;\r\n}\r\n\r\n/* Visual section separators without changing the existing DOM/actions. */\r\n.sn-assistant-modal__body:has([data-section="profile"].is-active) > .sn-assistant-settings-grid > .sn-assistant-field:nth-child(1)::before,\r\n.sn-assistant-modal__body:has([data-section="profile"].is-active) > .sn-assistant-settings-grid > .sn-assistant-field:nth-child(3)::before,\r\n.sn-assistant-modal__body:has([data-section="profile"].is-active) > .sn-assistant-settings-grid > .sn-assistant-field:nth-child(6)::before,\r\n.sn-assistant-modal__body:has([data-section="profile"].is-active) > .sn-assistant-settings-grid > .sn-assistant-field:nth-child(7)::before {\r\n  display: block;\r\n  margin: 2px 0 8px;\r\n  padding-top: 10px;\r\n  border-top: 1px solid var(--sn-assistant-border);\r\n  color: var(--sn-assistant-muted);\r\n  font-size: 9px;\r\n  font-weight: 800;\r\n  letter-spacing: .09em;\r\n  text-transform: uppercase;\r\n}\r\n\r\n.sn-assistant-modal__body:has([data-section="profile"].is-active) > .sn-assistant-settings-grid > .sn-assistant-field:nth-child(1)::before {\r\n  content: "Office & language";\r\n  padding-top: 0;\r\n  border-top: 0;\r\n}\r\n\r\n.sn-assistant-modal__body:has([data-section="profile"].is-active) > .sn-assistant-settings-grid > .sn-assistant-field:nth-child(3)::before {\r\n  content: "Office details";\r\n}\r\n\r\n.sn-assistant-modal__body:has([data-section="profile"].is-active) > .sn-assistant-settings-grid > .sn-assistant-field:nth-child(6)::before {\r\n  content: "Drafts";\r\n}\r\n\r\n.sn-assistant-modal__body:has([data-section="profile"].is-active) > .sn-assistant-settings-grid > .sn-assistant-field:nth-child(7)::before {\r\n  content: "Appearance";\r\n}\r\n\r\n.sn-assistant-modal__body:has([data-section="profile"].is-active) .sn-assistant-field__label {\r\n  margin-bottom: 5px;\r\n  font-size: 10px;\r\n  font-weight: 700;\r\n}\r\n\r\n.sn-assistant-modal__body:has([data-section="profile"].is-active) .sn-assistant-input,\r\n.sn-assistant-modal__body:has([data-section="profile"].is-active) .sn-assistant-select {\r\n  min-height: 36px;\r\n  border-radius: 9px;\r\n}\r\n\r\n/* ---------- Theme picker ---------- */\r\n.sn-assistant-modal__body:has([data-section="profile"].is-active) .sn-assistant-theme-picker {\r\n  grid-template-columns: repeat(4, minmax(0, 1fr));\r\n  gap: 7px;\r\n}\r\n\r\n.sn-assistant-modal__body:has([data-section="profile"].is-active) .sn-assistant-theme-card {\r\n  min-height: 54px;\r\n  padding: 7px 9px;\r\n  flex-direction: row;\r\n  justify-content: flex-start;\r\n  gap: 8px;\r\n  border-radius: 10px;\r\n  overflow: hidden;\r\n  color: var(--theme-fg, var(--sn-assistant-ink)) !important;\r\n  text-shadow: 0 1px 1px rgba(0,0,0,.16);\r\n  box-shadow: 0 1px 3px rgba(0,0,0,.08);\r\n}\r\n\r\n.sn-assistant-modal__body:has([data-section="profile"].is-active) .sn-assistant-theme-card:hover {\r\n  transform: translateY(-1px);\r\n  box-shadow: 0 4px 10px rgba(0,0,0,.11);\r\n}\r\n\r\n.sn-assistant-modal__body:has([data-section="profile"].is-active) .sn-assistant-theme-card.is-active {\r\n  transform: none;\r\n  border-color: var(--theme-accent, var(--sn-assistant-accent));\r\n  box-shadow: 0 0 0 2px color-mix(in srgb, var(--theme-accent, #2563eb) 20%, transparent);\r\n}\r\n\r\n.sn-assistant-modal__body:has([data-section="profile"].is-active) .sn-assistant-theme-card__dot {\r\n  flex: 0 0 auto;\r\n  width: 18px;\r\n  height: 18px;\r\n  box-shadow: 0 0 0 3px rgba(255,255,255,.14), 0 1px 3px rgba(0,0,0,.18);\r\n}\r\n\r\n.sn-assistant-modal__body:has([data-section="profile"].is-active) .sn-assistant-theme-card__label {\r\n  min-width: 0;\r\n  overflow: hidden;\r\n  color: inherit !important;\r\n  font-size: 10.5px;\r\n  font-weight: 750;\r\n  text-overflow: ellipsis;\r\n  white-space: nowrap;\r\n}\r\n\r\n.sn-assistant-modal__body:has([data-section="profile"].is-active) .sn-assistant-theme-card__state {\r\n  top: 5px;\r\n  right: 6px;\r\n  padding: 2px 5px;\r\n  border-radius: 999px;\r\n  background: color-mix(in srgb, var(--theme-bg, #111) 72%, rgba(0,0,0,.4));\r\n  color: var(--theme-accent, #fff) !important;\r\n  font-size: 7.5px;\r\n  text-shadow: none;\r\n}\r\n\r\n/* ---------- Preview ---------- */\r\n.sn-assistant-modal__body:has([data-section="profile"].is-active) .sn-assistant-theme-preview {\r\n  margin-top: 2px;\r\n  border-radius: 10px;\r\n}\r\n\r\n.sn-assistant-modal__body:has([data-section="profile"].is-active) .sn-assistant-theme-preview__surface {\r\n  min-height: 108px;\r\n  padding: 11px 13px;\r\n}\r\n\r\n.sn-assistant-modal__body:has([data-section="profile"].is-active) .sn-assistant-theme-preview__dock {\r\n  padding: 8px 0 5px;\r\n}\r\n\r\n.sn-assistant-modal__body:has([data-section="profile"].is-active) .sn-assistant-theme-preview + .sn-assistant-checkbox {\r\n  margin-top: 8px;\r\n  border-radius: 10px;\r\n}\r\n\r\n/* ---------- Footer / dirty state ---------- */\r\n.sn-assistant-modal__dialog:has(.sn-assistant-tabs--sections) [data-action="save-settings"] {\r\n  min-width: 112px;\r\n  height: 34px;\r\n  border-radius: 9px;\r\n  font-size: 0;\r\n}\r\n\r\n.sn-assistant-modal__dialog:has(.sn-assistant-tabs--sections) [data-action="save-settings"]::after {\r\n  content: "Save changes";\r\n  font-size: 11px;\r\n  font-weight: 750;\r\n}\r\n\r\n.sn-assistant-modal__dialog:has(.sn-assistant-tabs--sections) [data-action="save-settings"] > span {\r\n  top: 5px !important;\r\n  right: 6px !important;\r\n  width: 7px !important;\r\n  height: 7px !important;\r\n  box-shadow: 0 0 0 2px var(--sn-assistant-panel);\r\n}\r\n\r\n.sn-assistant-modal__dialog:has(.sn-assistant-tabs--sections) .sn-assistant-modal__footer-group:first-child .sn-assistant-button {\r\n  min-width: 0;\r\n  height: 30px;\r\n  padding-inline: 9px;\r\n}\r\n\r\n/* ---------- Responsive ---------- */\r\n@media (max-width: 760px) {\r\n  .sn-assistant-modal__dialog:has(.sn-assistant-tabs--sections),\r\n  .sn-assistant-modal__dialog:has([data-section="profile"].is-active) {\r\n    width: calc(100vw - 12px);\r\n    height: calc(100dvh - 12px);\r\n    max-height: none;\r\n    border-radius: 14px;\r\n  }\r\n\r\n  .sn-assistant-tabs--sections {\r\n    overflow-x: auto;\r\n    justify-content: flex-start;\r\n    scrollbar-width: thin;\r\n  }\r\n\r\n  .sn-assistant-tabs--sections .sn-assistant-tab[data-section="simulator"] {\r\n    margin-left: 0;\r\n  }\r\n\r\n  .sn-assistant-tabs--sections .sn-assistant-tab[data-section="simulator"]::before {\r\n    display: none;\r\n  }\r\n\r\n  .sn-assistant-modal__body:has([data-section="profile"].is-active) > .sn-assistant-settings-grid > .sn-assistant-field:nth-child(n) {\r\n    grid-column: 1 / -1 !important;\r\n  }\r\n\r\n  .sn-assistant-modal__body:has([data-section="profile"].is-active) .sn-assistant-theme-picker {\r\n    grid-template-columns: repeat(2, minmax(0, 1fr));\r\n  }\r\n\r\n  .sn-assistant-modal__footer {\r\n    flex-wrap: wrap;\r\n  }\r\n}\r\n\r\n@media (prefers-reduced-motion: reduce) {\r\n  .sn-assistant-theme-card,\r\n  .sn-assistant-theme-card::before {\r\n    transition: none !important;\r\n    animation: none !important;\r\n  }\r\n}\r\n';
+
   // Assistant/ui/styles.js
   var VALID_THEMES = ["light", "dark", "eu_blue", "custom", "parliament", "noirGraphite", "midnightSteel", "obsidianGold"];
   var stylesText = [
@@ -18373,7 +18556,8 @@ ${cleanText(renderedTemplate.body)}` : renderedTemplate.clipboardText;
     workNotes_apply_default,
     launcher_positioning_default,
     launcher_edit_default,
-    onboarding_default
+    onboarding_default,
+    settings_v2_default
   ].join("\n");
   function ensureStyles2(hostDocument) {
     if (!hostDocument || hostDocument.getElementById(UI_IDS.style)) return;
@@ -37543,7 +37727,7 @@ ${bundle.email.body}`,
   function cleanText5(value2) {
     return String(value2 || "").trim();
   }
-  function normalize2(value2) {
+  function normalize3(value2) {
     return cleanText5(value2).toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
   }
   function flatten(value2) {
@@ -37552,7 +37736,7 @@ ${bundle.email.body}`,
     return cleanText5(value2);
   }
   function corpus(template = {}) {
-    return normalize2([
+    return normalize3([
       template.id,
       template.label,
       template.title,
@@ -37565,12 +37749,12 @@ ${bundle.email.body}`,
     return pattern.test(text2);
   }
   function scoreTemplate(template = {}, context = {}) {
-    const shortDescription = normalize2(context.shortDescription || context.short_description);
-    const description = normalize2(context.description || context.desc);
+    const shortDescription = normalize3(context.shortDescription || context.short_description);
+    const description = normalize3(context.description || context.desc);
     const text2 = shortDescription || description;
     if (!text2) return 0;
     const templateText = corpus(template);
-    const id = normalize2(template.id);
+    const id = normalize3(template.id);
     let score = 0;
     const futureAction = has2(text2, /\b(schedule|appointment|book|arrange|plan|prepare|preparation|ready for|coordinate|availability|deliver(?:y)? scheduled)\b/);
     const completedAction = has2(text2, /\b(delivered|handed over|collected|received|completed|installed|configured|resolved|fixed|replaced|restored|done)\b/);
