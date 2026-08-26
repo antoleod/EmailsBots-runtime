@@ -11845,6 +11845,49 @@ ${value}` : value;
   }
 
   // Assistant/application/workNotes/writeNote.js
+  function isDuplicateAppend(existing, value) {
+    return Boolean(existing && (existing === value || existing.endsWith(`
+
+${value}`) || existing.endsWith(`
+${value}`)));
+  }
+  function dispatchWorkNoteEvents(field) {
+    const EventCtor = field?.ownerDocument?.defaultView?.Event || globalThis.Event;
+    if (typeof EventCtor !== "function") return;
+    ["input", "change"].forEach((eventName) => {
+      field.dispatchEvent(new EventCtor(eventName, { bubbles: true }));
+    });
+  }
+  function writeWorkNoteToDom(value, { append = true } = {}) {
+    let documents = [];
+    try {
+      documents = getAccessibleDocuments() || [];
+    } catch {
+      documents = [];
+    }
+    for (const documentRef of documents) {
+      try {
+        const field = documentRef.querySelector('textarea[aria-label="Work notes"]') || documentRef.querySelector('textarea[name="work_notes"]') || documentRef.querySelector("#work_notes") || documentRef.querySelector("#activity-stream-textarea");
+        if (!field) continue;
+        const existing = append ? cleanText(field.value || "") : "";
+        if (append && isDuplicateAppend(existing, value)) {
+          return { ok: true, targetField: "work_notes", appended: false, skipped: true, source: "dom" };
+        }
+        field.value = existing ? `${existing}
+
+${value}` : value;
+        dispatchWorkNoteEvents(field);
+        return {
+          ok: true,
+          targetField: field.name || field.id || "work_notes",
+          appended: Boolean(existing && append),
+          source: "dom"
+        };
+      } catch {
+      }
+    }
+    return { ok: false, targetField: "" };
+  }
   function writeWorkNoteToField(text2, context = {}, { append = true } = {}) {
     const value = cleanText(text2);
     if (!value) {
@@ -11854,18 +11897,21 @@ ${value}` : value;
     try {
       if (bestGForm?.gForm?.setValue) {
         const existing = append && typeof bestGForm.gForm.getValue === "function" ? cleanText(bestGForm.gForm.getValue("work_notes")) : "";
-        if (append && existing && (existing === value || existing.endsWith(`
-
-${value}`))) {
-          return { ok: true, targetField: "work_notes", appended: false, skipped: true };
+        if (append && isDuplicateAppend(existing, value)) {
+          return { ok: true, targetField: "work_notes", appended: false, skipped: true, source: "g_form" };
         }
         const nextValue = existing ? `${existing}
 
 ${value}` : value;
         bestGForm.gForm.setValue("work_notes", nextValue);
-        return { ok: true, targetField: "work_notes", appended: Boolean(existing && append) };
+        return { ok: true, targetField: "work_notes", appended: Boolean(existing && append), source: "g_form" };
       }
-    } catch (error2) {
+    } catch {
+    }
+    const domResult = writeWorkNoteToDom(value, { append });
+    if (domResult.ok) return domResult;
+    if (!append) {
+      return { ok: false, targetField: "", replaceUnsupported: true };
     }
     return insertWorkNote(value, context);
   }
@@ -11911,8 +11957,8 @@ ${value}` : value;
   function matchesSearchCorpus(haystack, searchTerm) {
     const tokens2 = getSearchTokens(searchTerm);
     if (!tokens2.length) return true;
-    const corpus = normalizeSearchText(haystack);
-    return tokens2.every((token) => corpus.includes(token));
+    const corpus2 = normalizeSearchText(haystack);
+    return tokens2.every((token) => corpus2.includes(token));
   }
   function uniqueTemplates(templates, preferredId) {
     const ordered = [];
@@ -11942,14 +11988,14 @@ ${value}` : value;
       context?.intent
     ].filter(Boolean).join(" "));
     if (!text2) return 0;
-    const corpus = buildWorkNoteSearchText(template);
+    const corpus2 = buildWorkNoteSearchText(template);
     let score = 0;
-    if (/schedule smartphone delivery|smartphone delivery|iphone delivery|phone delivery/.test(text2) && /(phone|smartphone|delivery|handover|device_ready|device_delivered|swap_phone)/.test(corpus)) score += 9;
-    if (/\bswap\b/.test(text2) && /\bswap\b/.test(corpus)) score += 6;
-    if (/\b(pc|laptop|desktop)\b/.test(text2) && /\b(pc|laptop|desktop)\b/.test(corpus)) score += 4;
-    if (/\b(phone|smartphone|iphone|mobile)\b/.test(text2) && /\b(phone|smartphone|iphone|mobile)\b/.test(corpus)) score += 4;
-    if (/\bappointment|schedule|availability\b/.test(text2) && /\bappointment|delivery|handover\b/.test(corpus)) score += 2;
-    if (/\breminder\b/.test(text2) && /\breminder\b/.test(corpus)) score += 2;
+    if (/schedule smartphone delivery|smartphone delivery|iphone delivery|phone delivery/.test(text2) && /(phone|smartphone|delivery|handover|device_ready|device_delivered|swap_phone)/.test(corpus2)) score += 9;
+    if (/\bswap\b/.test(text2) && /\bswap\b/.test(corpus2)) score += 6;
+    if (/\b(pc|laptop|desktop)\b/.test(text2) && /\b(pc|laptop|desktop)\b/.test(corpus2)) score += 4;
+    if (/\b(phone|smartphone|iphone|mobile)\b/.test(text2) && /\b(phone|smartphone|iphone|mobile)\b/.test(corpus2)) score += 4;
+    if (/\bappointment|schedule|availability\b/.test(text2) && /\bappointment|delivery|handover\b/.test(corpus2)) score += 2;
+    if (/\breminder\b/.test(text2) && /\breminder\b/.test(corpus2)) score += 2;
     return score;
   }
   function sortTemplatesForContext(templates = [], usageMap = {}, context = {}) {
@@ -12040,10 +12086,14 @@ ${value}` : value;
     const userName = cleanText3(context?.user?.fullName || context?.requestedFor || context?.caller || "");
     const subHeading = userName ? `${selectedLabel} - ${userName.split(" ")[0]}` : selectedLabel;
     const { usageMap } = model;
-    const recentTemplates = model.templates.filter((template) => template.id !== model.recommendedTemplateId && getUsageScore(usageMap, template.id) > 0).slice(0, 4);
+    const contextualTemplates = model.templates.filter((template) => template.id !== model.selectedTemplateId && template.id !== model.recommendedTemplateId).slice(0, 4);
+    const recentTemplates = model.templates.filter(
+      (template) => template.id !== model.selectedTemplateId && template.id !== model.recommendedTemplateId && getUsageScore(usageMap, template.id) > 0
+    ).slice(0, 4);
+    const preferredSuggestedId = model.selectedTemplateId || model.recommendedTemplateId;
     const suggestedTemplates = uniqueTemplates(
-      [recommendedTemplate, selectedTemplate, ...recentTemplates].filter(Boolean),
-      model.recommendedTemplateId
+      [selectedTemplate, recommendedTemplate, ...contextualTemplates, ...recentTemplates].filter(Boolean),
+      preferredSuggestedId
     ).slice(0, 5);
     const recentPhrases = Array.isArray(state?.ui?.workNotesRecentPhrases) ? state.ui.workNotesRecentPhrases.map(cleanText3).filter(Boolean) : [];
     const cannedPhrases = [...new Set(recentPhrases)].slice(0, 5);
@@ -12095,10 +12145,10 @@ ${value}` : value;
           <div class="sn-assistant-worknotes__templates" data-work-notes-suggested${searchText ? " hidden" : ""}>
             <div class="sn-assistant-worknotes__templates-header">
               <span>Suggested</span>
-              <span class="sn-assistant-worknotes__section-hint">Smart match + recent</span>
+              <span class="sn-assistant-worknotes__section-hint">Short description match + recent</span>
             </div>
             <div class="sn-assistant-worknotes__chips sn-assistant-worknotes__chips--suggested">
-              ${suggestedTemplates.map((template) => renderTemplateButton(template, template.id === model.selectedTemplateId, template.id === model.recommendedTemplateId)).join("")}
+              ${suggestedTemplates.map((template) => renderTemplateButton(template, template.id === model.selectedTemplateId, template.id === preferredSuggestedId)).join("")}
             </div>
           </div>
 
@@ -12108,7 +12158,7 @@ ${value}` : value;
               <span class="sn-assistant-worknotes__browse-count" data-work-notes-template-count>${initialSearchCount}</span>
             </summary>
             <div class="sn-assistant-worknotes__chips sn-assistant-worknotes__chips--browse" data-work-notes-template-chips>
-              ${model.templates.map((template) => renderTemplateButton(template, template.id === model.selectedTemplateId, template.id === model.recommendedTemplateId)).join("")}
+              ${model.templates.map((template) => renderTemplateButton(template, template.id === model.selectedTemplateId, template.id === preferredSuggestedId)).join("")}
               <div class="sn-assistant-note sn-assistant-note--empty" data-work-notes-empty hidden>No templates match.</div>
             </div>
           </details>
@@ -18152,7 +18202,7 @@ ${cleanText(renderedTemplate.body)}` : renderedTemplate.clipboardText;
   var epLinks_default = "/* \u2500\u2500\u2500 EP Links floating panel \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500 */\r\n.sn-ep-links-root {\r\n  position: fixed;\r\n  right: 72px;\r\n  top: 50%;\r\n  transform: translateY(-50%);\r\n  z-index: 2147483640;\r\n  font-family: var(--sn-assistant-font);\r\n}\r\n\r\n.sn-ep-links__panel {\r\n  background: var(--sn-assistant-panel);\r\n  border: 1px solid var(--sn-assistant-border);\r\n  border-radius: var(--sn-assistant-radius);\r\n  box-shadow: var(--sn-assistant-shadow);\r\n  min-width: 260px;\r\n  max-width: 340px;\r\n  overflow: hidden;\r\n}\r\n\r\n.sn-ep-links__header {\r\n  display: flex;\r\n  align-items: center;\r\n  justify-content: space-between;\r\n  gap: 8px;\r\n  padding: 10px 12px 8px;\r\n  border-bottom: 1px solid var(--sn-assistant-border);\r\n}\r\n\r\n.sn-ep-links__title {\r\n  font-size: 13px;\r\n  font-weight: 600;\r\n  color: var(--sn-assistant-ink);\r\n  white-space: nowrap;\r\n  overflow: hidden;\r\n  text-overflow: ellipsis;\r\n}\r\n\r\n.sn-ep-links__body {\r\n  padding: 8px 0 4px;\r\n  max-height: min(60vh, 420px);\r\n  overflow-y: auto;\r\n}\r\n\r\n.sn-ep-links__section {\r\n  padding: 4px 0 8px;\r\n}\r\n\r\n.sn-ep-links__section + .sn-ep-links__section {\r\n  border-top: 1px solid var(--sn-assistant-border);\r\n  margin-top: 4px;\r\n}\r\n\r\n.sn-ep-links__section-label {\r\n  font-size: 10px;\r\n  font-weight: 700;\r\n  text-transform: uppercase;\r\n  letter-spacing: 0.06em;\r\n  color: var(--sn-assistant-muted);\r\n  padding: 0 12px 4px;\r\n}\r\n\r\n.sn-ep-links__item {\r\n  display: flex;\r\n  align-items: center;\r\n  gap: 8px;\r\n  padding: 7px 12px;\r\n  color: var(--sn-assistant-ink);\r\n  text-decoration: none;\r\n  font-size: 13px;\r\n  transition: background 120ms;\r\n  cursor: pointer;\r\n}\r\n\r\n.sn-ep-links__item:hover {\r\n  background: var(--sn-assistant-surface);\r\n  color: var(--sn-assistant-accent);\r\n}\r\n\r\n.sn-ep-links__icon {\r\n  font-size: 12px;\r\n  opacity: 0.5;\r\n  flex-shrink: 0;\r\n}\r\n\r\n.sn-ep-links__label {\r\n  overflow: hidden;\r\n  text-overflow: ellipsis;\r\n  white-space: nowrap;\r\n}\r\n\r\n.sn-ep-links__footer-hint {\r\n  font-size: 10px;\r\n  color: var(--sn-assistant-muted);\r\n  padding: 6px 12px 8px;\r\n  border-top: 1px solid var(--sn-assistant-border);\r\n  margin-top: 4px;\r\n}\r\n\r\n/* \u2500\u2500\u2500 Custom links row in Launcher settings section \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500 */\r\n.sn-assistant-custom-link-row {\r\n  display: flex;\r\n  align-items: center;\r\n  gap: 6px;\r\n}\r\n\r\n.sn-assistant-custom-link-row .sn-assistant-input {\r\n  padding: 5px 8px;\r\n  font-size: 12px;\r\n}\r\n\r\n/* \u2500\u2500\u2500 Launcher footer + copy summary button \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500 */\r\n.sn-ep__footer {\r\n  display: flex;\r\n  align-items: center;\r\n  justify-content: space-between;\r\n  gap: 6px;\r\n  padding: 6px 8px;\r\n  border-top: 1px solid var(--ep-border, var(--sn-assistant-border));\r\n  flex-shrink: 0;\r\n}\r\n\r\n.sn-ep__copy-summary-btn {\r\n  flex-shrink: 0;\r\n  font-size: 9px;\r\n  font-weight: 600;\r\n  letter-spacing: 0.02em;\r\n  background: var(--sn-assistant-accent-soft);\r\n  color: var(--sn-assistant-accent);\r\n  border: 1px solid transparent;\r\n  border-radius: 6px;\r\n  padding: 3px 7px;\r\n  cursor: pointer;\r\n  font-family: inherit;\r\n  transition: background 0.15s, border-color 0.15s;\r\n  white-space: nowrap;\r\n}\r\n\r\n.sn-ep__copy-summary-btn:hover {\r\n  background: var(--sn-assistant-accent);\r\n  color: #fff;\r\n}\r\n\r\n/* \u2500\u2500\u2500 SLA warning indicator \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500 */\r\n.sn-ep__sla-dot {\r\n  position: absolute;\r\n  top: 5px;\r\n  right: 5px;\r\n  width: 8px;\r\n  height: 8px;\r\n  border-radius: 50%;\r\n  background: #e53e3e;\r\n  box-shadow: 0 0 0 2px var(--sn-assistant-panel, #fff);\r\n  animation: sla-pulse 1.8s infinite;\r\n  pointer-events: none;\r\n}\r\n\r\n@keyframes sla-pulse {\r\n  0%, 100% { opacity: 1; transform: scale(1); }\r\n  50% { opacity: 0.6; transform: scale(1.3); }\r\n}\r\n\r\n@keyframes shake {\r\n  0%, 100% { transform: translateX(0); }\r\n  20% { transform: translateX(-1.8px); }\r\n  40% { transform: translateX(1.8px); }\r\n  60% { transform: translateX(-1.2px); }\r\n  80% { transform: translateX(1.2px); }\r\n}\r\n\r\n.sn-ep--edit-mode .sn-ep__action {\r\n  animation: shake 0.3s ease-in-out infinite;\r\n}\r\n\r\n.sn-ep__tab {\r\n  position: relative; /* needed for .sn-ep__sla-dot absolute positioning */\r\n}\r\n\r\n.sn-ep__sla-badge {\r\n  display: inline-flex;\r\n  align-items: center;\r\n  padding: 1px 5px;\r\n  border-radius: 4px;\r\n  background: #e53e3e;\r\n  color: #fff;\r\n  font-size: 9px;\r\n  font-weight: 700;\r\n  letter-spacing: 0.06em;\r\n  margin-left: 5px;\r\n  vertical-align: middle;\r\n}\r\n";
 
   // Assistant/ui/styles/workNotes-enhanced.css
-  var workNotes_enhanced_default = '/* \u2500\u2500\u2500 Work Notes canned phrase chips \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500 */\r\n.sn-assistant-worknotes__canned {\r\n  margin-bottom: 2px;\r\n}\r\n\r\n.sn-assistant-worknotes__canned-chips {\r\n  flex-wrap: wrap;\r\n  gap: 4px;\r\n  max-height: 64px;\r\n  padding: 6px 0 0;\r\n}\r\n\r\n.sn-assistant-worknotes__canned-chip {\r\n  font-size: 10px;\r\n  padding: 4px 8px;\r\n  border-radius: 7px;\r\n  background: color-mix(in srgb, var(--sn-assistant-accent-soft) 75%, var(--sn-assistant-panel));\r\n  color: color-mix(in srgb, var(--sn-assistant-accent-strong) 85%, var(--sn-assistant-ink));\r\n  border-color: color-mix(in srgb, var(--sn-assistant-accent) 12%, transparent);\r\n  display: inline-flex;\r\n  align-items: center;\r\n  gap: 6px;\r\n}\r\n\r\n.sn-assistant-worknotes__canned-chip:hover {\r\n  background: var(--sn-assistant-accent);\r\n  color: #fff;\r\n}\r\n\r\n.sn-assistant-worknotes__canned-label {\r\n  max-width: 170px;\r\n  overflow: hidden;\r\n  text-overflow: ellipsis;\r\n  white-space: nowrap;\r\n}\r\n\r\n.sn-assistant-worknotes__canned-remove {\r\n  display: inline-flex;\r\n  align-items: center;\r\n  justify-content: center;\r\n  width: 14px;\r\n  height: 14px;\r\n  border-radius: 999px;\r\n  font-size: 11px;\r\n  line-height: 1;\r\n  font-weight: 700;\r\n  background: rgba(0, 0, 0, 0.12);\r\n}\r\n\r\n/* \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\r\n   WORK NOTES \u2014 COMPACT / FOCUSED LAYOUT\r\n   \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500 */\r\n.sn-assistant-worknotes__editor-header {\r\n  display: flex;\r\n  align-items: center;\r\n  justify-content: space-between;\r\n  margin-bottom: 3px;\r\n}\r\n\r\n.sn-assistant-worknotes__char-count {\r\n  font-size: 10px;\r\n  color: var(--sn-assistant-muted);\r\n  font-weight: 500;\r\n  flex-shrink: 0;\r\n  font-variant-numeric: tabular-nums;\r\n}\r\n\r\n.sn-assistant-worknotes__textarea {\r\n  min-height: 112px;\r\n  resize: vertical;\r\n  line-height: 1.45;\r\n  padding: 9px 10px;\r\n}\r\n\r\n.sn-assistant-worknotes__editor--primary {\r\n  order: -1;\r\n}\r\n\r\n.sn-assistant-worknotes__editor--primary .sn-assistant-worknotes__textarea {\r\n  min-height: 124px;\r\n}\r\n\r\n/* Keep the picker visually quiet: editor first, search second, templates on demand. */\r\n.sn-assistant-worknotes__picker {\r\n  display: flex;\r\n  flex-direction: column;\r\n  gap: 7px;\r\n  padding: 0;\r\n  border: 0;\r\n  border-radius: 0;\r\n  background: transparent;\r\n}\r\n\r\n.sn-assistant-worknotes__picker .sn-assistant-searchbar {\r\n  min-height: 32px;\r\n  border-radius: 8px;\r\n  background: color-mix(in srgb, var(--sn-assistant-surface) 42%, var(--sn-assistant-panel));\r\n}\r\n\r\n.sn-assistant-worknotes__picker .sn-assistant-searchbar:focus-within {\r\n  background: var(--sn-assistant-panel);\r\n}\r\n\r\n.sn-assistant-worknotes__templates {\r\n  gap: 4px;\r\n}\r\n\r\n.sn-assistant-worknotes__templates-header {\r\n  min-height: 18px;\r\n}\r\n\r\n.sn-assistant-worknotes__section-hint {\r\n  font-size: 9px;\r\n  font-weight: 500;\r\n  color: var(--sn-assistant-muted);\r\n  opacity: 0.72;\r\n}\r\n\r\n.sn-assistant-worknotes__chips--suggested {\r\n  max-height: none;\r\n  overflow: visible;\r\n  gap: 4px;\r\n}\r\n\r\n.sn-assistant-worknotes__chip {\r\n  font-size: 10.5px;\r\n  line-height: 1.2;\r\n  padding: 4px 8px;\r\n  border-radius: 7px;\r\n  gap: 4px;\r\n}\r\n\r\n.sn-assistant-worknotes__chip-badge {\r\n  min-width: 16px;\r\n  height: 13px;\r\n  padding: 0 3px;\r\n  font-size: 8px;\r\n}\r\n\r\n/* Native details keep the complete catalog available without flooding the panel. */\r\n.sn-assistant-worknotes__browse,\r\n.sn-assistant-worknotes__quick {\r\n  margin: 0;\r\n  padding: 0;\r\n  border: 1px solid color-mix(in srgb, var(--sn-assistant-border) 72%, transparent);\r\n  border-radius: 8px;\r\n  background: color-mix(in srgb, var(--sn-assistant-surface) 30%, transparent);\r\n  overflow: hidden;\r\n}\r\n\r\n.sn-assistant-worknotes__browse-summary {\r\n  min-height: 30px;\r\n  padding: 0 9px;\r\n  display: flex;\r\n  align-items: center;\r\n  gap: 8px;\r\n  cursor: pointer;\r\n  list-style: none;\r\n  user-select: none;\r\n  font-size: 10.5px;\r\n  font-weight: 600;\r\n  color: color-mix(in srgb, var(--sn-assistant-ink) 82%, var(--sn-assistant-muted));\r\n}\r\n\r\n.sn-assistant-worknotes__browse-summary::-webkit-details-marker {\r\n  display: none;\r\n}\r\n\r\n.sn-assistant-worknotes__browse-summary::after {\r\n  content: "\u203A";\r\n  margin-left: 2px;\r\n  color: var(--sn-assistant-muted);\r\n  font-size: 14px;\r\n  line-height: 1;\r\n  transform: rotate(90deg);\r\n  transition: transform 120ms ease;\r\n}\r\n\r\n.sn-assistant-worknotes__browse[open] > .sn-assistant-worknotes__browse-summary::after,\r\n.sn-assistant-worknotes__quick[open] > .sn-assistant-worknotes__browse-summary::after {\r\n  transform: rotate(-90deg);\r\n}\r\n\r\n.sn-assistant-worknotes__browse-summary:hover {\r\n  background: color-mix(in srgb, var(--sn-assistant-ink) 3%, transparent);\r\n}\r\n\r\n.sn-assistant-worknotes__browse-count {\r\n  margin-left: auto;\r\n  min-width: 20px;\r\n  height: 18px;\r\n  padding: 0 6px;\r\n  border-radius: 999px;\r\n  display: inline-flex;\r\n  align-items: center;\r\n  justify-content: center;\r\n  background: color-mix(in srgb, var(--sn-assistant-surface) 78%, transparent);\r\n  color: var(--sn-assistant-muted);\r\n  font-size: 9px;\r\n  font-weight: 700;\r\n  font-variant-numeric: tabular-nums;\r\n}\r\n\r\n.sn-assistant-worknotes__chips--browse {\r\n  max-height: min(22vh, 150px);\r\n  overflow-y: auto;\r\n  padding: 6px 8px 8px;\r\n  border-top: 1px solid color-mix(in srgb, var(--sn-assistant-border) 60%, transparent);\r\n  gap: 4px;\r\n}\r\n\r\n.sn-assistant-worknotes__browse:not([open]) .sn-assistant-worknotes__chips--browse,\r\n.sn-assistant-worknotes__quick:not([open]) .sn-assistant-worknotes__canned-chips {\r\n  display: none;\r\n}\r\n\r\n.sn-assistant-worknotes__quick .sn-assistant-worknotes__canned-chips {\r\n  max-height: 76px;\r\n  overflow-y: auto;\r\n  padding: 6px 8px 8px;\r\n  border-top: 1px solid color-mix(in srgb, var(--sn-assistant-border) 60%, transparent);\r\n}\r\n\r\n.sn-assistant-worknotes__footer {\r\n  flex-direction: row;\r\n  align-items: center;\r\n  justify-content: space-between;\r\n  gap: 8px;\r\n}\r\n\r\n.sn-assistant-worknotes__footer-actions {\r\n  display: flex;\r\n  flex: 1;\r\n  gap: 6px;\r\n}\r\n\r\n.sn-assistant-worknotes__footer-actions .sn-assistant-button {\r\n  flex: 1;\r\n  min-width: 0;\r\n  height: 32px;\r\n  padding-inline: 10px;\r\n}\r\n\r\n.sn-assistant-worknotes__footer-tools {\r\n  display: inline-flex;\r\n  align-items: center;\r\n  gap: 3px;\r\n  flex-shrink: 0;\r\n}\r\n\r\n.sn-assistant-worknotes__footer-tools .sn-assistant-mini-button {\r\n  width: 30px;\r\n  height: 30px;\r\n  border-radius: 7px;\r\n}\r\n\r\n.sn-assistant-worknotes__footer-primary,\r\n.sn-assistant-worknotes__footer-secondary {\r\n  display: flex;\r\n  gap: 8px;\r\n  flex: 1;\r\n}\r\n';
+  var workNotes_enhanced_default = '/* \u2500\u2500\u2500 Work Notes canned phrase chips \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500 */\r\n.sn-assistant-worknotes__canned {\r\n  margin-bottom: 2px;\r\n}\r\n\r\n.sn-assistant-worknotes__canned-chips {\r\n  flex-wrap: wrap;\r\n  gap: 4px;\r\n  max-height: 64px;\r\n  padding: 6px 0 0;\r\n}\r\n\r\n.sn-assistant-worknotes__canned-chip {\r\n  font-size: 10px;\r\n  padding: 4px 8px;\r\n  border-radius: 7px;\r\n  background: color-mix(in srgb, var(--sn-assistant-accent-soft) 75%, var(--sn-assistant-panel));\r\n  color: color-mix(in srgb, var(--sn-assistant-accent-strong) 85%, var(--sn-assistant-ink));\r\n  border-color: color-mix(in srgb, var(--sn-assistant-accent) 12%, transparent);\r\n  display: inline-flex;\r\n  align-items: center;\r\n  gap: 6px;\r\n}\r\n\r\n.sn-assistant-worknotes__canned-chip:hover {\r\n  background: var(--sn-assistant-accent);\r\n  color: #fff;\r\n}\r\n\r\n.sn-assistant-worknotes__canned-label {\r\n  max-width: 170px;\r\n  overflow: hidden;\r\n  text-overflow: ellipsis;\r\n  white-space: nowrap;\r\n}\r\n\r\n.sn-assistant-worknotes__canned-remove {\r\n  display: inline-flex;\r\n  align-items: center;\r\n  justify-content: center;\r\n  width: 14px;\r\n  height: 14px;\r\n  border-radius: 999px;\r\n  font-size: 11px;\r\n  line-height: 1;\r\n  font-weight: 700;\r\n  background: rgba(0, 0, 0, 0.12);\r\n}\r\n\r\n/* \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\r\n   WORK NOTES \u2014 COMPACT / FOCUSED LAYOUT\r\n   \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500 */\r\n.sn-assistant-worknotes__editor-header {\r\n  display: flex;\r\n  align-items: center;\r\n  justify-content: space-between;\r\n  margin-bottom: 3px;\r\n}\r\n\r\n.sn-assistant-worknotes__char-count {\r\n  font-size: 10px;\r\n  color: var(--sn-assistant-muted);\r\n  font-weight: 500;\r\n  flex-shrink: 0;\r\n  font-variant-numeric: tabular-nums;\r\n}\r\n\r\n.sn-assistant-worknotes__textarea {\r\n  min-height: 112px;\r\n  resize: vertical;\r\n  line-height: 1.45;\r\n  padding: 9px 10px;\r\n}\r\n\r\n.sn-assistant-worknotes__editor--primary {\r\n  order: -1;\r\n}\r\n\r\n.sn-assistant-worknotes__editor--primary .sn-assistant-worknotes__textarea {\r\n  min-height: 124px;\r\n}\r\n\r\n/* Keep the picker visually quiet: editor first, search second, templates on demand. */\r\n.sn-assistant-worknotes__picker {\r\n  display: flex;\r\n  flex-direction: column;\r\n  gap: 7px;\r\n  padding: 0;\r\n  border: 0;\r\n  border-radius: 0;\r\n  background: transparent;\r\n}\r\n\r\n.sn-assistant-worknotes__picker .sn-assistant-searchbar {\r\n  min-height: 32px;\r\n  border-radius: 8px;\r\n  background: color-mix(in srgb, var(--sn-assistant-surface) 42%, var(--sn-assistant-panel));\r\n}\r\n\r\n.sn-assistant-worknotes__picker .sn-assistant-searchbar:focus-within {\r\n  background: var(--sn-assistant-panel);\r\n}\r\n\r\n.sn-assistant-worknotes__templates {\r\n  gap: 4px;\r\n}\r\n\r\n.sn-assistant-worknotes__templates-header {\r\n  min-height: 18px;\r\n}\r\n\r\n.sn-assistant-worknotes__section-hint {\r\n  font-size: 9px;\r\n  font-weight: 500;\r\n  color: var(--sn-assistant-muted);\r\n  opacity: 0.72;\r\n}\r\n\r\n.sn-assistant-worknotes__chips--suggested {\r\n  max-height: none;\r\n  overflow: visible;\r\n  gap: 4px;\r\n}\r\n\r\n.sn-assistant-worknotes__chip {\r\n  font-size: 10.5px;\r\n  line-height: 1.2;\r\n  padding: 4px 8px;\r\n  border-radius: 7px;\r\n  gap: 4px;\r\n}\r\n\r\n.sn-assistant-worknotes__chip-badge {\r\n  min-width: 16px;\r\n  height: 13px;\r\n  padding: 0 3px;\r\n  font-size: 8px;\r\n}\r\n\r\n/* Native details keep the complete catalog available without flooding the panel. */\r\n.sn-assistant-worknotes__browse,\r\n.sn-assistant-worknotes__quick {\r\n  margin: 0;\r\n  padding: 0;\r\n  border: 1px solid color-mix(in srgb, var(--sn-assistant-border) 72%, transparent);\r\n  border-radius: 8px;\r\n  background: color-mix(in srgb, var(--sn-assistant-surface) 30%, transparent);\r\n  overflow: hidden;\r\n}\r\n\r\n.sn-assistant-worknotes__browse-summary {\r\n  min-height: 30px;\r\n  padding: 0 9px;\r\n  display: flex;\r\n  align-items: center;\r\n  gap: 8px;\r\n  cursor: pointer;\r\n  list-style: none;\r\n  user-select: none;\r\n  font-size: 10.5px;\r\n  font-weight: 600;\r\n  color: color-mix(in srgb, var(--sn-assistant-ink) 82%, var(--sn-assistant-muted));\r\n}\r\n\r\n.sn-assistant-worknotes__browse-summary::-webkit-details-marker {\r\n  display: none;\r\n}\r\n\r\n.sn-assistant-worknotes__browse-summary::after {\r\n  content: "\u203A";\r\n  margin-left: 2px;\r\n  color: var(--sn-assistant-muted);\r\n  font-size: 14px;\r\n  line-height: 1;\r\n  transform: rotate(90deg);\r\n  transition: transform 120ms ease;\r\n}\r\n\r\n.sn-assistant-worknotes__browse[open] > .sn-assistant-worknotes__browse-summary::after,\r\n.sn-assistant-worknotes__quick[open] > .sn-assistant-worknotes__browse-summary::after {\r\n  transform: rotate(-90deg);\r\n}\r\n\r\n.sn-assistant-worknotes__browse-summary:hover {\r\n  background: color-mix(in srgb, var(--sn-assistant-ink) 3%, transparent);\r\n}\r\n\r\n.sn-assistant-worknotes__browse-count {\r\n  margin-left: auto;\r\n  min-width: 20px;\r\n  height: 18px;\r\n  padding: 0 6px;\r\n  border-radius: 999px;\r\n  display: inline-flex;\r\n  align-items: center;\r\n  justify-content: center;\r\n  background: color-mix(in srgb, var(--sn-assistant-surface) 78%, transparent);\r\n  color: var(--sn-assistant-muted);\r\n  font-size: 9px;\r\n  font-weight: 700;\r\n  font-variant-numeric: tabular-nums;\r\n}\r\n\r\n.sn-assistant-worknotes__chips--browse {\r\n  max-height: min(22vh, 150px);\r\n  overflow-y: auto;\r\n  padding: 6px 8px 8px;\r\n  border-top: 1px solid color-mix(in srgb, var(--sn-assistant-border) 60%, transparent);\r\n  gap: 4px;\r\n}\r\n\r\n.sn-assistant-worknotes__browse:not([open]) .sn-assistant-worknotes__chips--browse,\r\n.sn-assistant-worknotes__quick:not([open]) .sn-assistant-worknotes__canned-chips {\r\n  display: none;\r\n}\r\n\r\n.sn-assistant-worknotes__quick .sn-assistant-worknotes__canned-chips {\r\n  max-height: 76px;\r\n  overflow-y: auto;\r\n  padding: 6px 8px 8px;\r\n  border-top: 1px solid color-mix(in srgb, var(--sn-assistant-border) 60%, transparent);\r\n}\r\n\r\n.sn-assistant-worknotes__footer {\r\n  flex-direction: row;\r\n  align-items: center;\r\n  justify-content: space-between;\r\n  gap: 8px;\r\n}\r\n\r\n.sn-assistant-worknotes__footer-actions {\r\n  display: flex;\r\n  flex: 1;\r\n  gap: 6px;\r\n}\r\n\r\n.sn-assistant-worknotes__footer-actions .sn-assistant-button {\r\n  flex: 1;\r\n  min-width: 0;\r\n  height: 32px;\r\n  padding-inline: 10px;\r\n}\r\n\r\n.sn-assistant-worknotes__footer-tools {\r\n  display: inline-flex;\r\n  align-items: center;\r\n  gap: 3px;\r\n  flex-shrink: 0;\r\n}\r\n\r\n.sn-assistant-worknotes__footer-tools .sn-assistant-mini-button {\r\n  width: 30px;\r\n  height: 30px;\r\n  border-radius: 7px;\r\n}\r\n\r\n.sn-assistant-worknotes__footer-primary,\r\n.sn-assistant-worknotes__footer-secondary {\r\n  display: flex;\r\n  gap: 8px;\r\n  flex: 1;\r\n}\r\n\r\n/* \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\r\n   OPTION 2 \u2014 TEMPLATE-FIRST WORK NOTES\r\n   The DOM stays backward compatible; visual order now follows:\r\n   choose template -> preview/edit -> apply.\r\n   \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500 */\r\n.sn-assistant-worknotes-panel .sn-assistant-panel__body {\r\n  display: flex;\r\n  flex-direction: column;\r\n  gap: 9px;\r\n}\r\n\r\n.sn-assistant-worknotes-panel .sn-assistant-worknotes__picker {\r\n  order: -20;\r\n  gap: 8px;\r\n}\r\n\r\n.sn-assistant-worknotes-panel .sn-assistant-worknotes__editor--primary {\r\n  order: -10;\r\n  margin-top: 2px;\r\n  padding: 9px;\r\n  border: 1px solid color-mix(in srgb, var(--sn-assistant-border) 78%, transparent);\r\n  border-radius: 10px;\r\n  background: color-mix(in srgb, var(--sn-assistant-surface) 34%, var(--sn-assistant-panel));\r\n}\r\n\r\n.sn-assistant-worknotes-panel .sn-assistant-worknotes__editor-header .sn-assistant-field__label {\r\n  font-size: 0;\r\n}\r\n\r\n.sn-assistant-worknotes-panel .sn-assistant-worknotes__editor-header .sn-assistant-field__label::after {\r\n  content: "Preview";\r\n  font-size: 10.5px;\r\n  font-weight: 700;\r\n  letter-spacing: .02em;\r\n  color: var(--sn-assistant-ink);\r\n}\r\n\r\n.sn-assistant-worknotes-panel .sn-assistant-worknotes__editor--primary .sn-assistant-worknotes__textarea {\r\n  min-height: 104px;\r\n  max-height: 190px;\r\n  border: 0;\r\n  border-radius: 8px;\r\n  background: var(--sn-assistant-panel);\r\n  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--sn-assistant-border) 62%, transparent);\r\n}\r\n\r\n.sn-assistant-worknotes-panel .sn-assistant-worknotes__templates-header > span:first-child {\r\n  font-size: 0;\r\n}\r\n\r\n.sn-assistant-worknotes-panel .sn-assistant-worknotes__templates-header > span:first-child::after {\r\n  content: "Common templates";\r\n  font-size: 10px;\r\n  font-weight: 800;\r\n  letter-spacing: .04em;\r\n  text-transform: uppercase;\r\n  color: var(--sn-assistant-accent-strong);\r\n}\r\n\r\n.sn-assistant-worknotes-panel .sn-assistant-worknotes__section-hint {\r\n  font-size: 0;\r\n}\r\n\r\n.sn-assistant-worknotes-panel .sn-assistant-worknotes__section-hint::after {\r\n  content: "Short description match + recent";\r\n  font-size: 9px;\r\n  font-weight: 600;\r\n  color: var(--sn-assistant-muted);\r\n  opacity: .8;\r\n}\r\n\r\n.sn-assistant-worknotes-panel .sn-assistant-worknotes__chips--suggested {\r\n  display: grid;\r\n  grid-template-columns: repeat(2, minmax(0, 1fr));\r\n  gap: 6px;\r\n}\r\n\r\n.sn-assistant-worknotes-panel .sn-assistant-worknotes__chips--suggested .sn-assistant-worknotes__chip {\r\n  min-height: 44px;\r\n  width: 100%;\r\n  justify-content: flex-start;\r\n  text-align: left;\r\n  padding: 8px 9px;\r\n  border-radius: 9px;\r\n  border: 1px solid color-mix(in srgb, var(--sn-assistant-border) 78%, transparent);\r\n  background: color-mix(in srgb, var(--sn-assistant-surface) 36%, var(--sn-assistant-panel));\r\n  white-space: normal;\r\n}\r\n\r\n.sn-assistant-worknotes-panel .sn-assistant-worknotes__chips--suggested .sn-assistant-worknotes__chip:hover {\r\n  border-color: color-mix(in srgb, var(--sn-assistant-accent) 42%, var(--sn-assistant-border));\r\n  background: color-mix(in srgb, var(--sn-assistant-accent-soft) 54%, var(--sn-assistant-panel));\r\n}\r\n\r\n.sn-assistant-worknotes-panel .sn-assistant-worknotes__chips--suggested .sn-assistant-worknotes__chip.is-active,\r\n.sn-assistant-worknotes-panel .sn-assistant-worknotes__chips--suggested .sn-assistant-worknotes__chip.is-recommended {\r\n  border-color: color-mix(in srgb, var(--sn-assistant-accent) 58%, var(--sn-assistant-border));\r\n  background: color-mix(in srgb, var(--sn-assistant-accent-soft) 72%, var(--sn-assistant-panel));\r\n  color: var(--sn-assistant-ink);\r\n}\r\n\r\n.sn-assistant-worknotes-panel .sn-assistant-worknotes__chip-badge {\r\n  margin-left: auto;\r\n  min-width: 22px;\r\n  height: 16px;\r\n  border-radius: 999px;\r\n  background: var(--sn-assistant-accent);\r\n  color: #fff;\r\n  font-size: 8px;\r\n  font-weight: 800;\r\n}\r\n\r\n.sn-assistant-worknotes-panel .sn-assistant-searchbar {\r\n  order: -2;\r\n}\r\n\r\n.sn-assistant-worknotes-panel .sn-assistant-worknotes__templates {\r\n  order: -1;\r\n  padding: 2px 0;\r\n}\r\n\r\n.sn-assistant-worknotes-panel .sn-assistant-worknotes__browse,\r\n.sn-assistant-worknotes-panel .sn-assistant-worknotes__quick {\r\n  background: color-mix(in srgb, var(--sn-assistant-surface) 34%, var(--sn-assistant-panel));\r\n}\r\n\r\n/* Template clicks auto-apply. Keep one explicit action only for technicians who\r\n   manually edit the preview after selecting a template. */\r\n.sn-assistant-worknotes-panel [data-action="work-notes-append"] {\r\n  display: none;\r\n}\r\n\r\n.sn-assistant-worknotes-panel [data-action="work-notes-write"] {\r\n  font-size: 0;\r\n}\r\n\r\n.sn-assistant-worknotes-panel [data-action="work-notes-write"]::after {\r\n  content: "Apply edited note";\r\n  font-size: 11px;\r\n  font-weight: 700;\r\n}\r\n\r\n@media (max-width: 520px) {\r\n  .sn-assistant-worknotes-panel .sn-assistant-worknotes__chips--suggested {\r\n    grid-template-columns: 1fr;\r\n  }\r\n}\r\n';
 
   // Assistant/ui/styles/userTickets.css
   var userTickets_default = "/* \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\r\n   PANEL BODY \u2014 FLUSH (no padding, used for tables / lists)\r\n   \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500 */\r\n.sn-assistant-panel__body--flush {\r\n  padding: 0;\r\n  gap: 0;\r\n}\r\n\r\n/* \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\r\n   USER OPEN TICKETS PANEL\r\n   \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500 */\r\n.sn-assistant-panel--user-tickets {\r\n  width: 520px;\r\n  max-width: calc(100vw - 24px);\r\n}\r\n\r\n.sn-assistant-tickets-table-wrapper {\r\n  overflow-x: auto;\r\n  overflow-y: auto;\r\n  max-height: min(55vh, 440px);\r\n}\r\n\r\n.sn-assistant-tickets-table {\r\n  width: 100%;\r\n  border-collapse: collapse;\r\n  font-size: 11.5px;\r\n  font-family: inherit;\r\n}\r\n\r\n.sn-assistant-tickets-table thead tr {\r\n  background: var(--sn-assistant-surface);\r\n  position: sticky;\r\n  top: 0;\r\n  z-index: 1;\r\n}\r\n\r\n.sn-assistant-tickets-table th {\r\n  padding: 7px 10px;\r\n  text-align: left;\r\n  font-size: 10px;\r\n  font-weight: 700;\r\n  letter-spacing: 0.06em;\r\n  text-transform: uppercase;\r\n  color: var(--sn-assistant-muted);\r\n  border-bottom: 1px solid var(--sn-assistant-border);\r\n  white-space: nowrap;\r\n}\r\n\r\n.sn-assistant-tickets-table td {\r\n  padding: 8px 10px;\r\n  border-bottom: 1px solid var(--sn-assistant-border);\r\n  vertical-align: middle;\r\n  color: var(--sn-assistant-ink);\r\n}\r\n\r\n.sn-assistant-tickets-table__row {\r\n  cursor: pointer;\r\n  transition: background 120ms ease;\r\n}\r\n\r\n.sn-assistant-tickets-table__row:hover td,\r\n.sn-assistant-tickets-table__row:focus td {\r\n  background: var(--sn-assistant-accent-soft);\r\n}\r\n\r\n.sn-assistant-tickets-table__row:last-child td {\r\n  border-bottom: none;\r\n}\r\n\r\n.sn-assistant-tickets-table__number {\r\n  white-space: nowrap;\r\n  display: flex;\r\n  align-items: center;\r\n  gap: 5px;\r\n}\r\n\r\n.sn-assistant-tickets-table__badge {\r\n  display: inline-flex;\r\n  align-items: center;\r\n  padding: 2px 5px;\r\n  border-radius: 4px;\r\n  font-size: 9px;\r\n  font-weight: 800;\r\n  letter-spacing: 0.04em;\r\n  background: var(--sn-assistant-accent-soft);\r\n  color: var(--sn-assistant-accent);\r\n  flex-shrink: 0;\r\n}\r\n\r\n.sn-assistant-tickets-table__badge--incident {\r\n  background: rgba(220, 38, 38, 0.08);\r\n  color: #dc2626;\r\n}\r\n\r\n.sn-assistant-tickets-table__badge--sc_req_item {\r\n  background: rgba(5, 150, 105, 0.08);\r\n  color: #059669;\r\n}\r\n\r\n.sn-assistant-tickets-table__badge--sc_request {\r\n  background: rgba(217, 119, 6, 0.08);\r\n  color: #d97706;\r\n}\r\n\r\n.sn-assistant-tickets-table__num-val {\r\n  font-weight: 700;\r\n  color: var(--sn-assistant-accent);\r\n  font-size: 11px;\r\n}\r\n\r\n.sn-assistant-tickets-table__desc {\r\n  max-width: 220px;\r\n  overflow: hidden;\r\n  text-overflow: ellipsis;\r\n  white-space: nowrap;\r\n  color: var(--sn-assistant-ink);\r\n}\r\n\r\n.sn-assistant-tickets-table__state {\r\n  white-space: nowrap;\r\n}\r\n\r\n.sn-assistant-tickets-table__state-pill {\r\n  display: inline-flex;\r\n  align-items: center;\r\n  padding: 2px 7px;\r\n  border-radius: 999px;\r\n  font-size: 10px;\r\n  font-weight: 600;\r\n  white-space: nowrap;\r\n  line-height: 1.5;\r\n}\r\n\r\n.sn-assistant-tickets-table__state-pill--new {\r\n  background: rgba(37, 99, 235, 0.1);\r\n  color: #2563eb;\r\n}\r\n\r\n.sn-assistant-tickets-table__state-pill--inprogress {\r\n  background: rgba(5, 150, 105, 0.1);\r\n  color: #059669;\r\n}\r\n\r\n.sn-assistant-tickets-table__state-pill--pending {\r\n  background: rgba(217, 119, 6, 0.1);\r\n  color: #d97706;\r\n}\r\n\r\n.sn-assistant-tickets-table__state-pill--resolved {\r\n  background: rgba(107, 114, 128, 0.1);\r\n  color: #6b7280;\r\n}\r\n\r\n.sn-assistant-tickets-table__state-pill--closed {\r\n  background: rgba(107, 114, 128, 0.06);\r\n  color: #9ca3af;\r\n}\r\n\r\n.sn-assistant-tickets-table__state-pill--default {\r\n  color: var(--sn-assistant-muted);\r\n}\r\n\r\n.sn-assistant-tickets-table__date {\r\n  white-space: nowrap;\r\n  font-size: 11px;\r\n  color: var(--sn-assistant-muted);\r\n  font-variant-numeric: tabular-nums;\r\n}\r\n\r\n.sn-assistant-tickets-loading,\r\n.sn-assistant-ci-loading {\r\n  padding: 20px 16px;\r\n  text-align: center;\r\n  font-size: 12px;\r\n  color: var(--sn-assistant-muted);\r\n  font-style: italic;\r\n}\r\n";
@@ -37306,6 +37356,107 @@ ${bundle.email.body}`,
     };
   }
 
+  // Assistant/application/workNotes/recommendFromShortDescription.js
+  function cleanText5(value) {
+    return String(value || "").trim();
+  }
+  function normalize2(value) {
+    return cleanText5(value).toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+  }
+  function flatten(value) {
+    if (Array.isArray(value)) return value.map(flatten).join(" ");
+    if (value && typeof value === "object") return Object.values(value).map(flatten).join(" ");
+    return cleanText5(value);
+  }
+  function corpus(template = {}) {
+    return normalize2([
+      template.id,
+      template.label,
+      template.title,
+      template.body,
+      template.notes,
+      flatten(template.keywords)
+    ].filter(Boolean).join(" "));
+  }
+  function has2(text2, pattern) {
+    return pattern.test(text2);
+  }
+  function scoreTemplate(template = {}, context = {}) {
+    const shortDescription = normalize2(context.shortDescription || context.short_description);
+    const description = normalize2(context.description || context.desc);
+    const text2 = shortDescription || description;
+    if (!text2) return 0;
+    const templateText = corpus(template);
+    const id = normalize2(template.id);
+    let score = 0;
+    const futureAction = has2(text2, /\b(schedule|appointment|book|arrange|plan|prepare|preparation|ready for|coordinate|availability|deliver(?:y)? scheduled)\b/);
+    const completedAction = has2(text2, /\b(delivered|handed over|collected|received|completed|installed|configured|resolved|fixed|replaced|restored|done)\b/);
+    if (futureAction) {
+      if (/appointment_proposed/.test(id)) score += 24;
+      if (/equipment_prepared/.test(id) && /\b(prepare|preparation|ready)\b/.test(text2)) score += 20;
+      if (/smartphone_delivery/.test(id) && /\b(smartphone|phone|iphone|mobile)\b/.test(text2)) score += 18;
+      if (/device_delivered|worknote_device_delivered|device_collected/.test(id)) score -= 25;
+    }
+    if (completedAction) {
+      if (/device_delivered|worknote_device_delivered/.test(id) && /\b(delivered|handed over|received)\b/.test(text2)) score += 24;
+      if (/device_collected/.test(id) && /\b(collected|collection|picked up|pickup)\b/.test(text2)) score += 22;
+      if (/software_installed/.test(id) && /\b(installed|installation completed)\b/.test(text2)) score += 22;
+      if (/laptop_configured/.test(id) && /\b(configured|setup|set up)\b/.test(text2)) score += 22;
+      if (/peripheral_replaced/.test(id) && /\b(replaced|replacement completed)\b/.test(text2)) score += 22;
+      if (/account_access_restored/.test(id) && /\b(restored|unlocked|password reset)\b/.test(text2)) score += 22;
+    }
+    if (/\b(return|recover|recovery|retrieve|bring back|drop[- ]?off)\b/.test(text2) && /return_equipment/.test(id)) score += 26;
+    if (/\b(no answer|unreachable|no response|injoignable|pas de reponse)\b/.test(text2) && /no_answer/.test(id)) score += 26;
+    if (/\b(waiting|awaiting|feedback|confirmation|reply|response)\b/.test(text2) && /waiting_for_feedback|waiting_for_user/.test(id)) score += 20;
+    if (/\b(contact|contacted|called|email sent|follow[- ]?up)\b/.test(text2) && /user_contacted|email_sent/.test(id)) score += 16;
+    if (/\b(mdm|intune|enrollment|enrolment)\b/.test(text2) && /mdm/.test(id)) score += 22;
+    if (/\b(outlook|scheduling assistant|mail profile)\b/.test(text2) && /outlook/.test(id)) score += 18;
+    if (/\b(gpupdate|group policy|gpo)\b/.test(text2) && /gpupdate/.test(id)) score += 26;
+    if (/\b(vpn|wired|ethernet|network|disconnect)\b/.test(text2) && /ipconfig|vpn/.test(id)) score += 16;
+    if (/\b(headset|headphone|casque)\b/.test(text2) && /headset/.test(id)) score += 20;
+    if (/\b(mouse|keyboard|dock|docking|monitor|screen|webcam)\b/.test(text2) && /peripheral/.test(id)) score += 16;
+    if (/\b(laptop|notebook|pc)\b/.test(text2) && /laptop|equipment/.test(id)) score += 8;
+    if (/\b(tablet|ipad)\b/.test(text2) && /appointment|equipment|device/.test(id)) score += 7;
+    if (/\b(smartphone|phone|iphone|mobile)\b/.test(text2) && /smartphone|device/.test(id)) score += 8;
+    if (/\b(software|application|adobe|sap|teams)\b/.test(text2) && /software/.test(id)) score += 10;
+    const shortTokens = shortDescription.replace(/[^a-z0-9]+/g, " ").split(/\s+/).filter((token) => token.length >= 4);
+    for (const token of new Set(shortTokens)) {
+      if (templateText.includes(token)) score += 2;
+    }
+    return score;
+  }
+  function rankWorkNoteTemplatesFromShortDescription(templates = [], context = {}) {
+    return [...templates].map((template, index) => ({ template, index, score: scoreTemplate(template, context) })).sort((left, right) => right.score - left.score || left.index - right.index);
+  }
+  function recommendWorkNoteFromShortDescription(templates = [], context = {}, fallbackTemplateId = "") {
+    const ranked = rankWorkNoteTemplatesFromShortDescription(templates, context);
+    const best = ranked[0];
+    const hasUsefulSignal = Boolean(cleanText5(context.shortDescription || context.short_description || context.description));
+    if (hasUsefulSignal && best?.score > 0) {
+      return {
+        templateId: best.template?.id || "",
+        template: best.template || null,
+        score: best.score,
+        source: "short-description",
+        candidates: ranked.slice(0, 4).map((entry) => ({
+          templateId: entry.template?.id || "",
+          score: entry.score
+        }))
+      };
+    }
+    const fallback = templates.find((template) => template.id === fallbackTemplateId) || templates[0] || null;
+    return {
+      templateId: fallback?.id || "",
+      template: fallback,
+      score: 0,
+      source: "fallback",
+      candidates: ranked.slice(0, 4).map((entry) => ({
+        templateId: entry.template?.id || "",
+        score: entry.score
+      }))
+    };
+  }
+
   // Assistant/handlers/workNotes.js
   var RECENT_PHRASES_MAX = 5;
   var PHRASE_MIN = 6;
@@ -37344,18 +37495,42 @@ ${bundle.email.body}`,
           store.dispatch(setWorkNotesRecentPhrases, loadRecentWorkNotePhrases(rootWindow));
           store.dispatch(setWorkNotesRecentPhrasesReset, true);
         }
-        const model = buildWorkNoteModel(currentContext, getEffectiveSettings(), state);
+        const recommendationState = {
+          ...state,
+          ui: {
+            ...state.ui,
+            workNotesTemplateId: "",
+            workNotesText: "",
+            workNotesSearch: ""
+          }
+        };
+        const settings = getEffectiveSettings();
+        const model = buildWorkNoteModel(currentContext, settings, recommendationState);
+        const shortDescriptionRecommendation = recommendWorkNoteFromShortDescription(
+          model.templates,
+          currentContext,
+          model.recommendedTemplateId || model.selectedTemplateId
+        );
+        const recommendedTemplateId = shortDescriptionRecommendation.templateId || model.recommendedTemplateId || model.selectedTemplateId;
+        const recommendedTemplate = model.templates.find((template) => template.id === recommendedTemplateId) || model.selectedTemplate || null;
+        const renderedRecommended = recommendedTemplate ? renderTemplate(recommendedTemplate, { context: currentContext, settings }) : null;
+        const draftText = shortDescriptionRecommendation.source === "short-description" ? renderedRecommended?.body || model.draftText || model.smartText : model.draftText || renderedRecommended?.body || model.smartText;
         store.dispatch(openWorkNotes, {
-          templateId: model.selectedTemplateId,
-          draftText: model.draftText,
-          generatedTemplateId: model.selectedTemplateId
+          templateId: recommendedTemplateId,
+          draftText,
+          generatedTemplateId: recommendedTemplateId
         });
         clearAutoHideTimer();
         logger.info("work-notes:open", {
           table: currentContext?.table || "",
           ticketNumber: currentContext?.ticketNumber || currentContext?.recordNumber || "",
-          selectedTemplateId: model.selectedTemplateId || "",
-          source: state.ui.workNotesSource || ""
+          shortDescription: cleanText(currentContext?.shortDescription || currentContext?.short_description || ""),
+          selectedTemplateId: recommendedTemplateId || "",
+          recommendationIntent: model.recommendation?.intent || "",
+          recommendationSource: shortDescriptionRecommendation.source,
+          recommendationScore: shortDescriptionRecommendation.score,
+          recommendationCandidates: shortDescriptionRecommendation.candidates,
+          source: "short-description"
         });
         scheduleRecovery("work-notes-open", 0);
       },
@@ -37368,22 +37543,42 @@ ${bundle.email.body}`,
         const previousTemplateId = state.ui.workNotesTemplateId || "";
         const selectedId = cleanText(templateId || "");
         const currentContext = state.context || getCurrentContext(rootWindow);
-        const model = buildWorkNoteModel(currentContext, getEffectiveSettings(), state);
+        const settings = getEffectiveSettings();
+        const model = buildWorkNoteModel(currentContext, settings, state);
         const selectedTemplate = model.templates.find((entry) => entry.id === selectedId) || null;
-        const renderedSelected = selectedTemplate ? renderTemplate(selectedTemplate, { context: currentContext, settings: getEffectiveSettings() }) : null;
-        const templateText = renderedSelected?.body || model.renderedTemplate?.body || model.smartText || "";
+        if (!selectedTemplate) {
+          throw new Error("Work note template not found");
+        }
+        const renderedSelected = renderTemplate(selectedTemplate, { context: currentContext, settings });
+        const templateText = cleanText(renderedSelected?.body || "");
+        if (!templateText) {
+          throw new Error("Work note template rendered empty");
+        }
+        const writeResult = writeWorkNoteToField(templateText, currentContext, { append: false });
+        if (!writeResult.ok) {
+          throw new Error("Work notes could not be written");
+        }
         store.dispatch(applyWorkNoteTemplate, {
           templateId: selectedId,
           text: templateText,
           generatedTemplateId: selectedId
         });
+        noteWorkNoteTemplateUsage(state, rootWindow, selectedId);
+        pushRecentWorkNote(rootWindow, selectedId, selectedTemplate.label || "");
         const phrase = extractPhrases(templateText)[0] || "";
         pushPhrase(phrase);
+        state.ui.workNotesSource = "template-auto-apply";
         logger.info("work-notes:template-selected", {
-          ticketNumber: state.context?.ticketNumber || state.context?.recordNumber || "",
+          ticketNumber: currentContext?.ticketNumber || currentContext?.recordNumber || "",
           selectedTemplateId: selectedId,
           previousTemplateId,
-          source: state.ui.workNotesSource || ""
+          targetField: writeResult.targetField || "work_notes",
+          appended: false,
+          source: "template-auto-apply"
+        });
+        showToast(state.host.document, {
+          message: `Work note applied: ${selectedTemplate.label || selectedId}`,
+          tone: "success"
         });
         scheduleRecovery("work-notes-template", 0);
       },
