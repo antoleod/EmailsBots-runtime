@@ -12834,23 +12834,36 @@ ${value}` : value;
     if (closed) parts.push(`${closed} closed`);
     return parts.join(" \xB7 ");
   }
-  function renderGroupedScTasks(tasks, allResults) {
+  function getCurrentTicketNumber(context) {
+    return normalizeServiceNowValue(
+      context?.number ?? context?.ticketNumber ?? context?.sourceNumber ?? context?.recordNumber
+    );
+  }
+  function renderGroupedScTasks(tasks, allResults, context) {
     const groups = groupScTasksByRitm(tasks, allResults);
+    const currentNumber = getCurrentTicketNumber(context);
+    const autoOpenAll = groups.length === 1;
     return groups.map((group) => {
+      const containsCurrent = Boolean(currentNumber && group.tasks.some((task) => normalizeServiceNowValue(task.number) === currentNumber));
+      const expanded = autoOpenAll || containsCurrent;
       const parentClickable = Boolean(group.parentSysId && group.parentNumber !== "Other SCTASKs");
-      const parentAction = parentClickable ? `data-action="user-tickets-open" data-table="sc_req_item" data-sys-id="${escapeHtml(group.parentSysId)}" role="button" tabindex="0"` : "";
+      const groupId = `ritm-${String(group.parentSysId || group.parentNumber || "other").replace(/[^a-z0-9_-]/gi, "-")}`;
       return `
-      <section class="sn-assistant-ritm-group">
-        <div class="sn-assistant-ritm-group__header" ${parentAction}>
-          <div class="sn-assistant-ritm-group__title-row">
-            <span class="sn-assistant-tickets-table__badge sn-assistant-tickets-table__badge--sc_req_item">RITM</span>
-            <strong class="sn-assistant-ritm-group__number">${escapeHtml(group.parentNumber)}</strong>
-            <span class="sn-assistant-ritm-group__summary">${escapeHtml(summarizeTaskStates(group.tasks))}</span>
+      <section class="sn-assistant-ritm-branch ${expanded ? "is-expanded" : "is-collapsed"}" data-ritm-group>
+        <div class="sn-assistant-ritm-branch__head">
+          <button type="button" class="sn-assistant-ritm-branch__toggle" data-action="user-tickets-toggle-ritm" aria-expanded="${expanded ? "true" : "false"}" aria-controls="${escapeHtml(groupId)}" title="${expanded ? "Collapse" : "Expand"} ${escapeHtml(group.parentNumber)}">
+            <span class="sn-assistant-ritm-branch__chevron" aria-hidden="true"></span>
+          </button>
+          <span class="sn-assistant-ritm-branch__node sn-assistant-ritm-branch__node--parent" aria-hidden="true"></span>
+          <div class="sn-assistant-ritm-branch__identity">
+            ${parentClickable ? `<button type="button" class="sn-assistant-ritm-branch__number" data-action="user-tickets-open" data-table="sc_req_item" data-sys-id="${escapeHtml(group.parentSysId)}" title="Open ${escapeHtml(group.parentNumber)}">${escapeHtml(group.parentNumber)}</button>` : `<span class="sn-assistant-ritm-branch__number is-static">${escapeHtml(group.parentNumber)}</span>`}
+            ${group.parentShortDesc ? `<span class="sn-assistant-ritm-branch__description">${escapeHtml(group.parentShortDesc)}</span>` : ""}
           </div>
-          ${group.parentShortDesc ? `<div class="sn-assistant-ritm-group__description">${escapeHtml(group.parentShortDesc)}</div>` : ""}
+          <span class="sn-assistant-ritm-branch__summary">${escapeHtml(summarizeTaskStates(group.tasks))}</span>
         </div>
-        <div class="sn-assistant-ritm-group__tasks">
-          ${group.tasks.map((task) => {
+
+        <div class="sn-assistant-ritm-branch__children" id="${escapeHtml(groupId)}">
+          ${group.tasks.map((task, index) => {
         const state = normalizeServiceNowValue(task.state);
         const stateKey = getStateClass(state);
         const assignedTo = normalizeAssignedTo(task.assignedTo ?? task.assigned_to) || "Unassigned";
@@ -12858,18 +12871,27 @@ ${value}` : value;
         const dateText = formatDate2(task.updated ?? task.sys_updated_on);
         const sysId = normalizeServiceNowValue(task.sysId ?? task.sys_id);
         const number = normalizeServiceNowValue(task.number);
+        const current = Boolean(currentNumber && currentNumber === number);
+        const last2 = index === group.tasks.length - 1;
         return `
-              <button type="button" class="sn-assistant-sctask-card" data-action="user-tickets-open" data-table="sc_task" data-sys-id="${escapeHtml(sysId)}" title="${escapeHtml(shortDesc || number)}">
-                <span class="sn-assistant-sctask-card__main">
-                  <span class="sn-assistant-sctask-card__number">${escapeHtml(number)}</span>
-                  ${shortDesc ? `<span class="sn-assistant-sctask-card__description">${escapeHtml(shortDesc)}</span>` : ""}
-                </span>
-                <span class="sn-assistant-sctask-card__meta">
-                  <span class="sn-assistant-tickets-table__state-pill sn-assistant-tickets-table__state-pill--${stateKey}">${escapeHtml(state || "-")}</span>
-                  <span class="sn-assistant-sctask-card__assigned">${escapeHtml(assignedTo)}</span>
-                  <span class="sn-assistant-sctask-card__date">${escapeHtml(dateText || "-")}</span>
-                </span>
-              </button>
+              <div class="sn-assistant-sctask-tree-row ${current ? "is-current" : ""} ${last2 ? "is-last" : ""}">
+                <span class="sn-assistant-sctask-tree-row__rail" aria-hidden="true"></span>
+                <span class="sn-assistant-sctask-tree-row__branch" aria-hidden="true"></span>
+                <span class="sn-assistant-ritm-branch__node sn-assistant-ritm-branch__node--child" aria-hidden="true"></span>
+                <button type="button" class="sn-assistant-sctask-tree-row__content" data-action="user-tickets-open" data-table="sc_task" data-sys-id="${escapeHtml(sysId)}" title="${escapeHtml(shortDesc || number)}">
+                  <span class="sn-assistant-sctask-tree-row__body">
+                    <span class="sn-assistant-sctask-tree-row__topline">
+                      <strong class="sn-assistant-sctask-tree-row__number">${escapeHtml(number)}</strong>
+                      <span class="sn-assistant-tickets-table__state-pill sn-assistant-tickets-table__state-pill--${stateKey}">${escapeHtml(state || "-")}</span>
+                    </span>
+                    ${shortDesc ? `<span class="sn-assistant-sctask-tree-row__description">${escapeHtml(shortDesc)}</span>` : ""}
+                    <span class="sn-assistant-sctask-tree-row__meta">
+                      <span>${escapeHtml(assignedTo)}</span>
+                      <span>${escapeHtml(dateText || "-")}</span>
+                    </span>
+                  </span>
+                </button>
+              </div>
             `;
       }).join("")}
         </div>
@@ -12877,15 +12899,15 @@ ${value}` : value;
     `;
     }).join("");
   }
-  function renderScTaskGroupedView(results, allResults) {
+  function renderScTaskGroupedView(results, allResults, context) {
     return `
     <div class="sn-assistant-sctask-view is-grouped" data-user-tickets-sctask-view>
       <div class="sn-assistant-sctask-view__toolbar" role="group" aria-label="SCTASK display mode">
         <span class="sn-assistant-sctask-view__label">View</span>
-        <button type="button" class="sn-assistant-sctask-view__toggle is-active" data-action="user-tickets-sctask-mode" data-mode="grouped" aria-pressed="true">Group by RITM</button>
+        <button type="button" class="sn-assistant-sctask-view__toggle is-active" data-action="user-tickets-sctask-mode" data-mode="grouped" aria-pressed="true">RITM tree</button>
         <button type="button" class="sn-assistant-sctask-view__toggle" data-action="user-tickets-sctask-mode" data-mode="flat" aria-pressed="false">Flat</button>
       </div>
-      <div class="sn-assistant-sctask-view__grouped">${renderGroupedScTasks(results, allResults)}</div>
+      <div class="sn-assistant-sctask-view__grouped">${renderGroupedScTasks(results, allResults, context)}</div>
       <div class="sn-assistant-sctask-view__flat">
         <div class="sn-assistant-tickets-table-wrapper">
           <table class="sn-assistant-tickets-table">
@@ -12931,7 +12953,7 @@ ${value}` : value;
       const emptyLabel = isClosedView ? "No recently closed tickets found for this user." : activeFilter ? `No open ${activeFilter === "incident" ? "incidents" : activeFilter === "sc_req_item" ? "RITMs" : "SCTASKs"} found for this user.` : "No open tickets found for this user.";
       bodyContent = `${modeTabsMarkup}${filterChipsMarkup}<div class="sn-assistant-note sn-assistant-note--empty">${escapeHtml(emptyLabel)}</div>`;
     } else if (!isClosedView && activeFilter === "sc_task") {
-      bodyContent = `${modeTabsMarkup}${filterChipsMarkup}${renderScTaskGroupedView(results, allResults)}`;
+      bodyContent = `${modeTabsMarkup}${filterChipsMarkup}${renderScTaskGroupedView(results, allResults, context)}`;
     } else {
       bodyContent = `
       ${modeTabsMarkup}
@@ -12991,6 +13013,16 @@ ${value}` : value;
           button.classList.toggle("is-active", active);
           button.setAttribute("aria-pressed", active ? "true" : "false");
         });
+        return;
+      }
+      if (action === "user-tickets-toggle-ritm") {
+        const group = target.closest("[data-ritm-group]");
+        if (!group) return;
+        const expanded = !group.classList.contains("is-expanded");
+        group.classList.toggle("is-expanded", expanded);
+        group.classList.toggle("is-collapsed", !expanded);
+        target.setAttribute("aria-expanded", expanded ? "true" : "false");
+        target.title = `${expanded ? "Collapse" : "Expand"} RITM tasks`;
         return;
       }
       if (action === "user-tickets-open" && sysId && table) {
