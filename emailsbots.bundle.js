@@ -198,14 +198,14 @@
         s.pending_buf[s.pending++] = w & 255;
         s.pending_buf[s.pending++] = w >>> 8 & 255;
       }
-      function send_bits(s, value, length) {
+      function send_bits(s, value2, length) {
         if (s.bi_valid > Buf_size - length) {
-          s.bi_buf |= value << s.bi_valid & 65535;
+          s.bi_buf |= value2 << s.bi_valid & 65535;
           put_short(s, s.bi_buf);
-          s.bi_buf = value >> Buf_size - s.bi_valid;
+          s.bi_buf = value2 >> Buf_size - s.bi_valid;
           s.bi_valid += length - Buf_size;
         } else {
-          s.bi_buf |= value << s.bi_valid & 65535;
+          s.bi_buf |= value2 << s.bi_valid & 65535;
           s.bi_valid += length;
         }
       }
@@ -4249,37 +4249,37 @@
   });
 
   // Assistant/core/helpers.js
-  function cleanText(value) {
-    if (value === null || value === void 0) return "";
-    const text2 = String(value).replace(/\u00a0/g, " ").trim();
+  function cleanText(value2) {
+    if (value2 === null || value2 === void 0) return "";
+    const text2 = String(value2).replace(/\u00a0/g, " ").trim();
     return text2 === "undefined" || text2 === "null" ? "" : text2;
   }
-  function normalizeText(value) {
-    return cleanText(value).toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/\s+/g, " ").trim();
+  function normalizeText(value2) {
+    return cleanText(value2).toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/\s+/g, " ").trim();
   }
   function delay(ms) {
     return new Promise((resolve) => setTimeout(resolve, ms));
   }
-  function clamp(value, min, max) {
-    return Math.min(Math.max(value, min), max);
+  function clamp(value2, min, max) {
+    return Math.min(Math.max(value2, min), max);
   }
-  function isPlainObject(value) {
-    return Boolean(value) && Object.prototype.toString.call(value) === "[object Object]";
+  function isPlainObject(value2) {
+    return Boolean(value2) && Object.prototype.toString.call(value2) === "[object Object]";
   }
-  function deepClone(value) {
-    return JSON.parse(JSON.stringify(value ?? {}));
+  function deepClone(value2) {
+    return JSON.parse(JSON.stringify(value2 ?? {}));
   }
   function deepMerge(base, override) {
     if (!isPlainObject(base) || !isPlainObject(override)) {
       return override === void 0 ? deepClone(base) : deepClone(override);
     }
     const output = deepClone(base);
-    Object.entries(override).forEach(([key, value]) => {
-      if (isPlainObject(value) && isPlainObject(output[key])) {
-        output[key] = deepMerge(output[key], value);
+    Object.entries(override).forEach(([key, value2]) => {
+      if (isPlainObject(value2) && isPlainObject(output[key])) {
+        output[key] = deepMerge(output[key], value2);
         return;
       }
-      output[key] = deepClone(value);
+      output[key] = deepClone(value2);
     });
     return output;
   }
@@ -4290,15 +4290,15 @@
       return fallback;
     }
   }
-  function escapeCssIdentifier(value) {
-    const text2 = cleanText(value);
+  function escapeCssIdentifier(value2) {
+    const text2 = cleanText(value2);
     if (typeof CSS !== "undefined" && typeof CSS.escape === "function") {
       return CSS.escape(text2);
     }
     return text2.replace(/([ !"#$%&'()*+,./:;<=>?@[\\\]^`{|}~])/g, "\\$1");
   }
-  function escapeHtml(value) {
-    return cleanText(value).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#39;");
+  function escapeHtml(value2) {
+    return cleanText(value2).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#39;");
   }
   function createRecordKey({ table, sysId, ticketNumber }) {
     const primary = cleanText(sysId) || cleanText(ticketNumber) || "unknown";
@@ -4312,8 +4312,8 @@
       day: "numeric"
     }).format(/* @__PURE__ */ new Date());
   }
-  function titleCase(value) {
-    return cleanText(value).split(/[\s_-]+/).filter(Boolean).map((segment) => segment.charAt(0).toUpperCase() + segment.slice(1)).join(" ");
+  function titleCase(value2) {
+    return cleanText(value2).split(/[\s_-]+/).filter(Boolean).map((segment) => segment.charAt(0).toUpperCase() + segment.slice(1)).join(" ");
   }
 
   // Assistant/core/dom.js
@@ -4688,11 +4688,11 @@
   }
   function getCurrentCmdbCi(rootWindow = getRootWindow()) {
     try {
-      let isTicketLike2 = function(value) {
-        const text2 = cleanText(value).toUpperCase();
+      let isTicketLike2 = function(value2) {
+        const text2 = cleanText(value2).toUpperCase();
         return /^(?:INC|RITM|REQ|SCTASK|TASK|CHG|PRB|SR|KB)\d{4,}$/.test(text2);
-      }, isSysId2 = function(value) {
-        return /^[0-9a-f]{32}$/i.test(cleanText(value));
+      }, isSysId2 = function(value2) {
+        return /^[0-9a-f]{32}$/i.test(cleanText(value2));
       }, read = function(selector) {
         for (const docRef of getAccessibleDocuments(rootWindow)) {
           const el = docRef?.querySelector?.(selector);
@@ -4740,11 +4740,11 @@
     try {
       const gForm = getBestGForm(rootWindow)?.gForm || rootWindow?.g_form;
       if (!gForm) return false;
-      const value = cleanText(sysId);
+      const value2 = cleanText(sysId);
       const display = cleanText(displayValue);
-      if (!value && !display) return false;
+      if (!value2 && !display) return false;
       if (typeof gForm.setValue === "function") {
-        gForm.setValue("cmdb_ci", value, display || value);
+        gForm.setValue("cmdb_ci", value2, display || value2);
       }
       if (display && typeof gForm.setDisplayValue === "function") {
         gForm.setDisplayValue("cmdb_ci", display);
@@ -4840,16 +4840,16 @@
       fullName: text2
     };
   }
-  function looksLikeEmail(value) {
-    return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(cleanText(value));
+  function looksLikeEmail(value2) {
+    return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(cleanText(value2));
   }
-  function looksLikeRecordIdentifier(value) {
-    const text2 = cleanText(value).toUpperCase();
+  function looksLikeRecordIdentifier(value2) {
+    const text2 = cleanText(value2).toUpperCase();
     if (!text2) return false;
     return /^[0-9A-F]{32}$/.test(text2) || /^(INC|RITM|REQ|SCTASK|TASK|CHG|PRB|SR|KB)\d{4,}$/.test(text2);
   }
-  function isLikelyPersonName(value) {
-    const text2 = cleanText(value);
+  function isLikelyPersonName(value2) {
+    const text2 = cleanText(value2);
     if (!text2 || looksLikeEmail(text2) || looksLikeRecordIdentifier(text2)) {
       return false;
     }
@@ -4868,11 +4868,11 @@
       try {
         if (bestGForm?.gForm) {
           if (display && typeof bestGForm.gForm.getDisplayValue === "function") {
-            const value2 = cleanText(bestGForm.gForm.getDisplayValue(fieldName));
-            if (value2) return value2;
+            const value3 = cleanText(bestGForm.gForm.getDisplayValue(fieldName));
+            if (value3) return value3;
           }
-          const value = cleanText(bestGForm.gForm.getValue(fieldName));
-          if (value) return value;
+          const value2 = cleanText(bestGForm.gForm.getValue(fieldName));
+          if (value2) return value2;
         }
       } catch (error2) {
         continue;
@@ -4881,22 +4881,22 @@
     return "";
   }
   function extractDateFromText(text2) {
-    const value = cleanText(text2);
-    if (!value) return "";
-    const isoMatch = value.match(/\b(\d{4}-\d{2}-\d{2})\b/);
+    const value2 = cleanText(text2);
+    if (!value2) return "";
+    const isoMatch = value2.match(/\b(\d{4}-\d{2}-\d{2})\b/);
     if (isoMatch?.[1]) return isoMatch[1];
-    const slashMatch = value.match(/\b(\d{2}\/\d{2}\/\d{4})\b/);
+    const slashMatch = value2.match(/\b(\d{2}\/\d{2}\/\d{4})\b/);
     if (slashMatch?.[1]) return slashMatch[1];
     return "";
   }
   function extractReturnDateFromText(text2) {
-    const value = cleanText(text2);
-    if (!value) return "";
-    const isoMatch = value.match(/\b(\d{4})-(\d{2})-(\d{2})\b/);
+    const value2 = cleanText(text2);
+    if (!value2) return "";
+    const isoMatch = value2.match(/\b(\d{4})-(\d{2})-(\d{2})\b/);
     if (isoMatch) {
       return `${isoMatch[3]}/${isoMatch[2]}/${isoMatch[1]}`;
     }
-    const slashMatch = value.match(/\b(\d{2}\/\d{2}\/\d{4})\b/);
+    const slashMatch = value2.match(/\b(\d{2}\/\d{2}\/\d{4})\b/);
     return slashMatch?.[1] || "";
   }
   function extractEquipmentFromDescription(text2 = "") {
@@ -4989,8 +4989,8 @@ Asset tag: ${item.equipmentAssetTag}`;
         try {
           const element = documentRef.querySelector(selector);
           if (!element) continue;
-          const value = cleanText(element.value || element.textContent || element.innerText);
-          if (value) return value;
+          const value2 = cleanText(element.value || element.textContent || element.innerText);
+          if (value2) return value2;
         } catch (error2) {
           continue;
         }
@@ -5390,13 +5390,13 @@ Asset tag: ${item.equipmentAssetTag}`;
       return "";
     }
   }
-  function looksLikeTicketIdentifier(value) {
-    const text2 = cleanText(value).toUpperCase();
+  function looksLikeTicketIdentifier(value2) {
+    const text2 = cleanText(value2).toUpperCase();
     return /^(?:INC|RITM|REQ|SCTASK|TASK|CHG|PRB|SR|KB)\d{4,}$/.test(text2);
   }
   function findParentTicketNumber(values2 = []) {
-    for (const value of values2) {
-      const text2 = cleanText(value).toUpperCase();
+    for (const value2 of values2) {
+      const text2 = cleanText(value2).toUpperCase();
       const match = text2.match(/\b(?:RITM|INC|REQ)\d{4,}\b/);
       if (match?.[0]) return match[0];
     }
@@ -6139,8 +6139,8 @@ Asset tag: ${item.equipmentAssetTag}`;
     }
     return "";
   }
-  function sanitizeTemplateOverrideEntry(value) {
-    const entry = value && typeof value === "object" ? value : {};
+  function sanitizeTemplateOverrideEntry(value2) {
+    const entry = value2 && typeof value2 === "object" ? value2 : {};
     return {
       subject: cleanText(entry.subject),
       body: cleanText(entry.body),
@@ -6162,8 +6162,8 @@ Asset tag: ${item.equipmentAssetTag}`;
     });
     return output;
   }
-  function sanitizeCustomTemplateEntry(value) {
-    const entry = value && typeof value === "object" ? value : {};
+  function sanitizeCustomTemplateEntry(value2) {
+    const entry = value2 && typeof value2 === "object" ? value2 : {};
     const rawCategory = cleanText(entry.category);
     const category = ["email", "reminder", "close_note", "work_note", "appointment"].includes(rawCategory) ? rawCategory : rawCategory === "resolution" ? "close_note" : rawCategory === "internal" ? "work_note" : "email";
     return {
@@ -6199,8 +6199,8 @@ Asset tag: ${item.equipmentAssetTag}`;
       return true;
     });
   }
-  function sanitizeCustomLinkEntry(value) {
-    const entry = value && typeof value === "object" ? value : {};
+  function sanitizeCustomLinkEntry(value2) {
+    const entry = value2 && typeof value2 === "object" ? value2 : {};
     return { id: cleanText(entry.id), label: cleanText(entry.label), url: cleanText(entry.url) };
   }
   function sanitizeCustomLinks(rawValue) {
@@ -6314,7 +6314,7 @@ Asset tag: ${item.equipmentAssetTag}`;
   function normalizeWorkNoteTemplateUsage(rawValue) {
     const usage = rawValue && typeof rawValue === "object" ? rawValue : {};
     return Object.fromEntries(
-      Object.entries(usage).map(([templateId, value]) => [cleanText(templateId), Number.isFinite(Number(value)) ? Math.max(0, Number(value)) : 0]).filter(([templateId]) => Boolean(templateId))
+      Object.entries(usage).map(([templateId, value2]) => [cleanText(templateId), Number.isFinite(Number(value2)) ? Math.max(0, Number(value2)) : 0]).filter(([templateId]) => Boolean(templateId))
     );
   }
   function loadWorkNoteTemplateUsage(rootWindow) {
@@ -7718,7 +7718,7 @@ Asset tag: ${item.equipmentAssetTag}`;
     if (note) return enforceWorkNoteContract(note);
     return enforceWorkNoteContract(generateWorkNotes(context, settings));
   }
-  function renderTemplateText(value, context = {}, settings = {}) {
+  function renderTemplateText(value2, context = {}, settings = {}) {
     const officeName = cleanText(settings?.officeName);
     const officeLabel = cleanText(settings?.officeLabel);
     const officeRoom = cleanText(settings?.officeRoom);
@@ -7743,7 +7743,7 @@ Asset tag: ${item.equipmentAssetTag}`;
       office_location: officeParts.filter(Boolean).join(", "),
       configuration_item: cleanText(resolveReadableConfigurationItem(context))
     };
-    return String(value || "").replace(/\{\{\s*([a-z0-9_]+)\s*\}\}/gi, (_, key) => replacements[String(key || "").toLowerCase()] || "");
+    return String(value2 || "").replace(/\{\{\s*([a-z0-9_]+)\s*\}\}/gi, (_, key) => replacements[String(key || "").toLowerCase()] || "");
   }
 
   // Assistant/templates/emailTemplates.js
@@ -9815,16 +9815,16 @@ ${configurationItemLine}`,
     ticket: "ticket_number",
     requested_for_name: "requested_for"
   });
-  function normalizeTemplateCategory(value) {
-    const category = String(value || "").trim();
+  function normalizeTemplateCategory(value2) {
+    const category = String(value2 || "").trim();
     if (SUPPORTED_CATEGORIES.includes(category)) return category;
     if (category === "resolution") return "close_note";
     if (category === "internal") return "work_note";
     if (category === "event") return "appointment";
     return "";
   }
-  function normalizeTemplatePlaceholders(value = "") {
-    return String(value || "").replace(/\{\{\s*([a-z0-9_]+)\s*\}\}/gi, (match, key) => {
+  function normalizeTemplatePlaceholders(value2 = "") {
+    return String(value2 || "").replace(/\{\{\s*([a-z0-9_]+)\s*\}\}/gi, (match, key) => {
       const normalizedKey = String(key || "").toLowerCase();
       const replacement = LEGACY_PLACEHOLDER_ALIASES[normalizedKey];
       return replacement ? `{{${replacement}}}` : match;
@@ -9832,8 +9832,8 @@ ${configurationItemLine}`,
   }
   function normalizePlaceholderList(values2) {
     if (!Array.isArray(values2)) return values2;
-    return values2.map((value) => {
-      const key = String(value || "").trim().toLowerCase();
+    return values2.map((value2) => {
+      const key = String(value2 || "").trim().toLowerCase();
       return LEGACY_PLACEHOLDER_ALIASES[key] || key;
     });
   }
@@ -10858,11 +10858,11 @@ word-wrap:break-word'>\r
 
   // Assistant/core/email/signature.js
   var cachedSignature = null;
-  function cleanText2(value = "") {
-    return String(value || "").trim();
+  function cleanText2(value2 = "") {
+    return String(value2 || "").trim();
   }
-  function escapeHtml2(value = "") {
-    return String(value || "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#039;");
+  function escapeHtml2(value2 = "") {
+    return String(value2 || "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#039;");
   }
   function textBodyToHtml(body = "") {
     const text2 = String(body || "").replace(/\r\n/g, "\n");
@@ -10910,8 +10910,8 @@ word-wrap:break-word'>\r
     }
     return "";
   }
-  function normalizeShortDescription(value) {
-    const raw = cleanText(value).replace(/^short\s*description\s*[:\-]\s*/i, "").replace(/^description\s*[:\-]\s*/i, "").replace(/\s+/g, " ").trim();
+  function normalizeShortDescription(value2) {
+    const raw = cleanText(value2).replace(/^short\s*description\s*[:\-]\s*/i, "").replace(/^description\s*[:\-]\s*/i, "").replace(/\s+/g, " ").trim();
     if (!raw) return "";
     const firstSentence = raw.split(/[\n.;]/).map((part) => cleanText(part)).find(Boolean) || raw;
     return firstSentence.length > 140 ? `${firstSentence.slice(0, 137).trim()}...` : firstSentence;
@@ -10942,12 +10942,12 @@ word-wrap:break-word'>\r
     }
     return text2;
   }
-  function compactDeviceLabel(value) {
-    return cleanText(value).replace(/\s*\(\s*\)\s*$/, "").trim();
+  function compactDeviceLabel(value2) {
+    return cleanText(value2).replace(/\s*\(\s*\)\s*$/, "").trim();
   }
-  function finalizeTemplateText(value, options = {}) {
+  function finalizeTemplateText(value2, options = {}) {
     const paragraphSpacing = ["compact", "standard", "relaxed"].includes(cleanText(options?.paragraphSpacing)) ? cleanText(options.paragraphSpacing) : "standard";
-    const lines = String(value || "").replace(/\r\n/g, "\n").replace(/\{\{\s*[^}]+\s*\}\}/g, "").split("\n").map((line) => line.replace(/[ \t]+/g, " ").trim());
+    const lines = String(value2 || "").replace(/\r\n/g, "\n").replace(/\{\{\s*[^}]+\s*\}\}/g, "").split("\n").map((line) => line.replace(/[ \t]+/g, " ").trim());
     const compacted = [];
     let previousBlank = false;
     for (const line of lines) {
@@ -10977,17 +10977,17 @@ word-wrap:break-word'>\r
     }
     return chunks.join(separator).trim();
   }
-  function looksLikeRecordIdentifier2(value) {
-    const text2 = cleanText(value).toUpperCase();
+  function looksLikeRecordIdentifier2(value2) {
+    const text2 = cleanText(value2).toUpperCase();
     if (!text2) return false;
     return /^[0-9A-F]{32}$/.test(text2) || /^(INC|RITM|REQ|SCTASK|TASK|CHG|PRB|SR|KB)\d{4,}$/.test(text2) || /^[A-Z]{2,}\d{4,}$/.test(text2);
   }
-  function looksLikeTicketIdentifier2(value) {
-    const text2 = cleanText(value).toUpperCase();
+  function looksLikeTicketIdentifier2(value2) {
+    const text2 = cleanText(value2).toUpperCase();
     return /^(?:INC|RITM|REQ|SCTASK|TASK|CHG|PRB|SR|KB)\d{4,}$/.test(text2);
   }
-  function looksLikeSysId(value) {
-    return /^[0-9a-f]{32}$/i.test(cleanText(value));
+  function looksLikeSysId(value2) {
+    return /^[0-9a-f]{32}$/i.test(cleanText(value2));
   }
   function resolveReadableConfigurationItem2(context = {}) {
     return cleanText(
@@ -11012,8 +11012,8 @@ word-wrap:break-word'>\r
     }
     return parts.filter(Boolean).join(", ");
   }
-  function parseAppointmentDate(value) {
-    const text2 = cleanText(value);
+  function parseAppointmentDate(value2) {
+    const text2 = cleanText(value2);
     if (!text2) return null;
     const parsed = new Date(text2);
     if (!Number.isNaN(parsed.getTime())) return parsed;
@@ -11080,8 +11080,8 @@ word-wrap:break-word'>\r
     }
     return "The reported issue has been resolved and the service has been restored.";
   }
-  function isLikelyPersonName2(value) {
-    const text2 = cleanText(value);
+  function isLikelyPersonName2(value2) {
+    const text2 = cleanText(value2);
     if (!text2 || text2.length < 2) return false;
     if (looksLikeRecordIdentifier2(text2)) return false;
     if (/^(?:sctask|task|ritm|req|inc|chg|prb|sr|kb)\b/i.test(text2)) return false;
@@ -11123,8 +11123,8 @@ word-wrap:break-word'>\r
     );
     return isLikelyPersonName2(fromEmail) ? fromEmail : "";
   }
-  function looksLikePiIdentifier(value) {
-    const text2 = cleanText(value);
+  function looksLikePiIdentifier(value2) {
+    const text2 = cleanText(value2);
     if (!text2) return false;
     return /^(?:\d{2}PI\d{8,}|PI\d{6,}|[A-Z]{1,4}\d{8,})$/i.test(text2);
   }
@@ -11304,14 +11304,14 @@ word-wrap:break-word'>\r
       resolution_summary: dynamicResolution
     };
   }
-  function replacePlaceholders(value, placeholders) {
-    return String(value || "").replace(/\{\{\s*([a-z0-9_]+)\s*\}\}/gi, (_, key) => {
+  function replacePlaceholders(value2, placeholders) {
+    return String(value2 || "").replace(/\{\{\s*([a-z0-9_]+)\s*\}\}/gi, (_, key) => {
       const lookupKey = String(key || "").toLowerCase();
       return placeholders[lookupKey] ?? "";
     });
   }
-  function cleanupRenderedText(value = "") {
-    return String(value || "").replace(/\bDear\s+,/g, "Dear,").replace(/\s+\n/g, "\n").replace(/\(\s*\)/g, "").replace(/[ \t]{2,}/g, " ").replace(/\n{3,}/g, "\n\n");
+  function cleanupRenderedText(value2 = "") {
+    return String(value2 || "").replace(/\bDear\s+,/g, "Dear,").replace(/\s+\n/g, "\n").replace(/\(\s*\)/g, "").replace(/[ \t]{2,}/g, " ").replace(/\n{3,}/g, "\n\n");
   }
   function normalizeScTaskSubject(subject, context = {}) {
     const pageType = cleanText(context?.pageType || context?.table).toLowerCase();
@@ -11333,8 +11333,8 @@ word-wrap:break-word'>\r
       configuration_item: "Configuration item"
     };
     Object.entries(criticalFields).forEach(([fieldKey, fieldLabel]) => {
-      const value = placeholders[fieldKey];
-      if (!value || String(value).trim() === "") {
+      const value2 = placeholders[fieldKey];
+      if (!value2 || String(value2).trim() === "") {
         missingFields.push(fieldLabel);
       }
     });
@@ -11405,13 +11405,13 @@ ${body}`) : body;
       element.dispatchEvent(new Event(eventName, { bubbles: true }));
     });
   }
-  function setElementValue(element, value) {
+  function setElementValue(element, value2) {
     if (!element) return false;
     try {
       element.focus();
     } catch (error2) {
     }
-    element.value = value;
+    element.value = value2;
     dispatchInputEvents(element);
     return true;
   }
@@ -11429,8 +11429,8 @@ ${body}`) : body;
       try {
         const element = popup.querySelector(selector);
         if (!element) continue;
-        const value = cleanText(element.value || element.textContent);
-        if (value) return value;
+        const value2 = cleanText(element.value || element.textContent);
+        if (value2) return value2;
       } catch (error2) {
         continue;
       }
@@ -11638,12 +11638,12 @@ ${body}`) : body;
       hiddenFrame.remove();
     }
   }
-  function insertWithTargetDefinition(targetDefinition, value) {
+  function insertWithTargetDefinition(targetDefinition, value2) {
     const bestGForm = getBestGForm();
     for (const fieldName of targetDefinition.fieldNames || []) {
       try {
         if (bestGForm?.gForm?.setValue) {
-          bestGForm.gForm.setValue(fieldName, value);
+          bestGForm.gForm.setValue(fieldName, value2);
           return { ok: true, targetField: fieldName };
         }
       } catch (error2) {
@@ -11655,7 +11655,7 @@ ${body}`) : body;
         try {
           const element = documentRef.querySelector(selector);
           if (!element) continue;
-          if (setElementValue(element, value)) {
+          if (setElementValue(element, value2)) {
             return { ok: true, targetField: selector };
           }
         } catch (error2) {
@@ -11666,10 +11666,10 @@ ${body}`) : body;
     return { ok: false, targetField: "" };
   }
   async function copyToClipboard(text2, hostDocument = document) {
-    const value = cleanText(text2);
-    if (!value) return false;
+    const value2 = cleanText(text2);
+    if (!value2) return false;
     try {
-      const hookResult = window.__SN_ASSISTANT_TEST_HOOKS__?.onCopyToClipboard?.(value);
+      const hookResult = window.__SN_ASSISTANT_TEST_HOOKS__?.onCopyToClipboard?.(value2);
       if (hookResult === true) {
         return true;
       }
@@ -11677,14 +11677,14 @@ ${body}`) : body;
     }
     try {
       if (navigator.clipboard?.writeText) {
-        await navigator.clipboard.writeText(value);
+        await navigator.clipboard.writeText(value2);
         return true;
       }
     } catch (error2) {
     }
     try {
       const textarea = hostDocument.createElement("textarea");
-      textarea.value = value;
+      textarea.value = value2;
       textarea.setAttribute("readonly", "true");
       textarea.style.position = "fixed";
       textarea.style.opacity = "0";
@@ -11733,13 +11733,13 @@ ${body}`) : body;
     return insertWithTargetDefinition(targetDefinition, buildEmailCommentText(renderedTemplate));
   }
   function insertWorkNote(workNote, context) {
-    const value = cleanText(workNote);
+    const value2 = cleanText(workNote);
     try {
       const gForm = window?.g_form;
       if (gForm?.setValue) {
         const existing = cleanText(gForm?.getValue?.("work_notes"));
         const next = existing ? `${existing}
-${value}` : value;
+${value2}` : value2;
         gForm.setValue("work_notes", next);
         return { ok: true, targetField: "work_notes", appended: Boolean(existing) };
       }
@@ -11750,7 +11750,7 @@ ${value}` : value;
       if (field) {
         const existing = cleanText(field.value || "");
         field.value = existing ? `${existing}
-${value}` : value;
+${value2}` : value2;
         field.dispatchEvent(new Event("input", { bubbles: true }));
         field.dispatchEvent(new Event("change", { bubbles: true }));
         return { ok: true, targetField: "work_notes", appended: Boolean(existing) };
@@ -11845,11 +11845,11 @@ ${value}` : value;
   }
 
   // Assistant/application/workNotes/writeNote.js
-  function isDuplicateAppend(existing, value) {
-    return Boolean(existing && (existing === value || existing.endsWith(`
+  function isDuplicateAppend(existing, value2) {
+    return Boolean(existing && (existing === value2 || existing.endsWith(`
 
-${value}`) || existing.endsWith(`
-${value}`)));
+${value2}`) || existing.endsWith(`
+${value2}`)));
   }
   function dispatchWorkNoteEvents(field) {
     const EventCtor = field?.ownerDocument?.defaultView?.Event || globalThis.Event;
@@ -11858,7 +11858,7 @@ ${value}`)));
       field.dispatchEvent(new EventCtor(eventName, { bubbles: true }));
     });
   }
-  function writeWorkNoteToDom(value, { append = true } = {}) {
+  function writeWorkNoteToDom(value2, { append = true } = {}) {
     let documents = [];
     try {
       documents = getAccessibleDocuments() || [];
@@ -11870,12 +11870,12 @@ ${value}`)));
         const field = documentRef.querySelector('textarea[aria-label="Work notes"]') || documentRef.querySelector('textarea[name="work_notes"]') || documentRef.querySelector("#work_notes") || documentRef.querySelector("#activity-stream-textarea");
         if (!field) continue;
         const existing = append ? cleanText(field.value || "") : "";
-        if (append && isDuplicateAppend(existing, value)) {
+        if (append && isDuplicateAppend(existing, value2)) {
           return { ok: true, targetField: "work_notes", appended: false, skipped: true, source: "dom" };
         }
         field.value = existing ? `${existing}
 
-${value}` : value;
+${value2}` : value2;
         dispatchWorkNoteEvents(field);
         return {
           ok: true,
@@ -11889,46 +11889,46 @@ ${value}` : value;
     return { ok: false, targetField: "" };
   }
   function writeWorkNoteToField(text2, context = {}, { append = true } = {}) {
-    const value = cleanText(text2);
-    if (!value) {
+    const value2 = cleanText(text2);
+    if (!value2) {
       return { ok: false, targetField: "" };
     }
     const bestGForm = getBestGForm();
     try {
       if (bestGForm?.gForm?.setValue) {
         const existing = append && typeof bestGForm.gForm.getValue === "function" ? cleanText(bestGForm.gForm.getValue("work_notes")) : "";
-        if (append && isDuplicateAppend(existing, value)) {
+        if (append && isDuplicateAppend(existing, value2)) {
           return { ok: true, targetField: "work_notes", appended: false, skipped: true, source: "g_form" };
         }
         const nextValue = existing ? `${existing}
 
-${value}` : value;
+${value2}` : value2;
         bestGForm.gForm.setValue("work_notes", nextValue);
         return { ok: true, targetField: "work_notes", appended: Boolean(existing && append), source: "g_form" };
       }
     } catch {
     }
-    const domResult = writeWorkNoteToDom(value, { append });
+    const domResult = writeWorkNoteToDom(value2, { append });
     if (domResult.ok) return domResult;
     if (!append) {
       return { ok: false, targetField: "", replaceUnsupported: true };
     }
-    return insertWorkNote(value, context);
+    return insertWorkNote(value2, context);
   }
 
   // Assistant/ui/workNotes.js
-  function cleanText3(value) {
-    return String(value || "").trim();
+  function cleanText3(value2) {
+    return String(value2 || "").trim();
   }
-  function normalizeSearchText(value) {
-    return cleanText3(value).toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+  function normalizeSearchText(value2) {
+    return cleanText3(value2).toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
   }
-  function flattenSearchValue(value) {
-    if (Array.isArray(value)) return value.map(flattenSearchValue).filter(Boolean).join(" ");
-    if (value && typeof value === "object") {
-      return Object.values(value).map(flattenSearchValue).filter(Boolean).join(" ");
+  function flattenSearchValue(value2) {
+    if (Array.isArray(value2)) return value2.map(flattenSearchValue).filter(Boolean).join(" ");
+    if (value2 && typeof value2 === "object") {
+      return Object.values(value2).map(flattenSearchValue).filter(Boolean).join(" ");
     }
-    return cleanText3(value);
+    return cleanText3(value2);
   }
   function buildWorkNoteSearchText(template = {}) {
     return normalizeSearchText(
@@ -11945,8 +11945,8 @@ ${value}` : value;
       ].filter(Boolean).join(" ")
     );
   }
-  function getSearchTokens(value) {
-    return normalizeSearchText(value).replace(/[^a-z0-9à-ÿ_-]+/gi, " ").split(/\s+/).map(cleanText3).filter(Boolean);
+  function getSearchTokens(value2) {
+    return normalizeSearchText(value2).replace(/[^a-z0-9à-ÿ_-]+/gi, " ").split(/\s+/).map(cleanText3).filter(Boolean);
   }
   function matchesWorkNoteSearch(template, searchTerm) {
     const tokens2 = getSearchTokens(searchTerm);
@@ -12199,10 +12199,10 @@ ${value}` : value;
     </div>
   `;
   }
-  function updateWorkNotesCharCount(root, value) {
+  function updateWorkNotesCharCount(root, value2) {
     const counter = root.querySelector("[data-work-notes-char-count]");
     if (!counter) return;
-    const length = String(value || "").length;
+    const length = String(value2 || "").length;
     if (!length) {
       counter.hidden = true;
       counter.textContent = "";
@@ -12413,8 +12413,8 @@ ${value}` : value;
       return String(dateStr).split(" ")[0] || "";
     }
   }
-  function parseUpdatedTs(value = "") {
-    const raw = String(value || "").trim();
+  function parseUpdatedTs(value2 = "") {
+    const raw = String(value2 || "").trim();
     if (!raw) return 0;
     const eu = raw.match(/^(\d{2})\/(\d{2})\/(\d{4})\s+(\d{2}):(\d{2})(?::(\d{2}))?/);
     if (eu) {
@@ -12434,7 +12434,7 @@ ${value}` : value;
     return (right.score || 0) - (left.score || 0);
   }
   function renderCiItem(ci, { best = false, copied = false, pdfSource = false } = {}) {
-    const dateText = formatDate(ci.sys_updated_on);
+    const dateText2 = formatDate(ci.sys_updated_on);
     const copiedBadge = copied ? '<span class="sn-assistant-ci-item__corp-badge sn-assistant-ci-item__corp-badge--copied">Copied</span>' : "";
     const pdfBadge = pdfSource ? '<span class="sn-assistant-ci-item__corp-badge">PDF source</span>' : "";
     return `
@@ -12455,7 +12455,7 @@ ${value}` : value;
         <div class="sn-assistant-ci-item__meta">
           ${[
       ci.model ? `${escapeHtml(ci.model)}` : "",
-      dateText ? escapeHtml(dateText) : ""
+      dateText2 ? escapeHtml(dateText2) : ""
     ].filter(Boolean).join(" \xB7 ")}
         </div>
       </div>
@@ -12584,34 +12584,34 @@ ${value}` : value;
   }
 
   // Assistant/sn/serviceNowValues.js
-  function normalizeByKeys(value, keys, seen = /* @__PURE__ */ new Set()) {
-    if (value === null || value === void 0) return "";
-    if (typeof value === "string") return value.trim();
-    if (typeof value === "number" || typeof value === "boolean" || typeof value === "bigint") {
-      return String(value).trim();
+  function normalizeByKeys(value2, keys, seen = /* @__PURE__ */ new Set()) {
+    if (value2 === null || value2 === void 0) return "";
+    if (typeof value2 === "string") return value2.trim();
+    if (typeof value2 === "number" || typeof value2 === "boolean" || typeof value2 === "bigint") {
+      return String(value2).trim();
     }
-    if (typeof value !== "object") return String(value).trim();
-    if (seen.has(value)) return "";
-    seen.add(value);
+    if (typeof value2 !== "object") return String(value2).trim();
+    if (seen.has(value2)) return "";
+    seen.add(value2);
     for (const key of keys) {
-      if (!Object.prototype.hasOwnProperty.call(value, key)) continue;
-      const candidate = normalizeByKeys(value[key], keys, seen);
+      if (!Object.prototype.hasOwnProperty.call(value2, key)) continue;
+      const candidate = normalizeByKeys(value2[key], keys, seen);
       if (candidate) return candidate;
     }
     return "";
   }
-  function normalizeServiceNowValue(value) {
-    return normalizeByKeys(value, ["display_value", "displayValue", "name", "value"]);
+  function normalizeServiceNowValue(value2) {
+    return normalizeByKeys(value2, ["display_value", "displayValue", "name", "value"]);
   }
-  function normalizeAssignedTo(value) {
-    return normalizeByKeys(value, ["display_value", "displayValue", "name", "user_name", "value"]);
+  function normalizeAssignedTo(value2) {
+    return normalizeByKeys(value2, ["display_value", "displayValue", "name", "user_name", "value"]);
   }
-  function normalizeServiceNowBoolean(value) {
-    const normalized = normalizeServiceNowValue(value).toLowerCase();
+  function normalizeServiceNowBoolean(value2) {
+    const normalized = normalizeServiceNowValue(value2).toLowerCase();
     if (!normalized) return "";
     if (["true", "1", "yes", "active"].includes(normalized)) return "Yes";
     if (["false", "0", "no", "inactive"].includes(normalized)) return "No";
-    return normalizeServiceNowValue(value);
+    return normalizeServiceNowValue(value2);
   }
 
   // Assistant/application/userInfo/panel.js
@@ -12632,9 +12632,9 @@ ${value}` : value;
     ["vip", "VIP"],
     ["sysId", "Sys ID"]
   ];
-  function renderExternalButtons(key, value) {
+  function renderExternalButtons(key, value2) {
     if (key !== "userId") return "";
-    const userId = normalizeServiceNowValue(value);
+    const userId = normalizeServiceNowValue(value2);
     if (!userId) return "";
     const safeId = escapeHtml(userId);
     return `
@@ -12650,17 +12650,17 @@ ${value}` : value;
     const title = loading ? "User Info" : normalizeServiceNowValue(data.name) || normalizeServiceNowValue(data.userId) || "User Info";
     const subtitle = loading ? "" : normalizeServiceNowValue(data.userId) || normalizeServiceNowValue(data.email);
     const showCopyBlocked = Boolean(state.ui.userInfoCopyBlocked);
-    const rowsMarkup = ROWS.map(([key, label]) => [key, label, normalizeServiceNowValue(data[key])]).filter(([, , value]) => value).map(([key, label, value]) => {
+    const rowsMarkup = ROWS.map(([key, label]) => [key, label, normalizeServiceNowValue(data[key])]).filter(([, , value2]) => value2).map(([key, label, value2]) => {
       const warn = showCopyBlocked && key === "userId";
       return `
         <div class="sn-assistant-ci-item ${warn ? "sn-assistant-note sn-assistant-note--warning" : ""}">
           <div class="sn-assistant-ci-item__info" data-action="user-info-copy-value" data-key="${escapeHtml(key)}" tabindex="0" role="button">
             <div class="sn-assistant-ci-item__name">${escapeHtml(label)}</div>
-            <div class="sn-assistant-ci-item__meta">${escapeHtml(value)}</div>
+            <div class="sn-assistant-ci-item__meta">${escapeHtml(value2)}</div>
           </div>
           <div class="sn-assistant-ci-item__actions">
             <button type="button" class="sn-assistant-button sn-assistant-button--secondary sn-assistant-button--compact" data-action="user-info-copy-value" data-key="${escapeHtml(key)}">Copy</button>
-            ${renderExternalButtons(key, value)}
+            ${renderExternalButtons(key, value2)}
           </div>
         </div>
       `;
@@ -12725,29 +12725,20 @@ ${value}` : value;
 
   // Assistant/application/userTickets/panel.js
   var CLOSED_VIEW = "__closed__";
-  function formatDate2(value) {
-    const dateStr = normalizeServiceNowValue(value);
-    if (!dateStr) return "";
-    const simple = dateStr.match(/^(\d{4})-(\d{2})-(\d{2})/);
-    if (simple) {
-      const [, yyyy, mm, dd] = simple;
-      const d = new Date(Number(yyyy), Number(mm) - 1, Number(dd));
-      return d.toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" });
-    }
-    try {
-      const d = new Date(dateStr);
-      if (isNaN(d.getTime())) return dateStr.split(" ")[0] || "";
-      return d.toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" });
-    } catch {
-      return dateStr.split(" ")[0] || "";
-    }
+  var TASK_PREVIEW_LIMIT = 2;
+  var SECTION_PREVIEW_LIMIT = 3;
+  var PREF_KEY = "sn-assistant:user-tickets:prefs";
+  function value(v) {
+    return normalizeServiceNowValue(v);
   }
-  function getTableBadge(table) {
-    const map = { incident: "INC", sc_req_item: "RITM", sc_request: "REQ", sc_task: "SCTASK" };
-    return map[table] || String(table || "").toUpperCase().slice(0, 6);
+  function currentNumber(context) {
+    return value(context?.number ?? context?.ticketNumber ?? context?.sourceNumber ?? context?.recordNumber);
   }
-  function getStateClass(state) {
-    const s = normalizeServiceNowValue(state).toLowerCase();
+  function badge(table) {
+    return { incident: "INC", sc_req_item: "RITM", sc_request: "REQ", sc_task: "SCTASK" }[table] || String(table || "").toUpperCase().slice(0, 6);
+  }
+  function stateClass(state) {
+    const s = value(state).toLowerCase();
     if (/\bnew\b/.test(s)) return "new";
     if (/in progress|assigned|open|work in progress/.test(s)) return "inprogress";
     if (/pending|awaiting|hold|wait|intervention planned/.test(s)) return "pending";
@@ -12755,163 +12746,157 @@ ${value}` : value;
     if (/closed|cancelled|canceled/.test(s)) return "closed";
     return "default";
   }
-  function renderTicketRow(ticket, { closed = false } = {}) {
-    const table = normalizeServiceNowValue(ticket.table);
-    const number = normalizeServiceNowValue(ticket.number);
-    const state = normalizeServiceNowValue(ticket.state);
-    const assignedTo = normalizeAssignedTo(ticket.assignedTo ?? ticket.assigned_to);
-    const assignmentGroup = normalizeServiceNowValue(ticket.assignmentGroup ?? ticket.assignment_group);
-    const assignmentText = assignedTo || "Unassigned";
-    const fullAssignment = [assignmentText, assignmentGroup ? `(${assignmentGroup})` : ""].filter(Boolean).join(" ");
-    const dateText = formatDate2(closed ? ticket.closedAt ?? ticket.closed_at ?? ticket.closed_on : ticket.updated ?? ticket.sys_updated_on);
-    const stateKey = getStateClass(state);
-    const shortDesc = normalizeServiceNowValue(ticket.shortDesc ?? ticket.short_description);
-    const descTooltip = shortDesc ? `${number}: ${shortDesc.slice(0, 120)}` : number;
-    const sysId = normalizeServiceNowValue(ticket.sysId ?? ticket.sys_id);
-    return `
-    <tr class="sn-assistant-tickets-table__row" data-action="user-tickets-open" data-sys-id="${escapeHtml(sysId)}" data-table="${escapeHtml(table)}" title="${escapeHtml(descTooltip)}" role="button" tabindex="0">
-      <td class="sn-assistant-tickets-table__number"><span class="sn-assistant-tickets-table__badge sn-assistant-tickets-table__badge--${escapeHtml(table)}">${escapeHtml(getTableBadge(table))}</span><span class="sn-assistant-tickets-table__num-val">${escapeHtml(number)}</span></td>
-      <td class="sn-assistant-tickets-table__type">${escapeHtml(normalizeServiceNowValue(ticket.type) || getTableBadge(table))}</td>
-      <td class="sn-assistant-tickets-table__state"><span class="sn-assistant-tickets-table__state-pill sn-assistant-tickets-table__state-pill--${stateKey}">${escapeHtml(state || "-")}</span></td>
-      <td class="sn-assistant-tickets-table__assigned" title="${escapeHtml(fullAssignment)}">${escapeHtml(assignmentText)}</td>
-      <td class="sn-assistant-tickets-table__date">${escapeHtml(dateText || "-")}</td>
-    </tr>`;
+  function dateText(v) {
+    const raw = value(v);
+    if (!raw) return "";
+    const m = raw.match(/^(\d{4})-(\d{2})-(\d{2})/);
+    if (m) return new Date(+m[1], +m[2] - 1, +m[3]).toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" });
+    const d = new Date(raw);
+    return isNaN(d.getTime()) ? raw.split(" ")[0] || "" : d.toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" });
   }
-  function groupScTasksByRitm(tasks, allResults) {
-    const ritmByNumber = new Map(allResults.filter((row) => String(row.table) === "sc_req_item").map((row) => [normalizeServiceNowValue(row.number), row]).filter(([number]) => number));
-    const groups = /* @__PURE__ */ new Map();
-    for (const task of tasks) {
-      const parentNumber = normalizeServiceNowValue(task.parentRitmNumber ?? task.parent_ritm_number);
-      const relatedRitm = parentNumber ? ritmByNumber.get(parentNumber) : null;
-      const parentSysId = normalizeServiceNowValue(task.parentRitmSysId ?? task.parent_ritm_sys_id) || normalizeServiceNowValue(relatedRitm?.sysId ?? relatedRitm?.sys_id);
-      const key = parentSysId || parentNumber || "__unlinked__";
-      if (!groups.has(key)) groups.set(key, { parentNumber: parentNumber || normalizeServiceNowValue(relatedRitm?.number) || "Other SCTASKs", parentSysId, parentShortDesc: normalizeServiceNowValue(relatedRitm?.shortDesc ?? relatedRitm?.short_description), parentTicket: relatedRitm || null, tasks: [] });
-      groups.get(key).tasks.push(task);
-    }
-    return [...groups.values()].sort((a, b) => {
-      if (a.parentNumber === "Other SCTASKs") return 1;
-      if (b.parentNumber === "Other SCTASKs") return -1;
-      return a.parentNumber.localeCompare(b.parentNumber);
+  function ticketDate(t, closed) {
+    return dateText(closed ? t.closedAt ?? t.closed_at ?? t.closed_on ?? t.updated : t.updated ?? t.sys_updated_on);
+  }
+  function compactDescription(v) {
+    const t = value(v);
+    if (!t || /^(use this item when|use this service to)/i.test(t)) return "";
+    return t.length > 88 ? `${t.slice(0, 85).trim()}\u2026` : t;
+  }
+  function assigned(t) {
+    return normalizeAssignedTo(t.assignedTo ?? t.assigned_to) || "Unassigned";
+  }
+  function updatedMs(t) {
+    const d = new Date(value(t.updated ?? t.sys_updated_on ?? t.closedAt ?? t.closed_at));
+    return isNaN(d.getTime()) ? 0 : d.getTime();
+  }
+  function sortForContext(rows, context) {
+    const current = currentNumber(context);
+    return [...rows].sort((a, b) => {
+      const an = value(a.number), bn = value(b.number);
+      if (an === current) return -1;
+      if (bn === current) return 1;
+      const ap = value(a.parentRitmNumber ?? a.parent_ritm_number), bp = value(b.parentRitmNumber ?? b.parent_ritm_number);
+      if (ap === current) return -1;
+      if (bp === current) return 1;
+      return updatedMs(b) - updatedMs(a);
     });
   }
-  function summarizeTaskStates(tasks) {
-    let open = 0, planned = 0, closed = 0, onHold = 0;
-    for (const task of tasks) {
-      const state = normalizeServiceNowValue(task.state).toLowerCase();
-      if (/closed|complete|resolved|done/.test(state)) closed += 1;
-      else if (/intervention planned|planned|appointment/.test(state)) planned += 1;
-      else if (/hold|pending|awaiting|wait/.test(state)) onHold += 1;
-      else open += 1;
-    }
-    const parts = [`${tasks.length} task${tasks.length === 1 ? "" : "s"}`];
-    if (open) parts.push(`${open} open`);
-    if (onHold) parts.push(`${onHold} on hold`);
-    if (planned) parts.push(`${planned} planned`);
-    if (closed) parts.push(`${closed} closed`);
-    return parts.join(" \xB7 ");
+  function renderState(state) {
+    const s = value(state) || "-";
+    return `<span class="sn-assistant-tickets-table__state-pill sn-assistant-tickets-table__state-pill--${stateClass(s)}" title="${escapeHtml(s)}">${escapeHtml(s)}</span>`;
   }
-  function getCurrentTicketNumber(context) {
-    return normalizeServiceNowValue(context?.number ?? context?.ticketNumber ?? context?.sourceNumber ?? context?.recordNumber);
-  }
-  function renderGroupedScTasks(tasks, allResults, context, { forceExpanded = false } = {}) {
-    const groups = groupScTasksByRitm(tasks, allResults);
-    const currentNumber = getCurrentTicketNumber(context);
-    const autoOpenAll = groups.length === 1;
-    return groups.map((group) => {
-      const containsCurrent = Boolean(currentNumber && group.tasks.some((task) => normalizeServiceNowValue(task.number) === currentNumber));
-      const expanded = forceExpanded || autoOpenAll || containsCurrent;
-      const parentClickable = Boolean(group.parentSysId && group.parentNumber !== "Other SCTASKs");
-      const groupId = `ritm-${String(group.parentSysId || group.parentNumber || "other").replace(/[^a-z0-9_-]/gi, "-")}`;
-      return `
-      <section class="sn-assistant-ritm-branch ${expanded ? "is-expanded" : "is-collapsed"}" data-ritm-group data-parent-number="${escapeHtml(group.parentNumber)}">
-        <div class="sn-assistant-ritm-branch__head">
-          <button type="button" class="sn-assistant-ritm-branch__toggle" data-action="user-tickets-toggle-ritm" aria-expanded="${expanded ? "true" : "false"}" aria-controls="${escapeHtml(groupId)}" title="${expanded ? "Collapse" : "Expand"} ${escapeHtml(group.parentNumber)}"><span class="sn-assistant-ritm-branch__chevron" aria-hidden="true"></span></button>
-          <span class="sn-assistant-ritm-branch__node sn-assistant-ritm-branch__node--parent" aria-hidden="true"></span>
-          <div class="sn-assistant-ritm-branch__identity">
-            ${parentClickable ? `<button type="button" class="sn-assistant-ritm-branch__number" data-action="user-tickets-open" data-table="sc_req_item" data-sys-id="${escapeHtml(group.parentSysId)}" title="Open ${escapeHtml(group.parentNumber)}">${escapeHtml(group.parentNumber)}</button>` : `<span class="sn-assistant-ritm-branch__number is-static">${escapeHtml(group.parentNumber)}</span>`}
-            ${group.parentShortDesc ? `<span class="sn-assistant-ritm-branch__description">${escapeHtml(group.parentShortDesc)}</span>` : ""}
-          </div>
-          <span class="sn-assistant-ritm-branch__summary">${escapeHtml(summarizeTaskStates(group.tasks))}</span>
-        </div>
-        <div class="sn-assistant-ritm-branch__children" id="${escapeHtml(groupId)}">
-          ${group.tasks.map((task, index) => {
-        const state = normalizeServiceNowValue(task.state), stateKey = getStateClass(state);
-        const assignedTo = normalizeAssignedTo(task.assignedTo ?? task.assigned_to) || "Unassigned";
-        const shortDesc = normalizeServiceNowValue(task.shortDesc ?? task.short_description);
-        const dateText = formatDate2(task.updated ?? task.sys_updated_on);
-        const sysId = normalizeServiceNowValue(task.sysId ?? task.sys_id), number = normalizeServiceNowValue(task.number);
-        const current = Boolean(currentNumber && currentNumber === number), last2 = index === group.tasks.length - 1;
-        return `<div class="sn-assistant-sctask-tree-row ${current ? "is-current" : ""} ${last2 ? "is-last" : ""}">
-              <span class="sn-assistant-sctask-tree-row__rail" aria-hidden="true"></span><span class="sn-assistant-sctask-tree-row__branch" aria-hidden="true"></span><span class="sn-assistant-ritm-branch__node sn-assistant-ritm-branch__node--child" aria-hidden="true"></span>
-              <button type="button" class="sn-assistant-sctask-tree-row__content" data-action="user-tickets-open" data-table="sc_task" data-sys-id="${escapeHtml(sysId)}" title="${escapeHtml(shortDesc || number)}">
-                <span class="sn-assistant-sctask-tree-row__body"><span class="sn-assistant-sctask-tree-row__topline"><strong class="sn-assistant-sctask-tree-row__number">${escapeHtml(number)}</strong><span class="sn-assistant-tickets-table__state-pill sn-assistant-tickets-table__state-pill--${stateKey}">${escapeHtml(state || "-")}</span></span>${shortDesc ? `<span class="sn-assistant-sctask-tree-row__description">${escapeHtml(shortDesc)}</span>` : ""}<span class="sn-assistant-sctask-tree-row__meta"><span>${escapeHtml(assignedTo)}</span><span>${escapeHtml(dateText || "-")}</span></span></span>
-              </button></div>`;
-      }).join("")}
-        </div>
-      </section>`;
-    }).join("");
-  }
-  function renderStandaloneTicket(ticket, context) {
-    const table = normalizeServiceNowValue(ticket.table), number = normalizeServiceNowValue(ticket.number);
-    const state = normalizeServiceNowValue(ticket.state), stateKey = getStateClass(state);
-    const assigned = normalizeAssignedTo(ticket.assignedTo ?? ticket.assigned_to) || "Unassigned";
-    const shortDesc = normalizeServiceNowValue(ticket.shortDesc ?? ticket.short_description);
-    const dateText = formatDate2(ticket.updated ?? ticket.sys_updated_on), sysId = normalizeServiceNowValue(ticket.sysId ?? ticket.sys_id);
-    const current = Boolean(getCurrentTicketNumber(context) && getCurrentTicketNumber(context) === number);
-    return `<button type="button" class="sn-assistant-all-ticket ${current ? "is-current" : ""}" data-action="user-tickets-open" data-table="${escapeHtml(table)}" data-sys-id="${escapeHtml(sysId)}" title="${escapeHtml(shortDesc || number)}">
-    <span class="sn-assistant-all-ticket__node sn-assistant-all-ticket__node--${escapeHtml(table)}" aria-hidden="true"></span>
-    <span class="sn-assistant-all-ticket__body"><span class="sn-assistant-all-ticket__topline"><span><span class="sn-assistant-tickets-table__badge sn-assistant-tickets-table__badge--${escapeHtml(table)}">${escapeHtml(getTableBadge(table))}</span> <strong>${escapeHtml(number)}</strong></span><span class="sn-assistant-tickets-table__state-pill sn-assistant-tickets-table__state-pill--${stateKey}">${escapeHtml(state || "-")}</span></span>${shortDesc ? `<span class="sn-assistant-all-ticket__description">${escapeHtml(shortDesc)}</span>` : ""}<span class="sn-assistant-all-ticket__meta"><span>${escapeHtml(assigned)}</span><span>${escapeHtml(dateText || "-")}</span></span></span>
-  </button>`;
-  }
-  function renderAllHierarchy(allResults, context) {
-    const incidents = allResults.filter((r) => String(r.table) === "incident");
-    const ritms = allResults.filter((r) => String(r.table) === "sc_req_item");
-    const tasks = allResults.filter((r) => String(r.table) === "sc_task");
-    const grouped = groupScTasksByRitm(tasks, allResults);
-    const groupedParents = new Set(grouped.filter((g) => g.parentNumber !== "Other SCTASKs").map((g) => g.parentNumber));
-    const ritmsWithoutTasks = ritms.filter((r) => !groupedParents.has(normalizeServiceNowValue(r.number)));
-    const linkedTasks = tasks.filter((task) => normalizeServiceNowValue(task.parentRitmNumber ?? task.parent_ritm_number));
-    const unlinkedTasks = tasks.filter((task) => !normalizeServiceNowValue(task.parentRitmNumber ?? task.parent_ritm_number));
-    const current = getCurrentTicketNumber(context);
-    const tree = renderGroupedScTasks(linkedTasks, allResults, context, { forceExpanded: false });
-    return `<div class="sn-assistant-all-hierarchy" data-user-tickets-all-view>
-    ${incidents.length ? `<div class="sn-assistant-all-hierarchy__section"><div class="sn-assistant-all-hierarchy__label">Incidents <span>${incidents.length}</span></div>${incidents.map((r) => renderStandaloneTicket(r, context)).join("")}</div>` : ""}
-    ${tree || ritmsWithoutTasks.length ? `<div class="sn-assistant-all-hierarchy__section"><div class="sn-assistant-all-hierarchy__label">Requested items <span>${ritms.length}</span></div>${tree}${ritmsWithoutTasks.map((r) => renderStandaloneTicket(r, context)).join("")}</div>` : ""}
-    ${unlinkedTasks.length ? `<div class="sn-assistant-all-hierarchy__section"><div class="sn-assistant-all-hierarchy__label">Other SCTASKs <span>${unlinkedTasks.length}</span></div>${unlinkedTasks.map((r) => renderStandaloneTicket(r, context)).join("")}</div>` : ""}
-    ${!incidents.length && !ritms.length && !tasks.length ? `<div class="sn-assistant-note sn-assistant-note--empty">No open tickets found for this user.</div>` : ""}
+  function renderCard(t, context, { closed = false, previewHidden = false } = {}) {
+    const table = value(t.table), number = value(t.number), desc = value(t.shortDesc ?? t.short_description), sysId = value(t.sysId ?? t.sys_id);
+    const isCurrent = currentNumber(context) === number;
+    return `<div class="sn-assistant-ticket-card-wrap ${previewHidden ? "is-preview-hidden" : ""}" data-preview-item>
+    <button type="button" class="sn-assistant-all-ticket ${isCurrent ? "is-current" : ""}" data-action="user-tickets-open" data-table="${escapeHtml(table)}" data-sys-id="${escapeHtml(sysId)}" title="${escapeHtml(desc || number)}">
+      <span class="sn-assistant-all-ticket__node sn-assistant-all-ticket__node--${escapeHtml(table)}" aria-hidden="true"></span>
+      <span class="sn-assistant-all-ticket__body">
+        <span class="sn-assistant-all-ticket__topline"><span><span class="sn-assistant-tickets-table__badge sn-assistant-tickets-table__badge--${escapeHtml(table)}">${escapeHtml(badge(table))}</span> <strong>${escapeHtml(number)}</strong></span>${renderState(t.state)}</span>
+        ${desc ? `<span class="sn-assistant-all-ticket__description">${escapeHtml(desc)}</span>` : ""}
+        <span class="sn-assistant-all-ticket__meta"><span>${escapeHtml(assigned(t))}</span><span>${escapeHtml(ticketDate(t, closed) || "-")}</span></span>
+      </span>
+    </button>
+    <div class="sn-assistant-ticket-card-actions" aria-label="Quick actions"><button type="button" data-action="user-tickets-copy-number" data-number="${escapeHtml(number)}" title="Copy ${escapeHtml(number)}" aria-label="Copy ticket number">\u29C9</button></div>
   </div>`;
   }
-  function renderScTaskGroupedView(results, allResults, context) {
-    return `<div class="sn-assistant-sctask-view is-grouped" data-user-tickets-sctask-view><div class="sn-assistant-sctask-view__toolbar" role="group" aria-label="SCTASK display mode"><span class="sn-assistant-sctask-view__label">View</span><button type="button" class="sn-assistant-sctask-view__toggle is-active" data-action="user-tickets-sctask-mode" data-mode="grouped" aria-pressed="true">RITM tree</button><button type="button" class="sn-assistant-sctask-view__toggle" data-action="user-tickets-sctask-mode" data-mode="flat" aria-pressed="false">Flat</button></div><div class="sn-assistant-sctask-view__grouped">${renderGroupedScTasks(results, allResults, context)}</div><div class="sn-assistant-sctask-view__flat"><div class="sn-assistant-tickets-table-wrapper"><table class="sn-assistant-tickets-table"><thead><tr><th>Number</th><th>Type</th><th>State</th><th>Assigned</th><th>Date</th></tr></thead><tbody>${results.map((row) => renderTicketRow(row)).join("")}</tbody></table></div></div></div>`;
+  function renderPreviewSection(label, rows, context, { closed = false } = {}) {
+    if (!rows.length) return "";
+    const sorted = sortForContext(rows, context), hidden = Math.max(0, sorted.length - SECTION_PREVIEW_LIMIT);
+    return `<section class="sn-assistant-all-hierarchy__section ${hidden ? "has-more-items" : ""}" data-preview-section>
+    <div class="sn-assistant-all-hierarchy__label">${escapeHtml(label)} <span>${rows.length}</span></div>
+    ${sorted.map((r, i) => renderCard(r, context, { closed, previewHidden: i >= SECTION_PREVIEW_LIMIT })).join("")}
+    ${hidden ? `<button type="button" class="sn-assistant-section-more" data-action="user-tickets-section-more" data-hidden-count="${hidden}" aria-expanded="false">View ${hidden} more</button>` : ""}
+  </section>`;
+  }
+  function groupTasks(tasks, allRows) {
+    const ritms = new Map(allRows.filter((r) => value(r.table) === "sc_req_item").map((r) => [value(r.number), r]));
+    const groups = /* @__PURE__ */ new Map();
+    for (const task of tasks) {
+      const pn = value(task.parentRitmNumber ?? task.parent_ritm_number), ritm = pn ? ritms.get(pn) : null;
+      const ps = value(task.parentRitmSysId ?? task.parent_ritm_sys_id) || value(ritm?.sysId ?? ritm?.sys_id), key = ps || pn || "__other__";
+      if (!groups.has(key)) groups.set(key, { number: pn || value(ritm?.number) || "Other SCTASKs", sysId: ps, desc: value(ritm?.shortDesc ?? ritm?.short_description), tasks: [] });
+      groups.get(key).tasks.push(task);
+    }
+    return [...groups.values()];
+  }
+  function taskSummary(tasks) {
+    let open = 0, hold = 0, planned = 0, closed = 0;
+    tasks.forEach((t) => {
+      const s = value(t.state).toLowerCase();
+      if (/closed|complete|resolved|done/.test(s)) closed++;
+      else if (/planned|appointment/.test(s)) planned++;
+      else if (/hold|pending|awaiting|wait/.test(s)) hold++;
+      else open++;
+    });
+    return [`${tasks.length} task${tasks.length === 1 ? "" : "s"}`, open && `${open} open`, hold && `${hold} on hold`, planned && `${planned} planned`, closed && `${closed} closed`].filter(Boolean).join(" \xB7 ");
+  }
+  function renderTaskTree(tasks, allRows, context, { closed = false } = {}) {
+    const groups = groupTasks(tasks, allRows), current = currentNumber(context);
+    groups.sort((a, b) => (a.number === current ? -1 : b.number === current ? 1 : 0) || Math.max(...b.tasks.map(updatedMs), 0) - Math.max(...a.tasks.map(updatedMs), 0));
+    return groups.map((g, gi) => {
+      const sorted = sortForContext(g.tasks, context), ci = sorted.findIndex((t) => value(t.number) === current), visible = new Set(sorted.slice(0, TASK_PREVIEW_LIMIT).map((_, i) => i));
+      if (ci >= 0) visible.add(ci);
+      const hidden = sorted.length - visible.size, expanded = groups.length === 1 || gi === 0 || ci >= 0, id = `ritm-${String(g.sysId || g.number).replace(/[^a-z0-9_-]/gi, "-")}`;
+      return `<section class="sn-assistant-ritm-branch ${expanded ? "is-expanded" : "is-collapsed"} ${hidden ? "has-more-tasks" : ""}" data-ritm-group>
+      <div class="sn-assistant-ritm-branch__head"><button type="button" class="sn-assistant-ritm-branch__toggle" data-action="user-tickets-toggle-ritm" aria-expanded="${expanded}" aria-controls="${escapeHtml(id)}"><span class="sn-assistant-ritm-branch__chevron"></span></button><span class="sn-assistant-ritm-branch__node sn-assistant-ritm-branch__node--parent"></span><div class="sn-assistant-ritm-branch__identity">${g.sysId && g.number !== "Other SCTASKs" ? `<button type="button" class="sn-assistant-ritm-branch__number" data-action="user-tickets-open" data-table="sc_req_item" data-sys-id="${escapeHtml(g.sysId)}">${escapeHtml(g.number)}</button>` : `<span class="sn-assistant-ritm-branch__number is-static">${escapeHtml(g.number)}</span>`}${compactDescription(g.desc) ? `<span class="sn-assistant-ritm-branch__description">${escapeHtml(compactDescription(g.desc))}</span>` : ""}</div><span class="sn-assistant-ritm-branch__summary">${escapeHtml(taskSummary(sorted))}</span></div>
+      <div class="sn-assistant-ritm-branch__children" id="${escapeHtml(id)}">${sorted.map((t, i) => {
+        const number = value(t.number), desc = value(t.shortDesc ?? t.short_description), isCurrent = number === current, hiddenRow = !visible.has(i), last2 = i === sorted.length - 1;
+        return `<div class="sn-assistant-sctask-tree-row ${isCurrent ? "is-current" : ""} ${hiddenRow ? "is-preview-hidden" : ""} ${last2 ? "is-last" : ""}"><span class="sn-assistant-sctask-tree-row__branch"></span><span class="sn-assistant-ritm-branch__node sn-assistant-ritm-branch__node--child"></span><button type="button" class="sn-assistant-sctask-tree-row__content" data-action="user-tickets-open" data-table="sc_task" data-sys-id="${escapeHtml(value(t.sysId ?? t.sys_id))}"><span class="sn-assistant-sctask-tree-row__body"><span class="sn-assistant-sctask-tree-row__topline"><strong class="sn-assistant-sctask-tree-row__number">${escapeHtml(number)}</strong>${renderState(t.state)}</span>${desc ? `<span class="sn-assistant-sctask-tree-row__description">${escapeHtml(desc)}</span>` : ""}<span class="sn-assistant-sctask-tree-row__meta"><span>${escapeHtml(assigned(t))}</span><span>${escapeHtml(ticketDate(t, closed) || "-")}</span></span></span></button><div class="sn-assistant-ticket-card-actions"><button type="button" data-action="user-tickets-copy-number" data-number="${escapeHtml(number)}" title="Copy ${escapeHtml(number)}">\u29C9</button></div></div>`;
+      }).join("")}${hidden ? `<button type="button" class="sn-assistant-ritm-branch__more" data-action="user-tickets-toggle-more" data-hidden-count="${hidden}" aria-expanded="false"><span>View ${hidden} more task${hidden === 1 ? "" : "s"}</span><span class="sn-assistant-ritm-branch__more-chevron"></span></button>` : ""}</div>
+    </section>`;
+    }).join("");
+  }
+  function renderHierarchy(rows, context, { closed = false } = {}) {
+    const inc = rows.filter((r) => value(r.table) === "incident"), ritm = rows.filter((r) => value(r.table) === "sc_req_item"), tasks = rows.filter((r) => value(r.table) === "sc_task");
+    const linked = tasks.filter((t) => value(t.parentRitmNumber ?? t.parent_ritm_number)), unlinked = tasks.filter((t) => !value(t.parentRitmNumber ?? t.parent_ritm_number));
+    const parentNumbers = new Set(linked.map((t) => value(t.parentRitmNumber ?? t.parent_ritm_number))), soloRitm = ritm.filter((r) => !parentNumbers.has(value(r.number)));
+    return `<div class="sn-assistant-all-hierarchy" data-user-tickets-all-view>${renderPreviewSection("Incidents", inc, context, { closed })}${linked.length ? `<section class="sn-assistant-all-hierarchy__section"><div class="sn-assistant-all-hierarchy__label">Requested items <span>${ritm.length}</span></div>${renderTaskTree(linked, rows, context, { closed })}</section>` : ""}${renderPreviewSection("Requested items", soloRitm, context, { closed })}${renderPreviewSection("Other SCTASKs", unlinked, context, { closed })}</div>`;
+  }
+  function skeleton() {
+    return `<div class="sn-assistant-ticket-skeleton" aria-label="Loading tickets">${[1, 2, 3].map(() => `<div><i></i><span></span><small></small></div>`).join("")}</div>`;
+  }
+  function flatTable(rows, { closed = false } = {}) {
+    return `<div class="sn-assistant-tickets-table-wrapper"><table class="sn-assistant-tickets-table"><thead><tr><th>Number</th><th>State</th><th>Assigned</th><th>${closed ? "Closed" : "Date"}</th></tr></thead><tbody>${rows.map((t) => `<tr class="sn-assistant-tickets-table__row" data-action="user-tickets-open" data-table="${escapeHtml(value(t.table))}" data-sys-id="${escapeHtml(value(t.sysId ?? t.sys_id))}" role="button" tabindex="0"><td class="sn-assistant-tickets-table__number"><span class="sn-assistant-tickets-table__badge sn-assistant-tickets-table__badge--${escapeHtml(value(t.table))}">${escapeHtml(badge(value(t.table)))}</span><span class="sn-assistant-tickets-table__num-val">${escapeHtml(value(t.number))}</span></td><td>${renderState(t.state)}</td><td class="sn-assistant-tickets-table__assigned">${escapeHtml(assigned(t))}</td><td class="sn-assistant-tickets-table__date">${escapeHtml(ticketDate(t, closed) || "-")}</td></tr>`).join("")}</tbody></table></div>`;
   }
   function renderUserTicketsPanelMarkup({ state, context } = {}) {
-    const userName = context?.user?.fullName || context?.requestedFor || context?.caller || "Unknown user";
-    const isLoading = Boolean(state.ui.userTicketsLoading);
-    const allResults = Array.isArray(state.ui.userTicketsResults) ? state.ui.userTicketsResults : [];
-    const activeFilter = String(state.ui.userTicketsFilter || "");
-    const isClosedView = activeFilter === CLOSED_VIEW;
-    const results = !isClosedView && activeFilter ? allResults.filter((row) => String(row.table) === activeFilter) : allResults;
-    const modeTabsMarkup = `<div class="sn-assistant-tickets-filters" role="tablist" aria-label="Ticket history view"><button type="button" class="sn-assistant-tickets-filter ${!isClosedView ? "is-active" : ""}" data-action="user-tickets-view" data-view="open" role="tab" aria-selected="${!isClosedView}">Open Tickets</button><button type="button" class="sn-assistant-tickets-filter ${isClosedView ? "is-active" : ""}" data-action="user-tickets-view" data-view="closed" role="tab" aria-selected="${isClosedView}">Last Closed Tickets</button></div>`;
-    const filterChips = [{ id: "", label: "All", count: allResults.length }, { id: "incident", label: "INC", count: allResults.filter((r) => r.table === "incident").length }, { id: "sc_req_item", label: "RITM", count: allResults.filter((r) => r.table === "sc_req_item").length }, { id: "sc_task", label: "SCTASK", count: allResults.filter((r) => r.table === "sc_task").length }];
-    const filterChipsMarkup = isClosedView ? "" : `<div class="sn-assistant-tickets-filters" role="tablist" aria-label="Filter tickets by type">${filterChips.map((chip) => {
-      const isActive = chip.id === activeFilter;
-      return `<button type="button" class="sn-assistant-tickets-filter ${isActive ? "is-active" : ""}" data-action="user-tickets-filter" data-filter="${escapeHtml(chip.id)}" role="tab" aria-selected="${isActive ? "true" : "false"}">${escapeHtml(chip.label)}<span class="sn-assistant-tickets-filter__count">${chip.count}</span></button>`;
-    }).join("")}</div>`;
-    let bodyContent;
-    if (isLoading) bodyContent = `${modeTabsMarkup}<div class="sn-assistant-note sn-assistant-tickets-loading">${isClosedView ? "Loading last closed tickets..." : "Searching open tickets..."}</div>`;
-    else if (!results.length) {
-      const emptyLabel = isClosedView ? "No recently closed tickets found for this user." : activeFilter ? `No open ${activeFilter === "incident" ? "incidents" : activeFilter === "sc_req_item" ? "RITMs" : "SCTASKs"} found for this user.` : "No open tickets found for this user.";
-      bodyContent = `${modeTabsMarkup}${filterChipsMarkup}<div class="sn-assistant-note sn-assistant-note--empty">${escapeHtml(emptyLabel)}</div>`;
-    } else if (!isClosedView && activeFilter === "sc_task") bodyContent = `${modeTabsMarkup}${filterChipsMarkup}${renderScTaskGroupedView(results, allResults, context)}`;
-    else if (!isClosedView && !activeFilter) bodyContent = `${modeTabsMarkup}${filterChipsMarkup}${renderAllHierarchy(allResults, context)}`;
-    else bodyContent = `${modeTabsMarkup}${filterChipsMarkup}<div class="sn-assistant-tickets-table-wrapper"><table class="sn-assistant-tickets-table"><thead><tr><th>Number</th><th>Type</th><th>State</th><th>Assigned</th><th>${isClosedView ? "Closed date" : "Date"}</th></tr></thead><tbody>${results.map((row) => renderTicketRow(row, { closed: isClosedView })).join("")}</tbody></table></div>`;
-    const countLabel = isLoading ? "Loading..." : !isClosedView && activeFilter ? `${results.length} of ${allResults.length} record${allResults.length !== 1 ? "s" : ""}` : `${allResults.length} record${allResults.length !== 1 ? "s" : ""}`;
-    return `<div class="sn-assistant-panel sn-assistant-panel--user-tickets"><div class="sn-assistant-panel__header"><div class="sn-assistant-panel__title"><span class="sn-assistant-panel__eyebrow">${isClosedView ? "Last Closed Tickets" : "Open Tickets"}</span><div class="sn-assistant-panel__heading">${escapeHtml(userName)}</div><div class="sn-assistant-panel__subheading">${escapeHtml(countLabel)}</div></div><div class="sn-assistant-panel__header-actions"><button type="button" class="sn-assistant-mini-button sn-assistant-mini-button--danger" data-action="user-tickets-close" title="Close" aria-label="Close"><span class="sn-assistant-icon sn-assistant-icon--close" aria-hidden="true"></span></button></div></div><div class="sn-assistant-panel__body sn-assistant-panel__body--flush">${bodyContent}</div></div>`;
+    const name = context?.user?.fullName || context?.requestedFor || context?.caller || "Unknown user", loading = Boolean(state.ui.userTicketsLoading), rows = Array.isArray(state.ui.userTicketsResults) ? state.ui.userTicketsResults : [], filter = String(state.ui.userTicketsFilter || ""), closed = filter === CLOSED_VIEW, results = !closed && filter ? rows.filter((r) => value(r.table) === filter) : rows;
+    const tabs = `<div class="sn-assistant-tickets-filters" role="tablist"><button type="button" class="sn-assistant-tickets-filter ${!closed ? "is-active" : ""}" data-action="user-tickets-view" data-view="open">Open Tickets</button><button type="button" class="sn-assistant-tickets-filter ${closed ? "is-active" : ""}" data-action="user-tickets-view" data-view="closed">Last Closed Tickets</button></div>`;
+    const chips = closed ? "" : `<div class="sn-assistant-tickets-filters" role="tablist">${[["", "All"], ["incident", "INC"], ["sc_req_item", "RITM"], ["sc_task", "SCTASK"]].map(([id, label]) => `<button type="button" class="sn-assistant-tickets-filter ${id === filter ? "is-active" : ""}" data-action="user-tickets-filter" data-filter="${id}">${label}<span class="sn-assistant-tickets-filter__count">${id ? rows.filter((r) => value(r.table) === id).length : rows.length}</span></button>`).join("")}</div>`;
+    let content;
+    if (loading) content = `${tabs}${skeleton()}`;
+    else if (!results.length) content = `${tabs}${chips}<div class="sn-assistant-note sn-assistant-note--empty">${closed ? "No recently closed tickets found for this user." : "No open tickets found for this user."}</div>`;
+    else if (closed) content = `${tabs}<div class="sn-assistant-ticket-view-toggle"><button type="button" data-action="user-tickets-display" data-mode="smart" class="is-active">Smart</button><button type="button" data-action="user-tickets-display" data-mode="flat">Flat</button></div><div data-ticket-smart>${renderHierarchy(rows, context, { closed: true })}</div><div data-ticket-flat hidden>${flatTable(rows, { closed: true })}</div>`;
+    else if (filter === "sc_task") content = `${tabs}${chips}<div class="sn-assistant-ticket-view-toggle"><button type="button" data-action="user-tickets-display" data-mode="smart" class="is-active">RITM tree</button><button type="button" data-action="user-tickets-display" data-mode="flat">Flat</button></div><div data-ticket-smart class="sn-assistant-sctask-view__grouped">${renderTaskTree(results, rows, context)}</div><div data-ticket-flat hidden>${flatTable(results)}</div>`;
+    else if (!filter) content = `${tabs}${chips}${renderHierarchy(rows, context)}`;
+    else content = `${tabs}${chips}${renderPreviewSection(filter === "incident" ? "Incidents" : "Requested items", results, context)}`;
+    const count = loading ? "Loading\u2026" : `${results.length} record${results.length === 1 ? "" : "s"}`;
+    return `<div class="sn-assistant-panel sn-assistant-panel--user-tickets"><div class="sn-assistant-panel__header"><div class="sn-assistant-panel__title"><span class="sn-assistant-panel__eyebrow">${closed ? "Last Closed Tickets" : "Open Tickets"}</span><div class="sn-assistant-panel__heading">${escapeHtml(name)}</div><div class="sn-assistant-panel__subheading">${escapeHtml(count)}</div></div><div class="sn-assistant-panel__header-actions"><button type="button" class="sn-assistant-mini-button sn-assistant-mini-button--danger" data-action="user-tickets-close" title="Close"><span class="sn-assistant-icon sn-assistant-icon--close"></span></button></div></div><div class="sn-assistant-panel__body sn-assistant-panel__body--flush">${content}</div></div>`;
+  }
+  function readPrefs() {
+    try {
+      return JSON.parse(localStorage.getItem(PREF_KEY) || "{}");
+    } catch {
+      return {};
+    }
+  }
+  function savePrefs(p) {
+    try {
+      localStorage.setItem(PREF_KEY, JSON.stringify({ ...readPrefs(), ...p }));
+    } catch {
+    }
+  }
+  function applyDisplay(root, mode) {
+    const smart = mode !== "flat";
+    root.querySelectorAll("[data-ticket-smart]").forEach((e) => e.hidden = !smart);
+    root.querySelectorAll("[data-ticket-flat]").forEach((e) => e.hidden = smart);
+    root.querySelectorAll('[data-action="user-tickets-display"]').forEach((b) => b.classList.toggle("is-active", b.dataset.mode === mode));
   }
   function bindUserTicketsPanel(root, handlers) {
     if (!root || root.dataset.snAssistantUserTicketsBound === "true") return;
     root.dataset.snAssistantUserTicketsBound = "true";
-    root.addEventListener("click", (event) => {
+    applyDisplay(root, readPrefs().display || "smart");
+    root.addEventListener("click", async (event) => {
       const target = event.target.closest("[data-action]");
       if (!target || !root.contains(target)) return;
       const { action, sysId, table } = target.dataset;
@@ -12927,27 +12912,51 @@ ${value}` : value;
         handlers.onSetUserTicketsView?.(target.dataset.view || "open");
         return;
       }
-      if (action === "user-tickets-sctask-mode") {
-        const view = root.querySelector("[data-user-tickets-sctask-view]");
-        if (!view) return;
-        const grouped = target.dataset.mode !== "flat";
-        view.classList.toggle("is-grouped", grouped);
-        view.classList.toggle("is-flat", !grouped);
-        view.querySelectorAll('[data-action="user-tickets-sctask-mode"]').forEach((button) => {
-          const active = button.dataset.mode === "grouped" === grouped;
-          button.classList.toggle("is-active", active);
-          button.setAttribute("aria-pressed", active ? "true" : "false");
-        });
+      if (action === "user-tickets-display") {
+        const mode = target.dataset.mode || "smart";
+        applyDisplay(root, mode);
+        savePrefs({ display: mode });
         return;
       }
       if (action === "user-tickets-toggle-ritm") {
-        const group = target.closest("[data-ritm-group]");
-        if (!group) return;
-        const expanded = !group.classList.contains("is-expanded");
-        group.classList.toggle("is-expanded", expanded);
-        group.classList.toggle("is-collapsed", !expanded);
-        target.setAttribute("aria-expanded", expanded ? "true" : "false");
-        target.title = `${expanded ? "Collapse" : "Expand"} RITM tasks`;
+        const g = target.closest("[data-ritm-group]");
+        if (!g) return;
+        const open = !g.classList.contains("is-expanded");
+        g.classList.toggle("is-expanded", open);
+        g.classList.toggle("is-collapsed", !open);
+        target.setAttribute("aria-expanded", String(open));
+        return;
+      }
+      if (action === "user-tickets-toggle-more") {
+        const g = target.closest("[data-ritm-group]");
+        if (!g) return;
+        const all = !g.classList.contains("is-showing-all");
+        g.classList.toggle("is-showing-all", all);
+        target.setAttribute("aria-expanded", String(all));
+        const n = Number(target.dataset.hiddenCount || 0), label = target.querySelector("span:first-child");
+        if (label) label.textContent = all ? "Show less" : `View ${n} more task${n === 1 ? "" : "s"}`;
+        return;
+      }
+      if (action === "user-tickets-section-more") {
+        const s = target.closest("[data-preview-section]");
+        if (!s) return;
+        const all = !s.classList.contains("is-showing-all");
+        s.classList.toggle("is-showing-all", all);
+        target.setAttribute("aria-expanded", String(all));
+        const n = Number(target.dataset.hiddenCount || 0);
+        target.textContent = all ? "Show less" : `View ${n} more`;
+        return;
+      }
+      if (action === "user-tickets-copy-number") {
+        const n = target.dataset.number || "";
+        try {
+          await navigator.clipboard.writeText(n);
+          target.textContent = "\u2713";
+          setTimeout(() => {
+            target.textContent = "\u29C9";
+          }, 900);
+        } catch {
+        }
         return;
       }
       if (action === "user-tickets-open" && sysId && table) {
@@ -12965,18 +12974,18 @@ ${value}` : value;
       if (event.key === "Escape" || event.key === "Esc") {
         handlers.onCloseUserTickets();
         event.preventDefault();
-        event.stopPropagation();
         return;
       }
       if (event.key !== "Enter" && event.key !== " ") return;
       const row = event.target.closest('[role="button"][data-action="user-tickets-open"]');
-      if (!row || !root.contains(row)) return;
-      event.preventDefault();
-      row.click();
+      if (row && root.contains(row)) {
+        event.preventDefault();
+        row.click();
+      }
     });
   }
-  function removeUserTicketsPanel(hostDocument) {
-    hostDocument.getElementById(UI_IDS.userTickets)?.remove();
+  function removeUserTicketsPanel(doc) {
+    doc.getElementById(UI_IDS.userTickets)?.remove();
   }
 
   // Assistant/ui/launcher.js
@@ -13155,7 +13164,7 @@ ${value}` : value;
     const title = sub && sub !== label ? `${baseTitle} \u2014 ${sub}` : baseTitle;
     const className = typeof def.className === "function" ? def.className(calendarReady, context) : def.className || "";
     const semanticClass = def.semanticClass || "";
-    const badge = def.badge ? `<span class="sn-ep__badge">${escapeHtml(def.badge)}</span>` : "";
+    const badge2 = def.badge ? `<span class="sn-ep__badge">${escapeHtml(def.badge)}</span>` : "";
     const canHide = HIDEABLE_BUTTON_IDS.includes(buttonId);
     const colorStyle = buttonColor ? ` style="--btn-color:${escapeHtml(buttonColor)};"` : "";
     const actionButton = `
@@ -13167,7 +13176,7 @@ ${value}` : value;
     >
       <span class="sn-ep__icon">${def.icon}</span>
       <span class="sn-ep__text"><span class="sn-ep__label">${escapeHtml(label)}</span></span>
-      ${badge}
+      ${badge2}
     </button>
   `;
     let editOverlay = "";
@@ -13598,11 +13607,11 @@ ${value}` : value;
   }
 
   // Assistant/ui/preview.js
-  function renderMeta(label, value) {
+  function renderMeta(label, value2) {
     return `
     <div class="sn-assistant-preview__meta-block">
       <span class="sn-assistant-preview__meta-label">${escapeHtml(label)}</span>
-      <div class="sn-assistant-preview__meta-value">${escapeHtml(value || "Not available")}</div>
+      <div class="sn-assistant-preview__meta-value">${escapeHtml(value2 || "Not available")}</div>
     </div>
   `;
   }
@@ -14168,10 +14177,10 @@ ${value}` : value;
       const releaseFocusTrap = installModalFocusTrap(root, hostDocument);
       const backdrop = root.querySelector(".sn-assistant-modal__backdrop");
       const cancelBtn = root.querySelector('[data-action="toptpl-cancel"]');
-      function cleanup(value = "") {
+      function cleanup(value2 = "") {
         releaseFocusTrap();
         root.remove();
-        resolve(value);
+        resolve(value2);
       }
       root.addEventListener("click", (event) => {
         const btn = event.target.closest('[data-action="pick-template"]');
@@ -14220,10 +14229,10 @@ ${value}` : value;
       const releaseFocusTrap = installModalFocusTrap(root, hostDocument);
       const backdrop = root.querySelector(".sn-assistant-modal__backdrop");
       const cancelBtn = root.querySelector('[data-action="group-cancel"]');
-      function cleanup(value = null) {
+      function cleanup(value2 = null) {
         releaseFocusTrap();
         root.remove();
-        resolve(value);
+        resolve(value2);
       }
       root.addEventListener("click", (event) => {
         const btn = event.target.closest('[data-action="pick-group"]');
@@ -14289,8 +14298,8 @@ ${value}` : value;
   }
 
   // Assistant/ui/settings.js
-  function normalizeSearchText2(value) {
-    return String(value || "").trim().toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+  function normalizeSearchText2(value2) {
+    return String(value2 || "").trim().toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
   }
   function classifyTemplateSubcategory(mainCategory, template) {
     const text2 = normalizeSearchText2([template?.id, template?.label, template?.subject, template?.body].filter(Boolean).join(" "));
@@ -14333,10 +14342,10 @@ ${value}` : value;
     }
     const distinct = Array.from(
       new Set(
-        templates.map((template) => cleanTemplateWorkspaceItem(mainCategory, template).subcategory).filter((value) => value && value !== "all")
+        templates.map((template) => cleanTemplateWorkspaceItem(mainCategory, template).subcategory).filter((value2) => value2 && value2 !== "all")
       )
     );
-    return [{ id: "all", label: "All" }, ...distinct.map((value) => ({ id: value, label: value.charAt(0).toUpperCase() + value.slice(1) }))];
+    return [{ id: "all", label: "All" }, ...distinct.map((value2) => ({ id: value2, label: value2.charAt(0).toUpperCase() + value2.slice(1) }))];
   }
   function cleanTemplateWorkspaceItem(mainCategory, template) {
     return {
@@ -14344,8 +14353,8 @@ ${value}` : value;
       subcategory: cleanCategoryValue(template?.subcategory || classifyTemplateSubcategory(mainCategory, template))
     };
   }
-  function cleanCategoryValue(value) {
-    return normalizeSearchText2(value || "all") || "all";
+  function cleanCategoryValue(value2) {
+    return normalizeSearchText2(value2 || "all") || "all";
   }
   function filterTemplates(templates, searchTerm, activeSubcategory = "all", mainCategory = "email") {
     const needle = normalizeSearchText2(searchTerm);
@@ -15015,8 +15024,8 @@ ${value}` : value;
       const field = event.target.closest("[name]");
       if (!field) return;
       if (field.name.startsWith("sim:")) return;
-      const value = field.type === "checkbox" ? field.checked : field.value;
-      handlers.onFieldChange(field.name, value);
+      const value2 = field.type === "checkbox" ? field.checked : field.value;
+      handlers.onFieldChange(field.name, value2);
     };
     root.addEventListener("keyup", (event) => {
       const field = event.target.closest('[name="templateSearch"]');
@@ -15681,13 +15690,13 @@ ${value}` : value;
       const buttons = hostDocument.createElement("div");
       buttons.className = "sn-assistant-pdf-selector__buttons";
       let settled = false;
-      const finish = (value = "") => {
+      const finish = (value2 = "") => {
         if (settled) return;
         settled = true;
         cleanup();
-        resolve(value);
+        resolve(value2);
       };
-      const createButton = (label, value, className) => {
+      const createButton = (label, value2, className) => {
         const button = hostDocument.createElement("button");
         button.type = "button";
         button.className = `sn-assistant-pdf-selector__button ${className}`;
@@ -15695,7 +15704,7 @@ ${value}` : value;
         button.addEventListener("click", (event) => {
           event.preventDefault();
           event.stopPropagation();
-          finish(value);
+          finish(value2);
         });
         return button;
       };
@@ -15775,11 +15784,11 @@ ${value}` : value;
       root.appendChild(card);
       positionCard(card, null, hostDocument);
       let settled = false;
-      const finish = (value = "") => {
+      const finish = (value2 = "") => {
         if (settled) return;
         settled = true;
         cleanup();
-        resolve(String(value || "").trim());
+        resolve(String(value2 || "").trim());
       };
       const onKeyDown = (event) => {
         if (event.key === "Escape") {
@@ -15953,13 +15962,13 @@ ${value}` : value;
       "u_solution_notes"
     ];
     for (const field of fields) {
-      const value = readField(gForm, field);
-      if (value) return value;
+      const value2 = readField(gForm, field);
+      if (value2) return value2;
     }
     return "";
   }
-  function isTicketNumber(value) {
-    return /^(INC|REQ|RITM|SCTASK|TASK)\d+$/i.test(String(value || "").trim());
+  function isTicketNumber(value2) {
+    return /^(INC|REQ|RITM|SCTASK|TASK)\d+$/i.test(String(value2 || "").trim());
   }
   function cleanName(name) {
     const n = cleanText(name || "");
@@ -16030,16 +16039,16 @@ ${value}` : value;
       agent
     ].join("\n");
   }
-  function setNativeValue(snWindow, el, value) {
+  function setNativeValue(snWindow, el, value2) {
     const proto = el.tagName === "TEXTAREA" ? snWindow.HTMLTextAreaElement.prototype : snWindow.HTMLInputElement.prototype;
     const setter = Object.getOwnPropertyDescriptor(proto, "value")?.set;
-    if (setter) setter.call(el, value);
-    else el.value = value;
+    if (setter) setter.call(el, value2);
+    else el.value = value2;
     el.dispatchEvent(new snWindow.Event("input", { bubbles: true }));
     el.dispatchEvent(new snWindow.Event("change", { bubbles: true }));
     el.dispatchEvent(new snWindow.Event("blur", { bubbles: true }));
   }
-  function tryDomWrite({ rootWindow, table, field, value }) {
+  function tryDomWrite({ rootWindow, table, field, value: value2 }) {
     const snWindow = getServiceNowWindow(rootWindow);
     const doc = snWindow?.document;
     if (!doc) return false;
@@ -16054,7 +16063,7 @@ ${value}` : value;
     for (const sel of selectors) {
       const el = doc.querySelector(sel);
       if (!el) continue;
-      setNativeValue(snWindow, el, value);
+      setNativeValue(snWindow, el, value2);
       return true;
     }
     return false;
@@ -16141,17 +16150,17 @@ ${value}` : value;
     }
     return merged;
   }
-  function normalizeMatchText(value = "") {
-    return cleanText(value).normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/[\s_-]+/g, " ").replace(/\s{2,}/g, " ").trim();
+  function normalizeMatchText(value2 = "") {
+    return cleanText(value2).normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/[\s_-]+/g, " ").replace(/\s{2,}/g, " ").trim();
   }
-  function escapeRegex(value = "") {
-    return String(value || "").replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  function escapeRegex(value2 = "") {
+    return String(value2 || "").replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
   }
-  function normalizeKeywordList(value) {
-    if (Array.isArray(value)) {
-      return value.flatMap(normalizeKeywordList).filter(Boolean);
+  function normalizeKeywordList(value2) {
+    if (Array.isArray(value2)) {
+      return value2.flatMap(normalizeKeywordList).filter(Boolean);
     }
-    const text2 = cleanText(value);
+    const text2 = cleanText(value2);
     if (!text2) return [];
     return text2.split(/[|,]/).map((item) => normalizeMatchText(item)).filter(Boolean);
   }
@@ -16188,8 +16197,8 @@ ${value}` : value;
     "issue",
     "incident"
   ]);
-  function normalizeTemplateToken(value = "") {
-    const token = normalizeMatchText(value).replace(/[^a-z0-9]+/g, "");
+  function normalizeTemplateToken(value2 = "") {
+    const token = normalizeMatchText(value2).replace(/[^a-z0-9]+/g, "");
     if (!token) return "";
     if (/^remov(?:e|al|ed|ing)$/.test(token)) return "remove";
     if (/^enrol+l?ment$/.test(token) || token === "enrollment") return "enrolment";
@@ -16197,9 +16206,9 @@ ${value}` : value;
     if (token.endsWith("s") && token.length > 5 && !token.endsWith("ss")) return token.slice(0, -1);
     return token;
   }
-  function getMeaningfulTemplateTokens(value = "") {
+  function getMeaningfulTemplateTokens(value2 = "") {
     return Array.from(new Set(
-      normalizeMatchText(value).split(/[^a-z0-9]+/).map(normalizeTemplateToken).filter((token) => token.length >= 3 && !BUILTIN_TEMPLATE_STOP_WORDS.has(token))
+      normalizeMatchText(value2).split(/[^a-z0-9]+/).map(normalizeTemplateToken).filter((token) => token.length >= 3 && !BUILTIN_TEMPLATE_STOP_WORDS.has(token))
     ));
   }
   function selectTemplateByShortDescription(templates = [], context = {}) {
@@ -16437,8 +16446,8 @@ ${value}` : value;
   }
 
   // Assistant/application/templates/smartShortDescription.js
-  function normalize(value = "") {
-    return String(value || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/[\s_/:|()\[\],.;]+/g, " ").replace(/\s*-\s*/g, " ").replace(/\s{2,}/g, " ").trim();
+  function normalize(value2 = "") {
+    return String(value2 || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/[\s_/:|()\[\],.;]+/g, " ").replace(/\s*-\s*/g, " ").replace(/\s{2,}/g, " ").trim();
   }
   function has(text2, pattern) {
     return pattern.test(normalize(text2));
@@ -16500,6 +16509,11 @@ ${value}` : value;
       templates: ["outlook_email_calendar_support", "incident_software_issue"]
     },
     {
+      id: "software-access-update",
+      pattern: /\b(application|software|program|programme)\b.*\b(access|update|upgrade|install|installation|permission|request)\b|\b(access|update|upgrade|install|installation|permission)\b.*\b(application|software|program|programme)\b/,
+      templates: ["incident_software_issue", "generic_clarification"]
+    },
+    {
       id: "hardware",
       pattern: /\b(screen|monitor|keyboard|mouse|dock|docking|webcam|printer|battery|audio|speaker)\b.*\b(issue|problem|broken|not working|not detected|flicker|flickering|error)\b/,
       templates: ["incident_hardware_issue"]
@@ -16533,16 +16547,16 @@ ${value}` : value;
     "device"
   ]);
   function stem(token = "") {
-    let value = normalize(token).replace(/[^a-z0-9]+/g, "");
-    if (/^remov(?:e|al|ed|ing)$/.test(value)) return "remove";
-    if (/^enrol+l?(?:ment|ed|ing)?$/.test(value) || value === "enrollment") return "enrolment";
-    if (value.endsWith("ies") && value.length > 5) value = `${value.slice(0, -3)}y`;
-    else if (value.endsWith("s") && value.length > 5 && !value.endsWith("ss")) value = value.slice(0, -1);
-    return value;
+    let value2 = normalize(token).replace(/[^a-z0-9]+/g, "");
+    if (/^remov(?:e|al|ed|ing)$/.test(value2)) return "remove";
+    if (/^enrol+l?(?:ment|ed|ing)?$/.test(value2) || value2 === "enrollment") return "enrolment";
+    if (value2.endsWith("ies") && value2.length > 5) value2 = `${value2.slice(0, -3)}y`;
+    else if (value2.endsWith("s") && value2.length > 5 && !value2.endsWith("ss")) value2 = value2.slice(0, -1);
+    return value2;
   }
-  function tokens(value = "") {
+  function tokens(value2 = "") {
     return Array.from(new Set(
-      normalize(value).split(/[^a-z0-9]+/).map(stem).filter((token) => token.length >= 3 && !STOP_WORDS.has(token))
+      normalize(value2).split(/[^a-z0-9]+/).map(stem).filter((token) => token.length >= 3 && !STOP_WORDS.has(token))
     ));
   }
   var CONFLICT_GROUPS = [
@@ -16653,8 +16667,8 @@ ${value}` : value;
   var SMART_SHORT_DESCRIPTION_RULES = RULES.map(({ id, templates }) => ({ id, templates: [...templates] }));
 
   // Assistant/application/email/renderedSelection.js
-  function looksLikeTicket(value) {
-    return TICKET_NUMBER_PATTERN.test(cleanText(value));
+  function looksLikeTicket(value2) {
+    return TICKET_NUMBER_PATTERN.test(cleanText(value2));
   }
   function readLiveTextField(rootWindow, fieldName) {
     const escaped = String(fieldName || "").replace(/"/g, '\\"');
@@ -16670,8 +16684,8 @@ ${value}` : value;
       for (const selector of selectors) {
         try {
           const element = documentRef.querySelector(selector);
-          const value = cleanText(element?.value || element?.textContent || element?.innerText);
-          if (value) return value;
+          const value2 = cleanText(element?.value || element?.textContent || element?.innerText);
+          if (value2) return value2;
         } catch {
         }
       }
@@ -16684,7 +16698,7 @@ ${value}` : value;
     const user = {
       ...cachedUser,
       ...Object.fromEntries(
-        Object.entries(liveUser).filter(([, value]) => cleanText(value))
+        Object.entries(liveUser).filter(([, value2]) => cleanText(value2))
       )
     };
     const shortDescription = cleanText(
@@ -16697,12 +16711,37 @@ ${value}` : value;
       ...cachedContext || {},
       ...liveContext || {},
       user,
-      // Keep both aliases populated because legacy/custom integrations may still
-      // provide the ServiceNow snake_case field name.
       shortDescription,
       short_description: shortDescription,
       description
     };
+  }
+  function getRecordIdentity(context = {}) {
+    return cleanText(
+      context.recordKey || context.sysId || context.sys_id || context.recordSysId || context.record_sys_id || context.recordNumber || context.ticketNumber || context.requestItem || context.validTicketNumber || context.customerTicketNumber
+    ).toUpperCase();
+  }
+  function resetStaleTemplateSelection(state, context = {}, logger) {
+    state.ui = state.ui || {};
+    const currentRecordKey = getRecordIdentity(context);
+    if (!currentRecordKey) return;
+    const previousRecordKey = cleanText(state.ui.templateSelectionRecordKey).toUpperCase();
+    if (previousRecordKey && previousRecordKey !== currentRecordKey) {
+      const modes = state.ui.templateSelectionMode || {};
+      ["email", "reminder", "close_note", "work_note", "appointment"].forEach((category) => {
+        modes[category] = "auto";
+      });
+      state.ui.templateSelectionMode = modes;
+      state.ui.lastDraftComposeUrl = "";
+      state.ui.lastDraftSubject = "";
+      state.ui.lastDraftBody = "";
+      state.ui.lastDraftOpenFailed = false;
+      logger?.info?.("template-record-reset", {
+        previousRecordKey,
+        recordKey: currentRecordKey
+      });
+    }
+    state.ui.templateSelectionRecordKey = currentRecordKey;
   }
   function normalizeRenderedSubject(renderedTemplate, context = {}) {
     if (!renderedTemplate) return renderedTemplate;
@@ -16713,7 +16752,7 @@ ${value}` : value;
       context.ticketNumber,
       context.recordNumber
     ];
-    const ticket = ticketCandidates.map((value) => cleanText(value).toUpperCase()).find((value) => /^(?:RITM|INC|REQ|SCTASK)\d{4,}$/.test(value)) || "";
+    const ticket = ticketCandidates.map((value2) => cleanText(value2).toUpperCase()).find((value2) => /^(?:RITM|INC|REQ|SCTASK)\d{4,}$/.test(value2)) || "";
     let subject = cleanText(renderedTemplate.subject).replace(/\bfollow\s*-\s*up\b/gi, "follow-up").replace(/\s{2,}/g, " ").trim();
     if (ticket) {
       subject = subject.replace(new RegExp(`\\b${ticket}\\b`, "ig"), "").replace(/^\s*(?:[-–—:|]\s*)+/, "").replace(/(?:\s*[-–—:|])+\s*$/, "").replace(/\s{2,}/g, " ").trim();
@@ -16758,6 +16797,7 @@ ${cleanText(renderedTemplate.body)}` : renderedTemplate.clipboardText;
       }
     }
     state.context = context;
+    resetStaleTemplateSelection(state, context, logger);
     let selection = resolveTemplateSelection(state, settings, categoryOverride);
     selection = applySmartShortDescriptionOverride(selection, context);
     const diagnosticSource = cleanText(
@@ -16839,15 +16879,15 @@ ${cleanText(renderedTemplate.body)}` : renderedTemplate.clipboardText;
   // Assistant/application/clipboard/copyWithToast.js
   var DEFAULT_FAILURE_MESSAGE = "Auto-copy was blocked by the browser. Please copy manually (Ctrl+C).";
   async function copyWithToast({
-    value,
+    value: value2,
     hostDocument,
     successToast = false,
     failureToast = DEFAULT_FAILURE_MESSAGE
   } = {}) {
-    if (!value) return false;
+    if (!value2) return false;
     let copied = false;
     try {
-      copied = await copyToClipboard(value, hostDocument);
+      copied = await copyToClipboard(value2, hostDocument);
     } catch {
       copied = false;
     }
@@ -16998,8 +17038,8 @@ ${cleanText(renderedTemplate.body)}` : renderedTemplate.clipboardText;
   }
 
   // Assistant/sn/userInfo.js
-  function isSysId(value) {
-    return /^[a-f0-9]{32}$/i.test(cleanText(value));
+  function isSysId(value2) {
+    return /^[a-f0-9]{32}$/i.test(cleanText(value2));
   }
   function getTableName(gForm) {
     try {
@@ -17043,8 +17083,8 @@ ${cleanText(renderedTemplate.body)}` : renderedTemplate.clipboardText;
       "assigned_to"
     ];
   }
-  function isTicketLike(value = "") {
-    return /^(?:INC|RITM|REQ|SCTASK|TASK)\d{4,}$/i.test(cleanText(value));
+  function isTicketLike(value2 = "") {
+    return /^(?:INC|RITM|REQ|SCTASK|TASK)\d{4,}$/i.test(cleanText(value2));
   }
   function getCurrentRecordFingerprint(rootWindow = getRootWindow()) {
     const best = getBestGForm(rootWindow);
@@ -17095,8 +17135,8 @@ ${cleanText(renderedTemplate.body)}` : renderedTemplate.clipboardText;
           if (!node) continue;
           const inputId = node.getAttribute("for");
           const input = inputId && doc.getElementById(inputId) || node.closest("div,td,tr")?.querySelector("input,textarea");
-          const value = cleanText(input?.value || input?.textContent || "");
-          if (value && !isTicketLike(value)) return value;
+          const value2 = cleanText(input?.value || input?.textContent || "");
+          if (value2 && !isTicketLike(value2)) return value2;
         }
         return "";
       };
@@ -17141,8 +17181,8 @@ ${cleanText(renderedTemplate.body)}` : renderedTemplate.clipboardText;
     for (const id of ids) {
       const element = documentRef.getElementById(id);
       if (!element) continue;
-      const value = cleanText(element.value || element.textContent || "");
-      if (value) return value;
+      const value2 = cleanText(element.value || element.textContent || "");
+      if (value2) return value2;
     }
     return "";
   }
@@ -17168,9 +17208,9 @@ ${cleanText(renderedTemplate.body)}` : renderedTemplate.clipboardText;
       const fields = getFieldPriority(getTableName(gForm));
       for (const field of fields) {
         try {
-          const value = gForm.getValue(field);
-          if (isSysId(value)) {
-            return { sysId: cleanText(value), field, source: "g_form" };
+          const value2 = gForm.getValue(field);
+          if (isSysId(value2)) {
+            return { sysId: cleanText(value2), field, source: "g_form" };
           }
         } catch {
           continue;
@@ -17186,9 +17226,9 @@ ${cleanText(renderedTemplate.body)}` : renderedTemplate.clipboardText;
       "sys_original.sc_task.request_item.request.requested_for"
     ];
     for (const documentRef of getAccessibleDocuments(rootWindow)) {
-      const value = getValueFromDocById(documentRef, domFallbackIds);
-      if (isSysId(value)) {
-        return { sysId: value, field: "dom-fallback", source: "dom" };
+      const value2 = getValueFromDocById(documentRef, domFallbackIds);
+      if (isSysId(value2)) {
+        return { sysId: value2, field: "dom-fallback", source: "dom" };
       }
     }
     return null;
@@ -18467,8 +18507,8 @@ ${cleanText(renderedTemplate.body)}` : renderedTemplate.clipboardText;
     if (!(date instanceof Date) || Number.isNaN(date.getTime())) return "";
     return date.getUTCFullYear() + pad(date.getUTCMonth() + 1) + pad(date.getUTCDate()) + "T" + pad(date.getUTCHours()) + pad(date.getUTCMinutes()) + pad(date.getUTCSeconds()) + "Z";
   }
-  function escapeIcsField(value) {
-    return String(value || "").replace(/\\/g, "\\\\").replace(/\r?\n/g, "\\n").replace(/,/g, "\\,").replace(/;/g, "\\;");
+  function escapeIcsField(value2) {
+    return String(value2 || "").replace(/\\/g, "\\\\").replace(/\r?\n/g, "\\n").replace(/,/g, "\\,").replace(/;/g, "\\;");
   }
   function buildIcs({ uid, start, end, summary, description, location = "", prodid = PRODID }) {
     const safeUid = String(uid || `${Date.now()}@bot-ep`).trim();
@@ -18524,8 +18564,8 @@ ${cleanText(renderedTemplate.body)}` : renderedTemplate.clipboardText;
 
   // Assistant/application/calendar/resolveAppointmentDetails.js
   var SN_DATE_PATTERN = /^(\d{2})\/(\d{2})\/(\d{4})\s+(\d{2}):(\d{2})(?::(\d{2}))?/;
-  function parseSnDate(value) {
-    const match = String(value || "").match(SN_DATE_PATTERN);
+  function parseSnDate(value2) {
+    const match = String(value2 || "").match(SN_DATE_PATTERN);
     if (!match) return null;
     return new Date(
       Number(match[3]),
@@ -18536,15 +18576,15 @@ ${cleanText(renderedTemplate.body)}` : renderedTemplate.clipboardText;
       Number(match[6] || 0)
     );
   }
-  function queryOne(GlideRecord, table, field, value) {
+  function queryOne(GlideRecord, table, field, value2) {
     return new Promise((resolve) => {
-      if (typeof GlideRecord !== "function" || !value) {
+      if (typeof GlideRecord !== "function" || !value2) {
         resolve(null);
         return;
       }
       try {
         const gr = new GlideRecord(table);
-        gr.addQuery(field, value);
+        gr.addQuery(field, value2);
         gr.query((r) => resolve(r && r.next() ? r : null));
       } catch {
         resolve(null);
@@ -18745,8 +18785,8 @@ Are you sure you want to download this calendar event?`
       requiredFields: ["FieldDisplayName", "FieldTicketNumber", "FieldPINumber"]
     }
   };
-  function normalizePdfTemplateType(value) {
-    const normalized = cleanText(value).toLowerCase();
+  function normalizePdfTemplateType(value2) {
+    const normalized = cleanText(value2).toLowerCase();
     return PDF_TEMPLATE_TYPES[normalized] ? normalized : "";
   }
   function getPdfTemplateConfig(templateType) {
@@ -18774,8 +18814,8 @@ Are you sure you want to download this calendar event?`
     if (!safeTicket) return "";
     return `${safeTicket}.pdf`;
   }
-  function splitPersonName(value) {
-    const text2 = cleanText(value);
+  function splitPersonName(value2) {
+    const text2 = cleanText(value2);
     if (!text2) {
       return { firstName: "", lastName: "", fullName: "" };
     }
@@ -18932,16 +18972,16 @@ Are you sure you want to download this calendar event?`
   function getFieldText(fieldName, rootWindow = getRootWindow()) {
     const displayValue = cleanText(safeGetDisplayValue(fieldName, rootWindow) || getFieldDisplayValue(fieldName, rootWindow));
     if (displayValue) return displayValue;
-    const value = cleanText(safeGetValue(fieldName, rootWindow));
-    if (value && !/^[0-9a-f]{32}$/i.test(value)) return value;
+    const value2 = cleanText(safeGetValue(fieldName, rootWindow));
+    if (value2 && !/^[0-9a-f]{32}$/i.test(value2)) return value2;
     return "";
   }
-  function looksLikeTicketIdentifier3(value) {
-    const text2 = cleanText(value).toUpperCase();
+  function looksLikeTicketIdentifier3(value2) {
+    const text2 = cleanText(value2).toUpperCase();
     return /^(?:INC|RITM|REQ|SCTASK|TASK|CHG|PRB|SR|KB)\d{4,}$/.test(text2);
   }
-  function looksLikeSysId2(value) {
-    return /^[0-9a-f]{32}$/i.test(cleanText(value));
+  function looksLikeSysId2(value2) {
+    return /^[0-9a-f]{32}$/i.test(cleanText(value2));
   }
   function resolveConfigurationItemFromAssetTag(rootWindow = getRootWindow()) {
     const assetTag = getInputValue([
@@ -18975,8 +19015,8 @@ Are you sure you want to download this calendar event?`
     }
     return "";
   }
-  function cleanConfigurationItem(value) {
-    const text2 = cleanText(value);
+  function cleanConfigurationItem(value2) {
+    const text2 = cleanText(value2);
     if (!text2) return "";
     if (looksLikeTicketIdentifier3(text2)) return "";
     if (looksLikeSysId2(text2)) return "";
@@ -18986,8 +19026,8 @@ Are you sure you want to download this calendar event?`
     return text2;
   }
   function findTicketNumber(text2 = "", types = ["INC", "RITM", "REQ", "SCTASK"]) {
-    const value = cleanText(text2).toUpperCase();
-    const match = value.match(new RegExp(`\\b(?:${types.join("|")})\\d{4,}\\b`, "i"));
+    const value2 = cleanText(text2).toUpperCase();
+    const match = value2.match(new RegExp(`\\b(?:${types.join("|")})\\d{4,}\\b`, "i"));
     return match?.[0] || "";
   }
   function getInputValue(selectors = [], rootWindow = getRootWindow()) {
@@ -18995,8 +19035,8 @@ Are you sure you want to download this calendar event?`
       for (const selector of selectors) {
         try {
           const element = documentRef.querySelector(selector);
-          const value = cleanText(element?.value || element?.getAttribute?.("value") || element?.textContent || "");
-          if (value) return value;
+          const value2 = cleanText(element?.value || element?.getAttribute?.("value") || element?.textContent || "");
+          if (value2) return value2;
         } catch (error2) {
           continue;
         }
@@ -19009,8 +19049,8 @@ Are you sure you want to download this calendar event?`
       for (const selector of selectors) {
         try {
           const element = documentRef.querySelector(selector);
-          const value = cleanText(element?.textContent || element?.innerText || "");
-          if (value) return value;
+          const value2 = cleanText(element?.textContent || element?.innerText || "");
+          if (value2) return value2;
         } catch (error2) {
           continue;
         }
@@ -19019,12 +19059,12 @@ Are you sure you want to download this calendar event?`
     return "";
   }
   function resolveCurrentTicket(rootWindow = getRootWindow(), pageType = "") {
-    const currentNumber = findTicketNumber(getFieldText("number", rootWindow)) || findTicketNumber(getFieldText("task.number", rootWindow)) || findTicketNumber(getFieldText(`${pageType}.number`, rootWindow)) || findTicketNumber(rootWindow?.document?.title || "");
-    const inferredType = currentNumber.startsWith("INC") ? "INC" : currentNumber.startsWith("REQ") ? "REQ" : currentNumber.startsWith("RITM") ? "RITM" : pageType === "incident" ? "INC" : pageType === "sc_req_item" ? "RITM" : pageType === "sc_request" ? "REQ" : "";
+    const currentNumber2 = findTicketNumber(getFieldText("number", rootWindow)) || findTicketNumber(getFieldText("task.number", rootWindow)) || findTicketNumber(getFieldText(`${pageType}.number`, rootWindow)) || findTicketNumber(rootWindow?.document?.title || "");
+    const inferredType = currentNumber2.startsWith("INC") ? "INC" : currentNumber2.startsWith("REQ") ? "REQ" : currentNumber2.startsWith("RITM") ? "RITM" : pageType === "incident" ? "INC" : pageType === "sc_req_item" ? "RITM" : pageType === "sc_request" ? "REQ" : "";
     return {
-      ticketNumber: currentNumber,
+      ticketNumber: currentNumber2,
       ticketType: inferredType,
-      ticketSource: currentNumber ? "current" : ""
+      ticketSource: currentNumber2 ? "current" : ""
     };
   }
   function resolveParentTicket(rootWindow = getRootWindow()) {
@@ -19276,22 +19316,22 @@ Are you sure you want to download this calendar event?`
     return t;
   }
   function __awaiter(thisArg, _arguments, P, generator) {
-    function adopt(value) {
-      return value instanceof P ? value : new P(function(resolve) {
-        resolve(value);
+    function adopt(value2) {
+      return value2 instanceof P ? value2 : new P(function(resolve) {
+        resolve(value2);
       });
     }
     return new (P || (P = Promise))(function(resolve, reject) {
-      function fulfilled(value) {
+      function fulfilled(value2) {
         try {
-          step(generator.next(value));
+          step(generator.next(value2));
         } catch (e) {
           reject(e);
         }
       }
-      function rejected(value) {
+      function rejected(value2) {
         try {
-          step(generator["throw"](value));
+          step(generator["throw"](value2));
         } catch (e) {
           reject(e);
         }
@@ -19460,12 +19500,12 @@ Are you sure you want to download this calendar event?`
   var charFromHexCode = function(hex) {
     return charFromCode(parseInt(hex, 16));
   };
-  var padStart = function(value, length, padChar) {
+  var padStart = function(value2, length, padChar) {
     var padding = "";
-    for (var idx = 0, len = length - value.length; idx < len; idx++) {
+    for (var idx = 0, len = length - value2.length; idx < len; idx++) {
       padding += padChar;
     }
-    return padding + value;
+    return padding + value2;
   };
   var copyStringIntoBuffer = function(str, buffer, offset) {
     var length = str.length;
@@ -19565,12 +19605,12 @@ Are you sure you want to download this calendar event?`
     var date = /* @__PURE__ */ new Date(year + "-" + month + "-" + day + "T" + hours + ":" + mins + ":" + secs + tzOffset);
     return date;
   };
-  var findLastMatch = function(value, regex) {
+  var findLastMatch = function(value2, regex) {
     var _a;
     var position = 0;
     var lastMatch;
-    while (position < value.length) {
-      var match = value.substring(position).match(regex);
+    while (position < value2.length) {
+      var match = value2.substring(position).match(regex);
       if (!match)
         return { match: lastMatch, pos: position };
       lastMatch = match;
@@ -19583,13 +19623,13 @@ Are you sure you want to download this calendar event?`
   var last = function(array) {
     return array[array.length - 1];
   };
-  var typedArrayFor = function(value) {
-    if (value instanceof Uint8Array)
-      return value;
-    var length = value.length;
+  var typedArrayFor = function(value2) {
+    if (value2 instanceof Uint8Array)
+      return value2;
+    var length = value2.length;
     var typedArray = new Uint8Array(length);
     for (var idx = 0; idx < length; idx++) {
-      typedArray[idx] = value.charCodeAt(idx);
+      typedArray[idx] = value2.charCodeAt(idx);
     }
     return typedArray;
   };
@@ -19892,12 +19932,12 @@ Are you sure you want to download this calendar event?`
   var decompressJson = function(compressedJson) {
     return arrayToString(import_pako.default.inflate(decodeFromBase642(compressedJson)));
   };
-  var padStart2 = function(value, length, padChar) {
+  var padStart2 = function(value2, length, padChar) {
     var padding = "";
-    for (var idx = 0, len = length - value.length; idx < len; idx++) {
+    for (var idx = 0, len = length - value2.length; idx < len; idx++) {
       padding += padChar;
     }
-    return padding + value;
+    return padding + value2;
   };
 
   // node_modules/@pdf-lib/standard-fonts/es/Courier-Bold.compressed.json
@@ -20073,39 +20113,39 @@ Are you sure you want to download this calendar event?`
   var singleQuote = function(val) {
     return "'" + val + "'";
   };
-  var formatValue = function(value) {
-    var type = typeof value;
+  var formatValue = function(value2) {
+    var type = typeof value2;
     if (type === "string")
-      return singleQuote(value);
+      return singleQuote(value2);
     else if (type === "undefined")
-      return backtick(value);
+      return backtick(value2);
     else
-      return value;
+      return value2;
   };
-  var createValueErrorMsg = function(value, valueName, values2) {
+  var createValueErrorMsg = function(value2, valueName, values2) {
     var allowedValues = new Array(values2.length);
     for (var idx = 0, len = values2.length; idx < len; idx++) {
       var v = values2[idx];
       allowedValues[idx] = formatValue(v);
     }
     var joinedValues = allowedValues.join(" or ");
-    return backtick(valueName) + " must be one of " + joinedValues + ", but was actually " + formatValue(value);
+    return backtick(valueName) + " must be one of " + joinedValues + ", but was actually " + formatValue(value2);
   };
-  var assertIsOneOf = function(value, valueName, allowedValues) {
+  var assertIsOneOf = function(value2, valueName, allowedValues) {
     if (!Array.isArray(allowedValues)) {
       allowedValues = values(allowedValues);
     }
     for (var idx = 0, len = allowedValues.length; idx < len; idx++) {
-      if (value === allowedValues[idx])
+      if (value2 === allowedValues[idx])
         return;
     }
-    throw new TypeError(createValueErrorMsg(value, valueName, allowedValues));
+    throw new TypeError(createValueErrorMsg(value2, valueName, allowedValues));
   };
-  var assertIsOneOfOrUndefined = function(value, valueName, allowedValues) {
+  var assertIsOneOfOrUndefined = function(value2, valueName, allowedValues) {
     if (!Array.isArray(allowedValues)) {
       allowedValues = values(allowedValues);
     }
-    assertIsOneOf(value, valueName, allowedValues.concat(void 0));
+    assertIsOneOf(value2, valueName, allowedValues.concat(void 0));
   };
   var assertIsSubset = function(values2, valueName, allowedValues) {
     if (!Array.isArray(allowedValues)) {
@@ -20140,34 +20180,34 @@ Are you sure you want to download this calendar event?`
       return String(val.constructor);
     return String(val);
   };
-  var isType = function(value, type) {
+  var isType = function(value2, type) {
     if (type === "null")
-      return value === null;
+      return value2 === null;
     if (type === "undefined")
-      return value === void 0;
+      return value2 === void 0;
     if (type === "string")
-      return typeof value === "string";
+      return typeof value2 === "string";
     if (type === "number")
-      return typeof value === "number" && !isNaN(value);
+      return typeof value2 === "number" && !isNaN(value2);
     if (type === "boolean")
-      return typeof value === "boolean";
+      return typeof value2 === "boolean";
     if (type === "symbol")
-      return typeof value === "symbol";
+      return typeof value2 === "symbol";
     if (type === "bigint")
-      return typeof value === "bigint";
+      return typeof value2 === "bigint";
     if (type === Date)
-      return value instanceof Date;
+      return value2 instanceof Date;
     if (type === Array)
-      return value instanceof Array;
+      return value2 instanceof Array;
     if (type === Uint8Array)
-      return value instanceof Uint8Array;
+      return value2 instanceof Uint8Array;
     if (type === ArrayBuffer)
-      return value instanceof ArrayBuffer;
+      return value2 instanceof ArrayBuffer;
     if (type === Function)
-      return value instanceof Function;
-    return value instanceof type[0];
+      return value2 instanceof Function;
+    return value2 instanceof type[0];
   };
-  var createTypeErrorMsg = function(value, valueName, types) {
+  var createTypeErrorMsg = function(value2, valueName, types) {
     var allowedTypes = new Array(types.length);
     for (var idx = 0, len = types.length; idx < len; idx++) {
       var type = types[idx];
@@ -20195,51 +20235,51 @@ Are you sure you want to download this calendar event?`
         allowedTypes[idx] = backtick(type[1]);
     }
     var joinedTypes = allowedTypes.join(" or ");
-    return backtick(valueName) + " must be of type " + joinedTypes + ", but was actually of type " + backtick(getType(value));
+    return backtick(valueName) + " must be of type " + joinedTypes + ", but was actually of type " + backtick(getType(value2));
   };
-  var assertIs = function(value, valueName, types) {
+  var assertIs = function(value2, valueName, types) {
     for (var idx = 0, len = types.length; idx < len; idx++) {
-      if (isType(value, types[idx]))
+      if (isType(value2, types[idx]))
         return;
     }
-    throw new TypeError(createTypeErrorMsg(value, valueName, types));
+    throw new TypeError(createTypeErrorMsg(value2, valueName, types));
   };
-  var assertOrUndefined = function(value, valueName, types) {
-    assertIs(value, valueName, types.concat("undefined"));
+  var assertOrUndefined = function(value2, valueName, types) {
+    assertIs(value2, valueName, types.concat("undefined"));
   };
   var assertEachIs = function(values2, valueName, types) {
     for (var idx = 0, len = values2.length; idx < len; idx++) {
       assertIs(values2[idx], valueName, types);
     }
   };
-  var assertRange = function(value, valueName, min, max) {
-    assertIs(value, valueName, ["number"]);
+  var assertRange = function(value2, valueName, min, max) {
+    assertIs(value2, valueName, ["number"]);
     assertIs(min, "min", ["number"]);
     assertIs(max, "max", ["number"]);
     max = Math.max(min, max);
-    if (value < min || value > max) {
-      throw new Error(backtick(valueName) + " must be at least " + min + " and at most " + max + ", but was actually " + value);
+    if (value2 < min || value2 > max) {
+      throw new Error(backtick(valueName) + " must be at least " + min + " and at most " + max + ", but was actually " + value2);
     }
   };
-  var assertRangeOrUndefined = function(value, valueName, min, max) {
-    assertIs(value, valueName, ["number", "undefined"]);
-    if (typeof value === "number")
-      assertRange(value, valueName, min, max);
+  var assertRangeOrUndefined = function(value2, valueName, min, max) {
+    assertIs(value2, valueName, ["number", "undefined"]);
+    if (typeof value2 === "number")
+      assertRange(value2, valueName, min, max);
   };
-  var assertMultiple = function(value, valueName, multiplier) {
-    assertIs(value, valueName, ["number"]);
-    if (value % multiplier !== 0) {
-      throw new Error(backtick(valueName) + " must be a multiple of " + multiplier + ", but was actually " + value);
+  var assertMultiple = function(value2, valueName, multiplier) {
+    assertIs(value2, valueName, ["number"]);
+    if (value2 % multiplier !== 0) {
+      throw new Error(backtick(valueName) + " must be a multiple of " + multiplier + ", but was actually " + value2);
     }
   };
-  var assertInteger = function(value, valueName) {
-    if (!Number.isInteger(value)) {
-      throw new Error(backtick(valueName) + " must be an integer, but was actually " + value);
+  var assertInteger = function(value2, valueName) {
+    if (!Number.isInteger(value2)) {
+      throw new Error(backtick(valueName) + " must be an integer, but was actually " + value2);
     }
   };
-  var assertPositive = function(value, valueName) {
-    if (![1, 0].includes(Math.sign(value))) {
-      throw new Error(backtick(valueName) + " must be a positive number or 0, but was actually " + value);
+  var assertPositive = function(value2, valueName) {
+    if (![1, 0].includes(Math.sign(value2))) {
+      throw new Error(backtick(valueName) + " must be a positive number or 0, but was actually " + value2);
     }
   };
 
@@ -20470,9 +20510,9 @@ Are you sure you want to download this calendar event?`
     /** @class */
     (function(_super) {
       __extends(InvalidPDFDateStringError2, _super);
-      function InvalidPDFDateStringError2(value) {
+      function InvalidPDFDateStringError2(value2) {
         var _this = this;
-        var msg = 'Attempted to convert "' + value + '" to a date, but it does not match the PDF date string format.';
+        var msg = 'Attempted to convert "' + value2 + '" to a date, but it does not match the PDF date string format.';
         _this = _super.call(this, msg) || this;
         return _this;
       }
@@ -20574,9 +20614,9 @@ Are you sure you want to download this calendar event?`
     /** @class */
     (function(_super) {
       __extends(NumberParsingError2, _super);
-      function NumberParsingError2(pos, value) {
+      function NumberParsingError2(pos, value2) {
         var _this = this;
-        var msg = "Failed to parse number " + ("(line:" + pos.line + " col:" + pos.column + " offset=" + pos.offset + '): "' + value + '"');
+        var msg = "Failed to parse number " + ("(line:" + pos.line + " col:" + pos.column + " offset=" + pos.offset + '): "' + value2 + '"');
         _this = _super.call(this, msg) || this;
         return _this;
       }
@@ -20837,10 +20877,10 @@ Are you sure you want to download this calendar event?`
     /** @class */
     (function(_super) {
       __extends(PDFNumber2, _super);
-      function PDFNumber2(value) {
+      function PDFNumber2(value2) {
         var _this = _super.call(this) || this;
-        _this.numberValue = value;
-        _this.stringValue = numberToString(value);
+        _this.numberValue = value2;
+        _this.stringValue = numberToString(value2);
         return _this;
       }
       PDFNumber2.prototype.asNumber = function() {
@@ -20862,8 +20902,8 @@ Are you sure you want to download this calendar event?`
         offset += copyStringIntoBuffer(this.stringValue, buffer, offset);
         return this.stringValue.length;
       };
-      PDFNumber2.of = function(value) {
-        return new PDFNumber2(value);
+      PDFNumber2.of = function(value2) {
+        return new PDFNumber2(value2);
       };
       return PDFNumber2;
     })(PDFObject_default)
@@ -20992,12 +21032,12 @@ Are you sure you want to download this calendar event?`
     /** @class */
     (function(_super) {
       __extends(PDFBool2, _super);
-      function PDFBool2(enforcer, value) {
+      function PDFBool2(enforcer, value2) {
         var _this = this;
         if (enforcer !== ENFORCER)
           throw new PrivateConstructorError("PDFBool");
         _this = _super.call(this) || this;
-        _this.value = value;
+        _this.value = value2;
         return _this;
       }
       PDFBool2.prototype.asBoolean = function() {
@@ -21241,21 +21281,21 @@ Are you sure you want to download this calendar event?`
       PDFDict2.prototype.entries = function() {
         return Array.from(this.dict.entries());
       };
-      PDFDict2.prototype.set = function(key, value) {
-        this.dict.set(key, value);
+      PDFDict2.prototype.set = function(key, value2) {
+        this.dict.set(key, value2);
       };
       PDFDict2.prototype.get = function(key, preservePDFNull) {
         if (preservePDFNull === void 0) {
           preservePDFNull = false;
         }
-        var value = this.dict.get(key);
-        if (value === PDFNull_default && !preservePDFNull)
+        var value2 = this.dict.get(key);
+        if (value2 === PDFNull_default && !preservePDFNull)
           return void 0;
-        return value;
+        return value2;
       };
       PDFDict2.prototype.has = function(key) {
-        var value = this.dict.get(key);
-        return value !== void 0 && value !== PDFNull_default;
+        var value2 = this.dict.get(key);
+        return value2 !== void 0 && value2 !== PDFNull_default;
       };
       PDFDict2.prototype.lookupMaybe = function(key) {
         var _a;
@@ -21264,10 +21304,10 @@ Are you sure you want to download this calendar event?`
           types[_i - 1] = arguments[_i];
         }
         var preservePDFNull = types.includes(PDFNull_default);
-        var value = (_a = this.context).lookupMaybe.apply(_a, __spreadArrays([this.get(key, preservePDFNull)], types));
-        if (value === PDFNull_default && !preservePDFNull)
+        var value2 = (_a = this.context).lookupMaybe.apply(_a, __spreadArrays([this.get(key, preservePDFNull)], types));
+        if (value2 === PDFNull_default && !preservePDFNull)
           return void 0;
-        return value;
+        return value2;
       };
       PDFDict2.prototype.lookup = function(key) {
         var _a;
@@ -21276,10 +21316,10 @@ Are you sure you want to download this calendar event?`
           types[_i - 1] = arguments[_i];
         }
         var preservePDFNull = types.includes(PDFNull_default);
-        var value = (_a = this.context).lookup.apply(_a, __spreadArrays([this.get(key, preservePDFNull)], types));
-        if (value === PDFNull_default && !preservePDFNull)
+        var value2 = (_a = this.context).lookup.apply(_a, __spreadArrays([this.get(key, preservePDFNull)], types));
+        if (value2 === PDFNull_default && !preservePDFNull)
           return void 0;
-        return value;
+        return value2;
       };
       PDFDict2.prototype.delete = function(key) {
         return this.dict.delete(key);
@@ -21302,8 +21342,8 @@ Are you sure you want to download this calendar event?`
         var clone = PDFDict2.withContext(context || this.context);
         var entries = this.entries();
         for (var idx = 0, len = entries.length; idx < len; idx++) {
-          var _a = entries[idx], key = _a[0], value = _a[1];
-          clone.set(key, value);
+          var _a = entries[idx], key = _a[0], value2 = _a[1];
+          clone.set(key, value2);
         }
         return clone;
       };
@@ -21311,8 +21351,8 @@ Are you sure you want to download this calendar event?`
         var dictString = "<<\n";
         var entries = this.entries();
         for (var idx = 0, len = entries.length; idx < len; idx++) {
-          var _a = entries[idx], key = _a[0], value = _a[1];
-          dictString += key.toString() + " " + value.toString() + "\n";
+          var _a = entries[idx], key = _a[0], value2 = _a[1];
+          dictString += key.toString() + " " + value2.toString() + "\n";
         }
         dictString += ">>";
         return dictString;
@@ -21321,8 +21361,8 @@ Are you sure you want to download this calendar event?`
         var size = 5;
         var entries = this.entries();
         for (var idx = 0, len = entries.length; idx < len; idx++) {
-          var _a = entries[idx], key = _a[0], value = _a[1];
-          size += key.sizeInBytes() + value.sizeInBytes() + 2;
+          var _a = entries[idx], key = _a[0], value2 = _a[1];
+          size += key.sizeInBytes() + value2.sizeInBytes() + 2;
         }
         return size;
       };
@@ -21333,10 +21373,10 @@ Are you sure you want to download this calendar event?`
         buffer[offset++] = CharCodes_default.Newline;
         var entries = this.entries();
         for (var idx = 0, len = entries.length; idx < len; idx++) {
-          var _a = entries[idx], key = _a[0], value = _a[1];
+          var _a = entries[idx], key = _a[0], value2 = _a[1];
           offset += key.copyBytesInto(buffer, offset);
           buffer[offset++] = CharCodes_default.Space;
-          offset += value.copyBytesInto(buffer, offset);
+          offset += value2.copyBytesInto(buffer, offset);
           buffer[offset++] = CharCodes_default.Newline;
         }
         buffer[offset++] = CharCodes_default.GreaterThan;
@@ -21522,12 +21562,12 @@ Are you sure you want to download this calendar event?`
         return PDFOperator2.of(this.name, args);
       };
       PDFOperator2.prototype.toString = function() {
-        var value = "";
+        var value2 = "";
         for (var idx = 0, len = this.args.length; idx < len; idx++) {
-          value += String(this.args[idx]) + " ";
+          value2 += String(this.args[idx]) + " ";
         }
-        value += this.name;
-        return value;
+        value2 += this.name;
+        return value2;
       };
       PDFOperator2.prototype.sizeInBytes = function() {
         var size = 0;
@@ -21701,11 +21741,11 @@ Are you sure you want to download this calendar event?`
         return PDFContentStream2.of(dict.clone(context), operators, encode);
       };
       PDFContentStream2.prototype.getContentsString = function() {
-        var value = "";
+        var value2 = "";
         for (var idx = 0, len = this.operators.length; idx < len; idx++) {
-          value += this.operators[idx] + "\n";
+          value2 += this.operators[idx] + "\n";
         }
-        return value;
+        return value2;
       };
       PDFContentStream2.prototype.getUnencodedContents = function() {
         var buffer = new Uint8Array(this.getUnencodedContentsSize());
@@ -21862,9 +21902,9 @@ Are you sure you want to download this calendar event?`
           var keys = Object.keys(literal);
           for (var idx = 0, len = keys.length; idx < len; idx++) {
             var key = keys[idx];
-            var value = literal[key];
-            if (value !== void 0)
-              dict.set(PDFName_default.of(key), this.obj(value));
+            var value2 = literal[key];
+            if (value2 !== void 0)
+              dict.set(PDFName_default.of(key), this.obj(value2));
           }
           return dict;
         }
@@ -21945,8 +21985,8 @@ Are you sure you want to download this calendar event?`
         var clone = PDFPageLeaf2.fromMapWithContext(/* @__PURE__ */ new Map(), context || this.context, this.autoNormalizeCTM);
         var entries = this.entries();
         for (var idx = 0, len = entries.length; idx < len; idx++) {
-          var _a = entries[idx], key = _a[0], value = _a[1];
-          clone.set(key, value);
+          var _a = entries[idx], key = _a[0], value2 = _a[1];
+          clone.set(key, value2);
         }
         return clone;
       };
@@ -22144,9 +22184,9 @@ Are you sure you want to download this calendar event?`
           var InheritableEntries = PDFPageLeaf_default.InheritableEntries;
           for (var idx = 0, len = InheritableEntries.length; idx < len; idx++) {
             var key = PDFName_default.of(InheritableEntries[idx]);
-            var value = clonedPage.getInheritableAttribute(key);
-            if (!clonedPage.get(key) && value)
-              clonedPage.set(key, value);
+            var value2 = clonedPage.getInheritableAttribute(key);
+            if (!clonedPage.get(key) && value2)
+              clonedPage.set(key, value2);
           }
           clonedPage.delete(PDFName_default.of("Parent"));
           return _this.copyPDFDict(clonedPage);
@@ -22159,8 +22199,8 @@ Are you sure you want to download this calendar event?`
           _this.traversedObjects.set(originalDict, clonedDict);
           var entries = originalDict.entries();
           for (var idx = 0, len = entries.length; idx < len; idx++) {
-            var _a = entries[idx], key = _a[0], value = _a[1];
-            clonedDict.set(key, _this.copy(value));
+            var _a = entries[idx], key = _a[0], value2 = _a[1];
+            clonedDict.set(key, _this.copy(value2));
           }
           return clonedDict;
         };
@@ -22171,8 +22211,8 @@ Are you sure you want to download this calendar event?`
           var clonedArray = originalArray.clone(_this.dest);
           _this.traversedObjects.set(originalArray, clonedArray);
           for (var idx = 0, len = originalArray.size(); idx < len; idx++) {
-            var value = originalArray.get(idx);
-            clonedArray.set(idx, _this.copy(value));
+            var value2 = originalArray.get(idx);
+            clonedArray.set(idx, _this.copy(value2));
           }
           return clonedArray;
         };
@@ -22184,8 +22224,8 @@ Are you sure you want to download this calendar event?`
           _this.traversedObjects.set(originalStream, clonedStream);
           var entries = originalStream.dict.entries();
           for (var idx = 0, len = entries.length; idx < len; idx++) {
-            var _a = entries[idx], key = _a[0], value = _a[1];
-            clonedStream.dict.set(key, _this.copy(value));
+            var _a = entries[idx], key = _a[0], value2 = _a[1];
+            clonedStream.dict.set(key, _this.copy(value2));
           }
           return clonedStream;
         };
@@ -22433,12 +22473,12 @@ Are you sure you want to download this calendar event?`
         return PDFObjectStream2.withContextAndObjects(context || this.dict.context, this.objects.slice(), this.encode);
       };
       PDFObjectStream2.prototype.getContentsString = function() {
-        var value = this.offsetsString;
+        var value2 = this.offsetsString;
         for (var idx = 0, len = this.objects.length; idx < len; idx++) {
           var _a = this.objects[idx], object = _a[1];
-          value += object + "\n";
+          value2 += object + "\n";
         }
-        return value;
+        return value2;
       };
       PDFObjectStream2.prototype.getUnencodedContents = function() {
         var buffer = new Uint8Array(this.getUnencodedContentsSize());
@@ -22763,23 +22803,23 @@ Are you sure you want to download this calendar event?`
       PDFCrossRefStream2.prototype.getContentsString = function() {
         var entryTuples = this.entryTuplesCache.access();
         var byteWidths = this.maxByteWidthsCache.access();
-        var value = "";
+        var value2 = "";
         for (var entryIdx = 0, entriesLen = entryTuples.length; entryIdx < entriesLen; entryIdx++) {
           var _a = entryTuples[entryIdx], first = _a[0], second = _a[1], third = _a[2];
           var firstBytes = reverseArray(bytesFor(first));
           var secondBytes = reverseArray(bytesFor(second));
           var thirdBytes = reverseArray(bytesFor(third));
           for (var idx = byteWidths[0] - 1; idx >= 0; idx--) {
-            value += (firstBytes[idx] || 0).toString(2);
+            value2 += (firstBytes[idx] || 0).toString(2);
           }
           for (var idx = byteWidths[1] - 1; idx >= 0; idx--) {
-            value += (secondBytes[idx] || 0).toString(2);
+            value2 += (secondBytes[idx] || 0).toString(2);
           }
           for (var idx = byteWidths[2] - 1; idx >= 0; idx--) {
-            value += (thirdBytes[idx] || 0).toString(2);
+            value2 += (thirdBytes[idx] || 0).toString(2);
           }
         }
-        return value;
+        return value2;
       };
       PDFCrossRefStream2.prototype.getUnencodedContents = function() {
         var entryTuples = this.entryTuplesCache.access();
@@ -22945,9 +22985,9 @@ Are you sure you want to download this calendar event?`
     /** @class */
     (function(_super) {
       __extends(PDFHexString2, _super);
-      function PDFHexString2(value) {
+      function PDFHexString2(value2) {
         var _this = _super.call(this) || this;
-        _this.value = value;
+        _this.value = value2;
         return _this;
       }
       PDFHexString2.prototype.asBytes = function() {
@@ -22995,11 +23035,11 @@ Are you sure you want to download this calendar event?`
         buffer[offset++] = CharCodes_default.GreaterThan;
         return this.value.length + 2;
       };
-      PDFHexString2.of = function(value) {
-        return new PDFHexString2(value);
+      PDFHexString2.of = function(value2) {
+        return new PDFHexString2(value2);
       };
-      PDFHexString2.fromText = function(value) {
-        var encoded = utf16Encode(value);
+      PDFHexString2.fromText = function(value2) {
+        var encoded = utf16Encode(value2);
         var hex = "";
         for (var idx = 0, len = encoded.length; idx < len; idx++) {
           hex += toHexStringOfMinLength(encoded[idx], 4);
@@ -23118,8 +23158,8 @@ Are you sure you want to download this calendar event?`
     }
     return "<" + values2.join("") + ">";
   };
-  var cmapHexString = function(value) {
-    return toHexStringOfMinLength(value, 4);
+  var cmapHexString = function(value2) {
+    return toHexStringOfMinLength(value2, 4);
   };
   var cmapCodePointFormat = function(codePoint) {
     if (isWithinBMP(codePoint))
@@ -23177,9 +23217,9 @@ Are you sure you want to download this calendar event?`
     /** @class */
     (function(_super) {
       __extends(PDFString2, _super);
-      function PDFString2(value) {
+      function PDFString2(value2) {
         var _this = _super.call(this) || this;
-        _this.value = value;
+        _this.value = value2;
         return _this;
       }
       PDFString2.prototype.asBytes = function() {
@@ -23265,8 +23305,8 @@ Are you sure you want to download this calendar event?`
         buffer[offset++] = CharCodes_default.RightParen;
         return this.value.length + 2;
       };
-      PDFString2.of = function(value) {
-        return new PDFString2(value);
+      PDFString2.of = function(value2) {
+        return new PDFString2(value2);
       };
       PDFString2.fromDate = function(date) {
         var year = padStart(String(date.getUTCFullYear()), 4, "0");
@@ -27595,9 +27635,9 @@ Are you sure you want to download this calendar event?`
         }
         var values2 = [];
         for (var idx = 0, len = opt.size(); idx < len; idx++) {
-          var value = opt.lookup(idx);
-          if (value instanceof PDFString_default || value instanceof PDFHexString_default) {
-            values2.push(value);
+          var value2 = opt.lookup(idx);
+          if (value2 instanceof PDFString_default || value2 instanceof PDFHexString_default) {
+            values2.push(value2);
           }
         }
         return values2;
@@ -27665,17 +27705,17 @@ Are you sure you want to download this calendar event?`
       function PDFAcroCheckBox2() {
         return _super !== null && _super.apply(this, arguments) || this;
       }
-      PDFAcroCheckBox2.prototype.setValue = function(value) {
+      PDFAcroCheckBox2.prototype.setValue = function(value2) {
         var _a;
         var onValue = (_a = this.getOnValue()) !== null && _a !== void 0 ? _a : PDFName_default.of("Yes");
-        if (value !== onValue && value !== PDFName_default.of("Off")) {
+        if (value2 !== onValue && value2 !== PDFName_default.of("Off")) {
           throw new InvalidAcroFieldValueError();
         }
-        this.dict.set(PDFName_default.of("V"), value);
+        this.dict.set(PDFName_default.of("V"), value2);
         var widgets = this.getWidgets();
         for (var idx = 0, len = widgets.length; idx < len; idx++) {
           var widget = widgets[idx];
-          var state = widget.getOnValue() === value ? value : PDFName_default.of("Off");
+          var state = widget.getOnValue() === value2 ? value2 : PDFName_default.of("Off");
           widget.setAppearanceState(state);
         }
       };
@@ -27810,9 +27850,9 @@ Are you sure you want to download this calendar event?`
         if (v instanceof PDFArray_default) {
           var values2 = [];
           for (var idx = 0, len = v.size(); idx < len; idx++) {
-            var value = v.lookup(idx);
-            if (value instanceof PDFString_default || value instanceof PDFHexString_default) {
-              values2.push(value);
+            var value2 = v.lookup(idx);
+            if (value2 instanceof PDFString_default || value2 instanceof PDFHexString_default) {
+              values2.push(value2);
             }
           }
           return values2;
@@ -27825,8 +27865,8 @@ Are you sure you want to download this calendar event?`
       PDFAcroChoice2.prototype.setOptions = function(options) {
         var newOpt = new Array(options.length);
         for (var idx = 0, len = options.length; idx < len; idx++) {
-          var _a = options[idx], value = _a.value, display = _a.display;
-          newOpt[idx] = this.dict.context.obj([value, display || value]);
+          var _a = options[idx], value2 = _a.value, display = _a.display;
+          newOpt[idx] = this.dict.context.obj([value2, display || value2]);
         }
         this.dict.set(PDFName_default.of("Opt"), this.dict.context.obj(newOpt));
       };
@@ -27970,8 +28010,8 @@ Are you sure you want to download this calendar event?`
         var _a;
         return (_a = this.Q()) === null || _a === void 0 ? void 0 : _a.asNumber();
       };
-      PDFAcroText2.prototype.setValue = function(value) {
-        this.dict.set(PDFName_default.of("V"), value);
+      PDFAcroText2.prototype.setValue = function(value2) {
+        this.dict.set(PDFName_default.of("V"), value2);
       };
       PDFAcroText2.prototype.removeValue = function() {
         this.dict.delete(PDFName_default.of("V"));
@@ -28031,16 +28071,16 @@ Are you sure you want to download this calendar event?`
       function PDFAcroRadioButton2() {
         return _super !== null && _super.apply(this, arguments) || this;
       }
-      PDFAcroRadioButton2.prototype.setValue = function(value) {
+      PDFAcroRadioButton2.prototype.setValue = function(value2) {
         var onValues = this.getOnValues();
-        if (!onValues.includes(value) && value !== PDFName_default.of("Off")) {
+        if (!onValues.includes(value2) && value2 !== PDFName_default.of("Off")) {
           throw new InvalidAcroFieldValueError();
         }
-        this.dict.set(PDFName_default.of("V"), value);
+        this.dict.set(PDFName_default.of("V"), value2);
         var widgets = this.getWidgets();
         for (var idx = 0, len = widgets.length; idx < len; idx++) {
           var widget = widgets[idx];
-          var state = widget.getOnValue() === value ? value : PDFName_default.of("Off");
+          var state = widget.getOnValue() === value2 ? value2 : PDFName_default.of("Off");
           widget.setAppearanceState(state);
         }
       };
@@ -28512,26 +28552,26 @@ Are you sure you want to download this calendar event?`
         this.capNumbers = capNumbers;
       }
       BaseParser2.prototype.parseRawInt = function() {
-        var value = "";
+        var value2 = "";
         while (!this.bytes.done()) {
           var byte = this.bytes.peek();
           if (!IsDigit[byte])
             break;
-          value += charFromCode(this.bytes.next());
+          value2 += charFromCode(this.bytes.next());
         }
-        var numberValue = Number(value);
-        if (!value || !isFinite(numberValue)) {
-          throw new NumberParsingError(this.bytes.position(), value);
+        var numberValue = Number(value2);
+        if (!value2 || !isFinite(numberValue)) {
+          throw new NumberParsingError(this.bytes.position(), value2);
         }
         return numberValue;
       };
       BaseParser2.prototype.parseRawNumber = function() {
-        var value = "";
+        var value2 = "";
         while (!this.bytes.done()) {
           var byte = this.bytes.peek();
           if (!IsNumeric[byte])
             break;
-          value += charFromCode(this.bytes.next());
+          value2 += charFromCode(this.bytes.next());
           if (byte === CharCodes_default.Period)
             break;
         }
@@ -28539,19 +28579,19 @@ Are you sure you want to download this calendar event?`
           var byte = this.bytes.peek();
           if (!IsDigit[byte])
             break;
-          value += charFromCode(this.bytes.next());
+          value2 += charFromCode(this.bytes.next());
         }
-        var numberValue = Number(value);
-        if (!value || !isFinite(numberValue)) {
-          throw new NumberParsingError(this.bytes.position(), value);
+        var numberValue = Number(value2);
+        if (!value2 || !isFinite(numberValue)) {
+          throw new NumberParsingError(this.bytes.position(), value2);
         }
         if (numberValue > Number.MAX_SAFE_INTEGER) {
           if (this.capNumbers) {
-            var msg = "Parsed number that is too large for some PDF readers: " + value + ", using Number.MAX_SAFE_INTEGER instead.";
+            var msg = "Parsed number that is too large for some PDF readers: " + value2 + ", using Number.MAX_SAFE_INTEGER instead.";
             console.warn(msg);
             return Number.MAX_SAFE_INTEGER;
           } else {
-            var msg = "Parsed number that is too large for some PDF readers: " + value + ", not capping.";
+            var msg = "Parsed number that is too large for some PDF readers: " + value2 + ", not capping.";
             console.warn(msg);
           }
         }
@@ -28798,21 +28838,21 @@ Are you sure you want to download this calendar event?`
         return PDFNumber_default.of(firstNum);
       };
       PDFObjectParser2.prototype.parseHexString = function() {
-        var value = "";
+        var value2 = "";
         this.bytes.assertNext(CharCodes_default.LessThan);
         while (!this.bytes.done() && this.bytes.peek() !== CharCodes_default.GreaterThan) {
-          value += charFromCode(this.bytes.next());
+          value2 += charFromCode(this.bytes.next());
         }
         this.bytes.assertNext(CharCodes_default.GreaterThan);
-        return PDFHexString_default.of(value);
+        return PDFHexString_default.of(value2);
       };
       PDFObjectParser2.prototype.parseString = function() {
         var nestingLvl = 0;
         var isEscaped = false;
-        var value = "";
+        var value2 = "";
         while (!this.bytes.done()) {
           var byte = this.bytes.next();
-          value += charFromCode(byte);
+          value2 += charFromCode(byte);
           if (!isEscaped) {
             if (byte === CharCodes_default.LeftParen)
               nestingLvl += 1;
@@ -28825,7 +28865,7 @@ Are you sure you want to download this calendar event?`
             isEscaped = false;
           }
           if (nestingLvl === 0) {
-            return PDFString_default.of(value.substring(1, value.length - 1));
+            return PDFString_default.of(value2.substring(1, value2.length - 1));
           }
         }
         throw new UnbalancedParenthesisError(this.bytes.position());
@@ -28861,8 +28901,8 @@ Are you sure you want to download this calendar event?`
         var dict = /* @__PURE__ */ new Map();
         while (!this.bytes.done() && this.bytes.peek() !== CharCodes_default.GreaterThan && this.bytes.peekAhead(1) !== CharCodes_default.GreaterThan) {
           var key = this.parseName();
-          var value = this.parseObject();
-          dict.set(key, value);
+          var value2 = this.parseObject();
+          dict.set(key, value2);
           this.skipWhitespaceAndComments();
         }
         this.skipWhitespaceAndComments();
@@ -31822,8 +31862,8 @@ Are you sure you want to download this calendar event?`
         var rawOptions = this.acroField.getOptions();
         var options = new Array(rawOptions.length);
         for (var idx = 0, len = options.length; idx < len; idx++) {
-          var _a = rawOptions[idx], display = _a.display, value = _a.value;
-          options[idx] = (display !== null && display !== void 0 ? display : value).decodeText();
+          var _a = rawOptions[idx], display = _a.display, value2 = _a.value;
+          options[idx] = (display !== null && display !== void 0 ? display : value2).decodeText();
         }
         return options;
       };
@@ -32023,8 +32063,8 @@ Are you sure you want to download this calendar event?`
         var rawOptions = this.acroField.getOptions();
         var options = new Array(rawOptions.length);
         for (var idx = 0, len = options.length; idx < len; idx++) {
-          var _a = rawOptions[idx], display = _a.display, value = _a.value;
-          options[idx] = (display !== null && display !== void 0 ? display : value).decodeText();
+          var _a = rawOptions[idx], display = _a.display, value2 = _a.value;
+          options[idx] = (display !== null && display !== void 0 ? display : value2).decodeText();
         }
         return options;
       };
@@ -32219,18 +32259,18 @@ Are you sure you want to download this calendar event?`
         return onOptions;
       };
       PDFRadioGroup2.prototype.getSelected = function() {
-        var value = this.acroField.getValue();
-        if (value === PDFName_default.of("Off"))
+        var value2 = this.acroField.getValue();
+        if (value2 === PDFName_default.of("Off"))
           return void 0;
         var exportValues = this.acroField.getExportValues();
         if (exportValues) {
           var onValues = this.acroField.getOnValues();
           for (var idx = 0, len = onValues.length; idx < len; idx++) {
-            if (onValues[idx] === value)
+            if (onValues[idx] === value2)
               return exportValues[idx].decodeText();
           }
         }
-        return value.decodeText();
+        return value2.decodeText();
       };
       PDFRadioGroup2.prototype.select = function(option) {
         assertIs(option, "option", ["string"]);
@@ -32247,9 +32287,9 @@ Are you sure you want to download this calendar event?`
           }
         } else {
           for (var idx = 0, len = onValues.length; idx < len; idx++) {
-            var value = onValues[idx];
-            if (value.decodeText() === option)
-              this.acroField.setValue(value);
+            var value2 = onValues[idx];
+            if (value2.decodeText() === option)
+              this.acroField.setValue(value2);
           }
         }
       };
@@ -32376,11 +32416,11 @@ Are you sure you want to download this calendar event?`
         return _this;
       }
       PDFTextField2.prototype.getText = function() {
-        var value = this.acroField.getValue();
-        if (!value && this.isRichFormatted()) {
+        var value2 = this.acroField.getValue();
+        if (!value2 && this.isRichFormatted()) {
           throw new RichTextFieldReadError(this.getName());
         }
-        return value === null || value === void 0 ? void 0 : value.decodeText();
+        return value2 === null || value2 === void 0 ? void 0 : value2.decodeText();
       };
       PDFTextField2.prototype.setText = function(text2) {
         assertOrUndefined(text2, "text", ["string"]);
@@ -32860,8 +32900,8 @@ Are you sure you want to download this calendar event?`
         var _a;
         var refOrDict = widget.getNormalAppearance();
         if (refOrDict instanceof PDFDict_default && (field instanceof PDFCheckBox_default || field instanceof PDFRadioGroup_default)) {
-          var value = field.acroField.getValue();
-          var ref = (_a = refOrDict.get(value)) !== null && _a !== void 0 ? _a : refOrDict.get(PDFName_default.of("Off"));
+          var value2 = field.acroField.getValue();
+          var ref = (_a = refOrDict.get(value2)) !== null && _a !== void 0 ? _a : refOrDict.get(PDFName_default.of("Off"));
           if (ref instanceof PDFRef_default) {
             refOrDict = ref;
           }
@@ -34652,8 +34692,8 @@ Are you sure you want to download this calendar event?`
     }
     throw lastError || new Error("PDF template not reachable");
   }
-  function normalizeFieldValue(value) {
-    return cleanText(value).normalize("NFKD").replace(/[\u0300-\u036f]/g, "").replace(/[^\x20-\x7E]/g, " ").replace(/[\u0000-\u001F\u007F]/g, " ").replace(/\s+/g, " ").trim();
+  function normalizeFieldValue(value2) {
+    return cleanText(value2).normalize("NFKD").replace(/[\u0300-\u036f]/g, "").replace(/[^\x20-\x7E]/g, " ").replace(/[\u0000-\u001F\u007F]/g, " ").replace(/\s+/g, " ").trim();
   }
   function stripEmbeddedJavaScript(pdfDoc) {
     try {
@@ -34679,10 +34719,10 @@ Are you sure you want to download this calendar event?`
       configuration_item: fieldMap.FieldPINumber
     };
     for (const [fieldName, rawValue] of Object.entries(entries)) {
-      const value = normalizeFieldValue(rawValue);
+      const value2 = normalizeFieldValue(rawValue);
       try {
         const field = form.getTextField(fieldName);
-        field.setText(value);
+        field.setText(value2);
         field.updateAppearances(font);
       } catch (error2) {
       }
@@ -34757,15 +34797,15 @@ Are you sure you want to download this calendar event?`
       context.requestedFor?.display || context.requestedFor?.fullName || context.requestedFor?.email || context.requested_for || rootWindow?.g_form?.getValue?.("requested_for") || rootWindow?.g_form?.getDisplayValue?.("requested_for")
     );
   }
-  function looksLikeTicketIdentifier4(value = "") {
-    return /^(?:INC|RITM|REQ|SCTASK|TASK|CHG|PRB|SR|KB)\d{4,}$/i.test(cleanText(value));
+  function looksLikeTicketIdentifier4(value2 = "") {
+    return /^(?:INC|RITM|REQ|SCTASK|TASK|CHG|PRB|SR|KB)\d{4,}$/i.test(cleanText(value2));
   }
-  function looksLikeSysId3(value = "") {
-    return /^[0-9a-f]{32}$/i.test(cleanText(value));
+  function looksLikeSysId3(value2 = "") {
+    return /^[0-9a-f]{32}$/i.test(cleanText(value2));
   }
   function sanitizeConfigurationItem(...values2) {
-    for (const value of values2) {
-      const text2 = cleanText(value);
+    for (const value2 of values2) {
+      const text2 = cleanText(value2);
       if (!text2 || looksLikeTicketIdentifier4(text2) || looksLikeSysId3(text2)) continue;
       return text2;
     }
@@ -35235,8 +35275,8 @@ Verification completed with ${requestedFor}. Ticket moved to Resolved.`;
   function text(el) {
     return (el?.textContent || "").replace(/\s+/g, " ").trim();
   }
-  function clean(value) {
-    return String(value || "").replace(/\s+/g, " ").trim();
+  function clean(value2) {
+    return String(value2 || "").replace(/\s+/g, " ").trim();
   }
   function sysIdFromHref(href = "") {
     return (href.match(/[?&]sys_id=([0-9a-f]{32})/i) || [])[1] || "";
@@ -35279,8 +35319,8 @@ Verification completed with ${requestedFor}. Ticket moved to Resolved.`;
     ];
     for (const selector of selectors) {
       const el = safe(() => doc.querySelector(selector), null);
-      const value = clean(el?.value);
-      if (RX_SYSID.test(value)) return value;
+      const value2 = clean(el?.value);
+      if (RX_SYSID.test(value2)) return value2;
     }
     return "";
   }
@@ -35368,8 +35408,8 @@ Verification completed with ${requestedFor}. Ticket moved to Resolved.`;
       (hostDocument.body || hostDocument.documentElement).appendChild(iframe);
     });
   }
-  function normalizeHeader(value = "") {
-    return value.toLowerCase().replace(/\s+/g, " ").replace(/[_-]+/g, " ").trim();
+  function normalizeHeader(value2 = "") {
+    return value2.toLowerCase().replace(/\s+/g, " ").replace(/[_-]+/g, " ").trim();
   }
   function buildHeaderMap(table) {
     const map = /* @__PURE__ */ new Map();
@@ -35483,8 +35523,8 @@ Verification completed with ${requestedFor}. Ticket moved to Resolved.`;
       };
     }).filter((x) => x.sys_id);
   }
-  function parseUpdatedToTs(value = "") {
-    const raw = clean(value);
+  function parseUpdatedToTs(value2 = "") {
+    const raw = clean(value2);
     if (!raw) return 0;
     const eu = raw.match(/^(\d{2})\/(\d{2})\/(\d{4})\s+(\d{2}):(\d{2})(?::(\d{2}))?/);
     if (eu) {
@@ -35635,8 +35675,8 @@ Verification completed with ${requestedFor}. Ticket moved to Resolved.`;
       return fallback;
     }
   }
-  function clean2(value) {
-    return String(value || "").replace(/\s+/g, " ").trim();
+  function clean2(value2) {
+    return String(value2 || "").replace(/\s+/g, " ").trim();
   }
   function collectWindows(rootWindow) {
     const top = safe2(() => rootWindow?.top, null) || rootWindow || globalThis.window;
@@ -35660,8 +35700,8 @@ Verification completed with ${requestedFor}. Ticket moved to Resolved.`;
       `input[name*="sys_original."][name$=".${field}"]`
     ];
     for (const selector of selectors) {
-      const value = clean2(safe2(() => doc.querySelector(selector)?.value, ""));
-      if (RX_SYSID2.test(value)) return value;
+      const value2 = clean2(safe2(() => doc.querySelector(selector)?.value, ""));
+      if (RX_SYSID2.test(value2)) return value2;
     }
     return "";
   }
@@ -35688,11 +35728,11 @@ Verification completed with ${requestedFor}. Ticket moved to Resolved.`;
       for (const control of controls) {
         if (!control || seen.has(control)) continue;
         seen.add(control);
-        const value = clean2(control.value);
-        if (!RX_SYSID2.test(value)) continue;
+        const value2 = clean2(control.value);
+        if (!RX_SYSID2.test(value2)) continue;
         const rawId = clean2(control.id || control.name);
         return {
-          sysId: value,
+          sysId: value2,
           display: "",
           field: rawId.replace(/^sys_original\./, "").replace(new RegExp(`^${table}\\.`), ""),
           source: "requested_for_hidden_input"
@@ -35760,8 +35800,8 @@ Verification completed with ${requestedFor}. Ticket moved to Resolved.`;
     }
     return null;
   }
-  function toTimestamp(value) {
-    const raw = normalizeServiceNowValue(value);
+  function toTimestamp(value2) {
+    const raw = normalizeServiceNowValue(value2);
     if (!raw) return 0;
     const eu = raw.match(/^(\d{2})\/(\d{2})\/(\d{4})(?:\s+(\d{2}):(\d{2})(?::(\d{2}))?)?/);
     if (eu) {
@@ -35776,11 +35816,11 @@ Verification completed with ${requestedFor}. Ticket moved to Resolved.`;
     const parsed = Date.parse(raw);
     return Number.isFinite(parsed) ? parsed : 0;
   }
-  function normalizeReferenceSysId(value) {
-    if (!value) return "";
-    if (typeof value === "string") return RX_SYSID2.test(value.trim()) ? value.trim() : "";
-    if (typeof value !== "object") return "";
-    const candidates = [value.value, value.sys_id, value.sysId];
+  function normalizeReferenceSysId(value2) {
+    if (!value2) return "";
+    if (typeof value2 === "string") return RX_SYSID2.test(value2.trim()) ? value2.trim() : "";
+    if (typeof value2 !== "object") return "";
+    const candidates = [value2.value, value2.sys_id, value2.sysId];
     for (const candidate of candidates) {
       const normalized = clean2(candidate);
       if (RX_SYSID2.test(normalized)) return normalized;
@@ -35940,8 +35980,8 @@ Verification completed with ${requestedFor}. Ticket moved to Resolved.`;
     state.ui.assistantHidden = false;
     state.ui.edgePanelMode = state.ui.edgePanelMode || "expanded";
   }
-  function setWorkNotesText(state, value) {
-    state.ui.workNotesText = String(value || "");
+  function setWorkNotesText(state, value2) {
+    state.ui.workNotesText = String(value2 || "");
     state.ui.workNotesSource = "manual";
   }
   function clearWorkNotes(state) {
@@ -36052,14 +36092,14 @@ Verification completed with ${requestedFor}. Ticket moved to Resolved.`;
     state.ui.workNotesSource = "smart";
     state.ui.workNotesGeneratedTemplateId = "";
   }
-  function setWorkNotesSearch(state, value) {
-    state.ui.workNotesSearch = String(value || "");
+  function setWorkNotesSearch(state, value2) {
+    state.ui.workNotesSearch = String(value2 || "");
   }
   function setWorkNotesRecentPhrases(state, phrases) {
     state.ui.workNotesRecentPhrases = Array.isArray(phrases) ? phrases : [];
   }
-  function setWorkNotesRecentPhrasesReset(state, value = true) {
-    state.ui.workNotesRecentPhrasesReset = Boolean(value);
+  function setWorkNotesRecentPhrasesReset(state, value2 = true) {
+    state.ui.workNotesRecentPhrasesReset = Boolean(value2);
   }
   function setSettingsDraft2(state, draft) {
     state.ui.settingsDraft = draft;
@@ -36079,9 +36119,9 @@ Verification completed with ${requestedFor}. Ticket moved to Resolved.`;
   function setContext(state, nextContext) {
     state.context = nextContext;
   }
-  function cachePiByRecord(state, { recordKey, value }) {
+  function cachePiByRecord(state, { recordKey, value: value2 }) {
     if (!recordKey) return;
-    state.caches.piByRecord[recordKey] = value;
+    state.caches.piByRecord[recordKey] = value2;
   }
   function setHeaderCountsLoading(state, loading) {
     if (!state.ui.headerCounts) {
@@ -36315,8 +36355,8 @@ Verification completed with ${requestedFor}. Ticket moved to Resolved.`;
   function createCiLookupHandlers({ state, store, rootWindow, scheduleRecovery }) {
     let requestId = 0;
     let blurTimer = 0;
-    function looksLikeTicket2(value = "") {
-      return TICKET_NUMBER_PATTERN.test(String(value || "").trim());
+    function looksLikeTicket2(value2 = "") {
+      return TICKET_NUMBER_PATTERN.test(String(value2 || "").trim());
     }
     function closeWithDelay(delayMs = TIMING.ciLookupBlurMs) {
       if (blurTimer) window.clearTimeout(blurTimer);
@@ -36341,8 +36381,8 @@ Verification completed with ${requestedFor}. Ticket moved to Resolved.`;
       scheduleRecovery("ci-lookup-results", 0);
     }
     return {
-      onCiLookupOpen(value = "") {
-        const nextQuery = String(value || state.ui.ciLookupQuery || "");
+      onCiLookupOpen(value2 = "") {
+        const nextQuery = String(value2 || state.ui.ciLookupQuery || "");
         store.dispatch(setCiLookup, { query: nextQuery, open: true, loading: false });
         const currentCi = getCurrentCmdbCi(rootWindow);
         if (currentCi.display && !looksLikeTicket2(currentCi.display) && !state.context?.configurationItem) {
@@ -36354,8 +36394,8 @@ Verification completed with ${requestedFor}. Ticket moved to Resolved.`;
         }
         runSearch(nextQuery);
       },
-      onCiLookupChange(value = "") {
-        const nextQuery = String(value || "");
+      onCiLookupChange(value2 = "") {
+        const nextQuery = String(value2 || "");
         store.dispatch(setCiLookup, { query: nextQuery, open: true, loading: false });
         runSearch(nextQuery);
       },
@@ -36398,8 +36438,8 @@ Verification completed with ${requestedFor}. Ticket moved to Resolved.`;
   function pick(record, keys) {
     for (const key of keys) {
       if (!Object.prototype.hasOwnProperty.call(record || {}, key)) continue;
-      const value = normalizeServiceNowValue(record[key]);
-      if (value) return value;
+      const value2 = normalizeServiceNowValue(record[key]);
+      if (value2) return value2;
     }
     return "";
   }
@@ -36476,7 +36516,7 @@ Verification completed with ${requestedFor}. Ticket moved to Resolved.`;
     ["sysId", "Sys ID"]
   ];
   function buildFullUserInfoSummary(data = {}) {
-    return SUMMARY_FIELDS.map(([key, label]) => [label, normalizeServiceNowValue(data[key])]).filter(([, value]) => value).map(([label, value]) => `${label}: ${value}`).join("\n");
+    return SUMMARY_FIELDS.map(([key, label]) => [label, normalizeServiceNowValue(data[key])]).filter(([, value2]) => value2).map(([label, value2]) => `${label}: ${value2}`).join("\n");
   }
 
   // Assistant/handlers/userInfo.js
@@ -36598,10 +36638,10 @@ Verification completed with ${requestedFor}. Ticket moved to Resolved.`;
         scheduleRecovery("user-info-close", 0);
       },
       async onCopyUserInfoValue(key) {
-        const value = cleanText(state.ui.userInfoData?.[key]);
-        if (!value) return;
+        const value2 = cleanText(state.ui.userInfoData?.[key]);
+        if (!value2) return;
         try {
-          const copied = await copyToClipboard(value, state.host.document);
+          const copied = await copyToClipboard(value2, state.host.document);
           showToast(state.host.document, {
             message: copied ? `${key} copied` : "Clipboard copy failed. Please copy the value manually.",
             tone: copied ? "info" : "warning"
@@ -36769,19 +36809,19 @@ Verification completed with ${requestedFor}. Ticket moved to Resolved.`;
   ];
   var DEVICE_CONTEXT_MARKER = /\s+(?:(?:pi|configuration item|asset(?:\s+tag)?|remarque|remark|remarks|description|requested\s+for|assigned\s+to|catalog\s+item)\s*[:\-]|(?:originally|previously|currently|ready\s+for|prepared\s+for|scheduled\s+for)\b)/i;
   var DEVICE_TRAILING_WORDS = /\s+\b(?:ready|prepared|delivered|delivery|handover|replacement|return|returned|available|assigned|requested)\b.*$/i;
-  function escapeRegex2(value) {
-    return String(value || "").replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  function escapeRegex2(value2) {
+    return String(value2 || "").replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
   }
   function containsAny(text2, values2) {
     const source = String(text2 || "");
-    return values2.some((value) => {
-      const keyword = cleanText(value);
+    return values2.some((value2) => {
+      const keyword = cleanText(value2);
       if (!keyword) return false;
       return new RegExp(`\\b${escapeRegex2(keyword)}\\b`, "i").test(source);
     });
   }
-  function cleanDeviceCandidate(value = "") {
-    let candidate = cleanText(value).replace(/\b\d{2}PI[A-Z0-9-]+\b.*$/i, "").replace(DEVICE_CONTEXT_MARKER, " __STOP__ ").split("__STOP__")[0].replace(DEVICE_TRAILING_WORDS, "").replace(/[.,;:|\-]+$/g, "").replace(/\s{2,}/g, " ").trim();
+  function cleanDeviceCandidate(value2 = "") {
+    let candidate = cleanText(value2).replace(/\b\d{2}PI[A-Z0-9-]+\b.*$/i, "").replace(DEVICE_CONTEXT_MARKER, " __STOP__ ").split("__STOP__")[0].replace(DEVICE_TRAILING_WORDS, "").replace(/[.,;:|\-]+$/g, "").replace(/\s{2,}/g, " ").trim();
     const tokens2 = candidate.split(/\s+/).filter(Boolean);
     if (tokens2.length > 7) candidate = tokens2.slice(0, 7).join(" ");
     return cleanText(candidate);
@@ -36804,12 +36844,12 @@ Verification completed with ${requestedFor}. Ticket moved to Resolved.`;
     }
     return "the device";
   }
-  function normalizeTicketNumber(value = "") {
-    const match = cleanText(value).toUpperCase().match(/\b(?:SCTASK|INC|RITM|REQ)\d{4,}\b/);
-    return match?.[0] || cleanText(value);
+  function normalizeTicketNumber(value2 = "") {
+    const match = cleanText(value2).toUpperCase().match(/\b(?:SCTASK|INC|RITM|REQ)\d{4,}\b/);
+    return match?.[0] || cleanText(value2);
   }
-  function normalizeUserName(value = "") {
-    const text2 = cleanText(typeof value === "object" && value !== null ? value.fullName || value.display || value.name || "" : value).replace(/\s{2,}/g, " ").trim();
+  function normalizeUserName(value2 = "") {
+    const text2 = cleanText(typeof value2 === "object" && value2 !== null ? value2.fullName || value2.display || value2.name || "" : value2).replace(/\s{2,}/g, " ").trim();
     if (/^(?:SCTASK|INC|RITM|REQ|CHG|PRB|SR|KB)\d{4,}$/i.test(text2)) return "";
     return text2;
   }
@@ -37500,16 +37540,16 @@ ${bundle.email.body}`,
   }
 
   // Assistant/application/workNotes/recommendFromShortDescription.js
-  function cleanText5(value) {
-    return String(value || "").trim();
+  function cleanText5(value2) {
+    return String(value2 || "").trim();
   }
-  function normalize2(value) {
-    return cleanText5(value).toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+  function normalize2(value2) {
+    return cleanText5(value2).toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
   }
-  function flatten(value) {
-    if (Array.isArray(value)) return value.map(flatten).join(" ");
-    if (value && typeof value === "object") return Object.values(value).map(flatten).join(" ");
-    return cleanText5(value);
+  function flatten(value2) {
+    if (Array.isArray(value2)) return value2.map(flatten).join(" ");
+    if (value2 && typeof value2 === "object") return Object.values(value2).map(flatten).join(" ");
+    return cleanText5(value2);
   }
   function corpus(template = {}) {
     return normalize2([
@@ -37758,11 +37798,11 @@ ${addition}` : addition;
         noteWorkNoteTemplateUsage(state, rootWindow, template.id);
         scheduleRecovery("work-notes-append-template", 0);
       },
-      onWorkNoteTextChange(value) {
-        store.dispatch(setWorkNotesText, value);
+      onWorkNoteTextChange(value2) {
+        store.dispatch(setWorkNotesText, value2);
       },
-      onWorkNoteSearchChange(value) {
-        store.dispatch(setWorkNotesSearch, value);
+      onWorkNoteSearchChange(value2) {
+        store.dispatch(setWorkNotesSearch, value2);
       },
       onUseSmartWorkNote() {
         const model = buildWorkNoteModel(state.context || {}, getEffectiveSettings(), state);
@@ -37892,8 +37932,8 @@ ${text2}` : text2;
   function createCustomTemplateId(category) {
     return `custom_${cleanText(category || "email")}_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
   }
-  function looksGeneratedCustomId(value = "") {
-    return /^custom_(?:email|reminder|close_note|work_note|appointment)_[a-z0-9]+_[a-z0-9]+$/i.test(cleanText(value));
+  function looksGeneratedCustomId(value2 = "") {
+    return /^custom_(?:email|reminder|close_note|work_note|appointment)_[a-z0-9]+_[a-z0-9]+$/i.test(cleanText(value2));
   }
   function templateFingerprint(template = {}) {
     return JSON.stringify([
@@ -38023,46 +38063,46 @@ ${text2}` : text2;
       "force-close": "#f87171"
     }
   };
-  function normalizeCustomTemplateId(value = "", fallback = "") {
-    const normalized = cleanText(value).replace(/[^A-Za-z0-9_-]+/g, "_").replace(/^_+|_+$/g, "").slice(0, 80);
+  function normalizeCustomTemplateId(value2 = "", fallback = "") {
+    const normalized = cleanText(value2).replace(/[^A-Za-z0-9_-]+/g, "_").replace(/^_+|_+$/g, "").slice(0, 80);
     return normalized || cleanText(fallback);
   }
-  function applyDraftFieldChange(state, name, value) {
+  function applyDraftFieldChange(state, name, value2) {
     const draft = cloneSettings(ensureSettingsDraft(state));
     if (name === "officeProfile") {
-      setSettingsDraft(state, applyOfficePreset(value, draft));
+      setSettingsDraft(state, applyOfficePreset(value2, draft));
       return { rerender: true };
     }
     if (name === "templateSearch") {
       const category = state.ui.templateManagerCategory || "email";
-      state.ui.templateSearch[category] = String(value || "");
+      state.ui.templateSearch[category] = String(value2 || "");
       return { rerender: true };
     }
     if (name === "templateSubcategory") {
       const category = state.ui.templateManagerCategory || "email";
-      state.ui.templateSubcategory[category] = cleanText(value || "all").toLowerCase() || "all";
+      state.ui.templateSubcategory[category] = cleanText(value2 || "all").toLowerCase() || "all";
       return { rerender: true };
     }
     if (name === "autoHideAssistantDelay") {
-      draft.autoHideAssistantDelay = String(value || "off");
+      draft.autoHideAssistantDelay = String(value2 || "off");
       setSettingsDraft(state, sanitizeSettings(draft));
       return { rerender: false };
     }
     if (name === "buttonOpacity") {
-      draft.buttonOpacity = Math.min(1, Math.max(0, Number(value) || 1));
+      draft.buttonOpacity = Math.min(1, Math.max(0, Number(value2) || 1));
       setSettingsDraft(state, sanitizeSettings(draft));
       return { rerender: true };
     }
     if (name.startsWith("toggle:")) {
       const toggleKey = name.split(":")[1];
-      draft.toggles[toggleKey] = Boolean(value);
+      draft.toggles[toggleKey] = Boolean(value2);
       setSettingsDraft(state, sanitizeSettings(draft));
       return { rerender: false };
     }
     if (name.startsWith("btnColor:")) {
       const buttonId = name.split(":")[1];
       const currentColors = typeof draft.buttonColors === "object" ? { ...draft.buttonColors } : {};
-      const safeColor = cleanText(value);
+      const safeColor = cleanText(value2);
       if (safeColor && safeColor !== DEFAULT_BUTTON_COLOR) currentColors[buttonId] = safeColor;
       else delete currentColors[buttonId];
       draft.buttonColors = currentColors;
@@ -38072,7 +38112,7 @@ ${text2}` : text2;
     if (name.startsWith("launcherBtn:")) {
       const buttonId = name.split(":")[1];
       const currentHidden = Array.isArray(draft.hiddenButtons) ? draft.hiddenButtons : [];
-      if (value) draft.hiddenButtons = currentHidden.filter((id) => id !== buttonId);
+      if (value2) draft.hiddenButtons = currentHidden.filter((id) => id !== buttonId);
       else if (!currentHidden.includes(buttonId)) draft.hiddenButtons = [...currentHidden, buttonId];
       setSettingsDraft(state, sanitizeSettings(draft));
       return { rerender: false };
@@ -38084,7 +38124,7 @@ ${text2}` : text2;
       const currentLinks = Array.isArray(draft.customLinks) ? draft.customLinks : [];
       const idx = currentLinks.findIndex((l) => l.id === linkId);
       if (idx >= 0) {
-        const updated = { ...currentLinks[idx], [fieldName]: cleanText(value) };
+        const updated = { ...currentLinks[idx], [fieldName]: cleanText(value2) };
         const nextLinks = [...currentLinks];
         nextLinks[idx] = updated;
         draft.customLinks = nextLinks;
@@ -38096,7 +38136,7 @@ ${text2}` : text2;
       const idx = parseInt(name.split(":")[1], 10);
       const current = Array.isArray(draft.cannedPhrases) ? [...draft.cannedPhrases] : [];
       if (!isNaN(idx) && idx >= 0 && idx < current.length) {
-        current[idx] = cleanText(value);
+        current[idx] = cleanText(value2);
         draft.cannedPhrases = current;
         setSettingsDraft(state, sanitizeSettings(draft));
       }
@@ -38108,7 +38148,7 @@ ${text2}` : text2;
       if (customTemplate) {
         const updatedTemplate = { ...customTemplate };
         if (fieldName === "id") {
-          const nextId = normalizeCustomTemplateId(value, templateId);
+          const nextId = normalizeCustomTemplateId(value2, templateId);
           const collision = (draft.customTemplates || []).some(
             (template) => template.id === nextId && template.id !== templateId
           );
@@ -38127,19 +38167,19 @@ ${text2}` : text2;
           }
           return { rerender: true, renamedTemplateId: nextId };
         }
-        updatedTemplate[fieldName] = String(value || "");
+        updatedTemplate[fieldName] = String(value2 || "");
         upsertCustomTemplate(draft, updatedTemplate);
         setSettingsDraft(state, sanitizeSettings(draft));
         return { rerender: false };
       }
       draft.templateOverrides[category] = draft.templateOverrides[category] || {};
       draft.templateOverrides[category][templateId] = draft.templateOverrides[category][templateId] || {};
-      draft.templateOverrides[category][templateId][fieldName] = String(value || "");
+      draft.templateOverrides[category][templateId][fieldName] = String(value2 || "");
       setSettingsDraft(state, sanitizeSettings(draft));
       return { rerender: false };
     }
     if (["officeName", "officeRoom", "officeLabel"].includes(name)) draft.officeProfile = "custom";
-    draft[name] = String(value || "");
+    draft[name] = String(value2 || "");
     setSettingsDraft(state, sanitizeSettings(draft));
     return { rerender: false };
   }
@@ -38196,8 +38236,8 @@ ${text2}` : text2;
         store.dispatch(setSelectedTemplate2, { category: state.ui.activeCategory, templateId });
         scheduleRecovery("template-select", 0);
       },
-      onFieldChange(name, value) {
-        const result = applyDraftFieldChange(state, name, value);
+      onFieldChange(name, value2) {
+        const result = applyDraftFieldChange(state, name, value2);
         const draftSettings = sanitizeSettings(state.ui.settingsDraft || state.settings);
         if (result.error) {
           showToast(state.host.document, { message: result.error, tone: "error" });
@@ -38531,10 +38571,10 @@ ${text2}` : text2;
   `;
   }
   function sanitizeUrl(rawUrl) {
-    const value = cleanText(rawUrl);
-    if (!value) return "";
-    if (value.startsWith("/")) return value;
-    if (/^(https?:|mailto:|tel:)/i.test(value)) return value;
+    const value2 = cleanText(rawUrl);
+    if (!value2) return "";
+    if (value2.startsWith("/")) return value2;
+    if (/^(https?:|mailto:|tel:)/i.test(value2)) return value2;
     return "";
   }
   function buildPanel(hostDocument, linkCtx, defaultLinks, customLinks) {
@@ -38626,8 +38666,8 @@ ${text2}` : text2;
     { name: "ITEC-MEP-Visio Support", group_sys_id: "b7881a5b47288690de328c37e26d4360", source: "available_group" },
     { name: "ITEC-MEP-Proximity-BRU", group_sys_id: "0f8e1c411b38781018d65398624bcb89", source: "available_group" }
   ]);
-  function isValidGroupSysId(value) {
-    return /^[0-9a-f]{32}$/i.test(String(value || "").trim());
+  function isValidGroupSysId(value2) {
+    return /^[0-9a-f]{32}$/i.test(String(value2 || "").trim());
   }
 
   // Assistant/application/assign/getCurrentUser.js
@@ -38672,7 +38712,7 @@ ${text2}` : text2;
       w?.NOW?.user_display_name || w?.NOW?.user?.displayName || w?.NOW?.user?.name || w?.g_user?.fullName || [w?.g_user?.firstName, w?.g_user?.lastName].filter(Boolean).join(" ")
     );
   }
-  function setByDom(rootWindow, field, value) {
+  function setByDom(rootWindow, field, value2) {
     const selectors = [
       `#sys_display\\.sc_task\\.${field}`,
       `input[id="sys_display.sc_task.${field}"]`,
@@ -38683,7 +38723,7 @@ ${text2}` : text2;
       for (const sel of selectors) {
         const el = doc.querySelector(sel);
         if (!el) continue;
-        el.value = value;
+        el.value = value2;
         ["input", "change", "blur"].forEach((evt) => el.dispatchEvent(new Event(evt, { bubbles: true })));
         return true;
       }
@@ -38935,8 +38975,8 @@ ${text2}` : text2;
 
   // Assistant/core/bootstrap.js
   function getAutoHideDelayMs(settings) {
-    const value = cleanText(settings?.autoHideAssistantDelay || "off").toLowerCase();
-    return AUTO_HIDE_DELAY_MS[value] ?? 0;
+    const value2 = cleanText(settings?.autoHideAssistantDelay || "off").toLowerCase();
+    return AUTO_HIDE_DELAY_MS[value2] ?? 0;
   }
   function createBootstrap({ rootWindow, state, logger }) {
     const api = {
@@ -39001,9 +39041,9 @@ ${text2}` : text2;
         lastRecordKey = currentKey;
       }
     }
-    function isStateClosedForAutoFill(table = "", value = "", display = "") {
+    function isStateClosedForAutoFill(table = "", value2 = "", display = "") {
       const t = cleanText(table).toLowerCase();
-      const v = cleanText(value).toLowerCase();
+      const v = cleanText(value2).toLowerCase();
       const d = cleanText(display).toLowerCase().replace(/[_-]+/g, " ").replace(/\s+/g, " ").trim();
       if (t === "sc_task") {
         return v === "3" || v === "7" || d.includes("closed complete");
@@ -39115,10 +39155,10 @@ ${text2}` : text2;
       const readDisplay = (name) => cleanText(gForm?.getDisplayValue?.(name) || "");
       const readDom = (id) => cleanText(state.host.document?.getElementById?.(id)?.value || "");
       const table = cleanText(gForm?.getTableName?.() || state.context?.table || "").toLowerCase();
-      const currentNumber = cleanText(readValue("number") || state.context?.recordNumber || state.context?.ticketNumber);
+      const currentNumber2 = cleanText(readValue("number") || state.context?.recordNumber || state.context?.ticketNumber);
       const requestItem = cleanText(readDisplay("request_item") || readDom("sys_display.sc_task.request_item") || state.context?.requestItem);
       const ritm = cleanText((requestItem.match(/\bRITM\d{4,}\b/i) || [])[0] || "");
-      const ticketNumber = table === "sc_task" && ritm ? ritm : currentNumber;
+      const ticketNumber = table === "sc_task" && ritm ? ritm : currentNumber2;
       const assetTag = cleanText(readValue("asset_tag") || state.context?.asset_tag);
       const ci = cleanText(readDisplay("configuration_item") || state.context?.configurationItemDisplay || state.context?.configurationItem);
       const configurationItem = assetTag || (/(?:INC|RITM|REQ|SCTASK)\d{4,}/i.test(ci) ? "" : ci);
@@ -39130,7 +39170,7 @@ ${text2}` : text2;
         table,
         ticketNumber,
         recordNumber: ticketNumber,
-        source_task_number: table === "sc_task" ? currentNumber : "",
+        source_task_number: table === "sc_task" ? currentNumber2 : "",
         shortDescription: readValue("short_description") || state.context?.shortDescription,
         description: readValue("description") || state.context?.description,
         solution,
