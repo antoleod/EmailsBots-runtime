@@ -35534,20 +35534,19 @@ Verification completed with ${requestedFor}. Ticket moved to Resolved.`;
     sc_req_item: ["requested_for", "request.requested_for", "variables.requested_for"],
     sc_request: ["requested_for", "opened_for", "user"],
     sc_task: [
-      "sc_task.request_item.request.requested_for",
+      "requested_for",
       "request_item.request.requested_for",
       "request_item.requested_for",
       "request_item.u_requested_for",
-      "requested_for",
       "u_affected_end_user",
       "u_affected_user",
       "caller_id"
     ]
   };
   var TABLES2 = [
-    { table: "incident", type: "Incident", userFields: ["u_affected_end_user", "u_affected_user", "caller_id", "opened_for"] },
-    { table: "sc_req_item", type: "RITM", userFields: ["requested_for", "request.requested_for"] },
-    { table: "sc_task", type: "SCTASK", userFields: ["request_item.requested_for", "request_item.request.requested_for"] }
+    { table: "incident", type: "Incident", userFields: ["u_affected_end_user"] },
+    { table: "sc_req_item", type: "RITM", userFields: ["requested_for"] },
+    { table: "sc_task", type: "SCTASK", userFields: ["request_item.request.requested_for"] }
   ];
   function safe2(fn, fallback = "") {
     try {
@@ -35592,6 +35591,35 @@ Verification completed with ${requestedFor}. Ticket moved to Resolved.`;
     return clean2(
       safe2(() => doc?.getElementById?.(`sys_display.${table}.${field}`)?.value, "") || safe2(() => doc?.getElementById?.(`sys_display.${field}`)?.value, "")
     );
+  }
+  function findRequestedForInput(doc, table) {
+    if (!doc?.querySelectorAll) return null;
+    const selectors = [
+      `input[id*="${table}."][id*="requested_for"]`,
+      `input[name*="${table}."][name*="requested_for"]`,
+      'input[id*="request_item"][id*="requested_for"]',
+      'input[name*="request_item"][name*="requested_for"]',
+      'input[id$=".requested_for"]',
+      'input[name$=".requested_for"]'
+    ];
+    const seen = /* @__PURE__ */ new Set();
+    for (const selector of selectors) {
+      const controls = Array.from(safe2(() => doc.querySelectorAll(selector), []) || []);
+      for (const control of controls) {
+        if (!control || seen.has(control)) continue;
+        seen.add(control);
+        const value = clean2(control.value);
+        if (!RX_SYSID2.test(value)) continue;
+        const rawId = clean2(control.id || control.name);
+        return {
+          sysId: value,
+          display: "",
+          field: rawId.replace(/^sys_original\./, "").replace(new RegExp(`^${table}\\.`), ""),
+          source: "requested_for_hidden_input"
+        };
+      }
+    }
+    return null;
   }
   function sysIdFromPreviewLink(doc, table) {
     const ids = table === "sc_task" ? [
@@ -35642,6 +35670,10 @@ Verification completed with ${requestedFor}. Ticket moved to Resolved.`;
             source: "hidden_original"
           };
         }
+      }
+      if (["sc_task", "sc_req_item", "sc_request"].includes(table)) {
+        const requestedFor = findRequestedForInput(doc, table);
+        if (requestedFor?.sysId) return { ...requestedFor, table };
       }
       const preview = sysIdFromPreviewLink(doc, table);
       if (preview?.sysId) return { ...preview, table };
@@ -35709,8 +35741,8 @@ Verification completed with ${requestedFor}. Ticket moved to Resolved.`;
     const json = await response.json();
     return (Array.isArray(json?.result) ? json.result : []).map((row) => normalizeTicketRecord(row, config)).filter((row) => row.number && row.sysId);
   }
-  async function fetchViaTableApi({ rootWindow, closed = false, limit = 20 }) {
-    const resolved = resolveTicketSubjectUser(rootWindow);
+  async function fetchViaTableApi({ rootWindow, closed = false, limit = 20, resolvedUser = null }) {
+    const resolved = resolvedUser || resolveTicketSubjectUser(rootWindow);
     if (!resolved?.sysId) throw new Error("Unable to resolve end user/requested-for user for ticket lookup");
     const perTableLimit = Math.max(limit, 10);
     const settled = await Promise.allSettled(TABLES2.map((config) => queryTable({
@@ -35728,8 +35760,12 @@ Verification completed with ${requestedFor}. Ticket moved to Resolved.`;
     return rows.sort((a, b) => toTimestamp(b[dateKey]) - toTimestamp(a[dateKey])).slice(0, limit);
   }
   async function fetchOpenTicketsFromUser({ hostDocument, rootWindow, limit = 25 }) {
+    const resolvedUser = resolveTicketSubjectUser(rootWindow);
+    if (!resolvedUser?.sysId) {
+      throw new Error("Unable to resolve requested user for ticket lookup");
+    }
     try {
-      return await fetchViaTableApi({ rootWindow, closed: false, limit });
+      return await fetchViaTableApi({ rootWindow, closed: false, limit, resolvedUser });
     } catch {
       const legacy = await fetchOpenTicketsFromUserRecord({ hostDocument, rootWindow });
       return (Array.isArray(legacy) ? legacy : []).map((row) => normalizeTicketRecord(row, {
@@ -35739,7 +35775,16 @@ Verification completed with ${requestedFor}. Ticket moved to Resolved.`;
     }
   }
   async function fetchLastClosedTicketsFromUser({ rootWindow, limit = 15 }) {
-    return fetchViaTableApi({ rootWindow, closed: true, limit: Math.min(Math.max(limit, 10), 20) });
+    const resolvedUser = resolveTicketSubjectUser(rootWindow);
+    if (!resolvedUser?.sysId) {
+      throw new Error("Unable to resolve requested user for ticket lookup");
+    }
+    return fetchViaTableApi({
+      rootWindow,
+      closed: true,
+      limit: Math.min(Math.max(limit, 10), 20),
+      resolvedUser
+    });
   }
 
   // Assistant/core/state/actions.js
