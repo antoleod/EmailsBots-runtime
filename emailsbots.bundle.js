@@ -12769,44 +12769,23 @@ ${value}` : value;
     const descTooltip = shortDesc ? `${number}: ${shortDesc.slice(0, 120)}` : number;
     const sysId = normalizeServiceNowValue(ticket.sysId ?? ticket.sys_id);
     return `
-    <tr
-      class="sn-assistant-tickets-table__row"
-      data-action="user-tickets-open"
-      data-sys-id="${escapeHtml(sysId)}"
-      data-table="${escapeHtml(table)}"
-      title="${escapeHtml(descTooltip)}"
-      role="button"
-      tabindex="0"
-    >
-      <td class="sn-assistant-tickets-table__number">
-        <span class="sn-assistant-tickets-table__badge sn-assistant-tickets-table__badge--${escapeHtml(table)}">${escapeHtml(getTableBadge(table))}</span>
-        <span class="sn-assistant-tickets-table__num-val">${escapeHtml(number)}</span>
-      </td>
+    <tr class="sn-assistant-tickets-table__row" data-action="user-tickets-open" data-sys-id="${escapeHtml(sysId)}" data-table="${escapeHtml(table)}" title="${escapeHtml(descTooltip)}" role="button" tabindex="0">
+      <td class="sn-assistant-tickets-table__number"><span class="sn-assistant-tickets-table__badge sn-assistant-tickets-table__badge--${escapeHtml(table)}">${escapeHtml(getTableBadge(table))}</span><span class="sn-assistant-tickets-table__num-val">${escapeHtml(number)}</span></td>
       <td class="sn-assistant-tickets-table__type">${escapeHtml(normalizeServiceNowValue(ticket.type) || getTableBadge(table))}</td>
       <td class="sn-assistant-tickets-table__state"><span class="sn-assistant-tickets-table__state-pill sn-assistant-tickets-table__state-pill--${stateKey}">${escapeHtml(state || "-")}</span></td>
       <td class="sn-assistant-tickets-table__assigned" title="${escapeHtml(fullAssignment)}">${escapeHtml(assignmentText)}</td>
       <td class="sn-assistant-tickets-table__date">${escapeHtml(dateText || "-")}</td>
-    </tr>
-  `;
+    </tr>`;
   }
   function groupScTasksByRitm(tasks, allResults) {
-    const ritmByNumber = new Map(
-      allResults.filter((row) => String(row.table) === "sc_req_item").map((row) => [normalizeServiceNowValue(row.number), row]).filter(([number]) => number)
-    );
+    const ritmByNumber = new Map(allResults.filter((row) => String(row.table) === "sc_req_item").map((row) => [normalizeServiceNowValue(row.number), row]).filter(([number]) => number));
     const groups = /* @__PURE__ */ new Map();
     for (const task of tasks) {
       const parentNumber = normalizeServiceNowValue(task.parentRitmNumber ?? task.parent_ritm_number);
       const relatedRitm = parentNumber ? ritmByNumber.get(parentNumber) : null;
-      const parentSysId = normalizeServiceNowValue(task.parentRitmSysId ?? task.parent_ritm_sys_id) || normalizeServiceNowValue(relatedRitm?.sysId);
+      const parentSysId = normalizeServiceNowValue(task.parentRitmSysId ?? task.parent_ritm_sys_id) || normalizeServiceNowValue(relatedRitm?.sysId ?? relatedRitm?.sys_id);
       const key = parentSysId || parentNumber || "__unlinked__";
-      if (!groups.has(key)) {
-        groups.set(key, {
-          parentNumber: parentNumber || normalizeServiceNowValue(relatedRitm?.number) || "Other SCTASKs",
-          parentSysId,
-          parentShortDesc: normalizeServiceNowValue(relatedRitm?.shortDesc ?? relatedRitm?.short_description),
-          tasks: []
-        });
-      }
+      if (!groups.has(key)) groups.set(key, { parentNumber: parentNumber || normalizeServiceNowValue(relatedRitm?.number) || "Other SCTASKs", parentSysId, parentShortDesc: normalizeServiceNowValue(relatedRitm?.shortDesc ?? relatedRitm?.short_description), parentTicket: relatedRitm || null, tasks: [] });
       groups.get(key).tasks.push(task);
     }
     return [...groups.values()].sort((a, b) => {
@@ -12816,10 +12795,7 @@ ${value}` : value;
     });
   }
   function summarizeTaskStates(tasks) {
-    let open = 0;
-    let planned = 0;
-    let closed = 0;
-    let onHold = 0;
+    let open = 0, planned = 0, closed = 0, onHold = 0;
     for (const task of tasks) {
       const state = normalizeServiceNowValue(task.state).toLowerCase();
       if (/closed|complete|resolved|done/.test(state)) closed += 1;
@@ -12835,25 +12811,21 @@ ${value}` : value;
     return parts.join(" \xB7 ");
   }
   function getCurrentTicketNumber(context) {
-    return normalizeServiceNowValue(
-      context?.number ?? context?.ticketNumber ?? context?.sourceNumber ?? context?.recordNumber
-    );
+    return normalizeServiceNowValue(context?.number ?? context?.ticketNumber ?? context?.sourceNumber ?? context?.recordNumber);
   }
-  function renderGroupedScTasks(tasks, allResults, context) {
+  function renderGroupedScTasks(tasks, allResults, context, { forceExpanded = false } = {}) {
     const groups = groupScTasksByRitm(tasks, allResults);
     const currentNumber = getCurrentTicketNumber(context);
     const autoOpenAll = groups.length === 1;
     return groups.map((group) => {
       const containsCurrent = Boolean(currentNumber && group.tasks.some((task) => normalizeServiceNowValue(task.number) === currentNumber));
-      const expanded = autoOpenAll || containsCurrent;
+      const expanded = forceExpanded || autoOpenAll || containsCurrent;
       const parentClickable = Boolean(group.parentSysId && group.parentNumber !== "Other SCTASKs");
       const groupId = `ritm-${String(group.parentSysId || group.parentNumber || "other").replace(/[^a-z0-9_-]/gi, "-")}`;
       return `
-      <section class="sn-assistant-ritm-branch ${expanded ? "is-expanded" : "is-collapsed"}" data-ritm-group>
+      <section class="sn-assistant-ritm-branch ${expanded ? "is-expanded" : "is-collapsed"}" data-ritm-group data-parent-number="${escapeHtml(group.parentNumber)}">
         <div class="sn-assistant-ritm-branch__head">
-          <button type="button" class="sn-assistant-ritm-branch__toggle" data-action="user-tickets-toggle-ritm" aria-expanded="${expanded ? "true" : "false"}" aria-controls="${escapeHtml(groupId)}" title="${expanded ? "Collapse" : "Expand"} ${escapeHtml(group.parentNumber)}">
-            <span class="sn-assistant-ritm-branch__chevron" aria-hidden="true"></span>
-          </button>
+          <button type="button" class="sn-assistant-ritm-branch__toggle" data-action="user-tickets-toggle-ritm" aria-expanded="${expanded ? "true" : "false"}" aria-controls="${escapeHtml(groupId)}" title="${expanded ? "Collapse" : "Expand"} ${escapeHtml(group.parentNumber)}"><span class="sn-assistant-ritm-branch__chevron" aria-hidden="true"></span></button>
           <span class="sn-assistant-ritm-branch__node sn-assistant-ritm-branch__node--parent" aria-hidden="true"></span>
           <div class="sn-assistant-ritm-branch__identity">
             ${parentClickable ? `<button type="button" class="sn-assistant-ritm-branch__number" data-action="user-tickets-open" data-table="sc_req_item" data-sys-id="${escapeHtml(group.parentSysId)}" title="Open ${escapeHtml(group.parentNumber)}">${escapeHtml(group.parentNumber)}</button>` : `<span class="sn-assistant-ritm-branch__number is-static">${escapeHtml(group.parentNumber)}</span>`}
@@ -12861,63 +12833,56 @@ ${value}` : value;
           </div>
           <span class="sn-assistant-ritm-branch__summary">${escapeHtml(summarizeTaskStates(group.tasks))}</span>
         </div>
-
         <div class="sn-assistant-ritm-branch__children" id="${escapeHtml(groupId)}">
           ${group.tasks.map((task, index) => {
-        const state = normalizeServiceNowValue(task.state);
-        const stateKey = getStateClass(state);
+        const state = normalizeServiceNowValue(task.state), stateKey = getStateClass(state);
         const assignedTo = normalizeAssignedTo(task.assignedTo ?? task.assigned_to) || "Unassigned";
         const shortDesc = normalizeServiceNowValue(task.shortDesc ?? task.short_description);
         const dateText = formatDate2(task.updated ?? task.sys_updated_on);
-        const sysId = normalizeServiceNowValue(task.sysId ?? task.sys_id);
-        const number = normalizeServiceNowValue(task.number);
-        const current = Boolean(currentNumber && currentNumber === number);
-        const last2 = index === group.tasks.length - 1;
-        return `
-              <div class="sn-assistant-sctask-tree-row ${current ? "is-current" : ""} ${last2 ? "is-last" : ""}">
-                <span class="sn-assistant-sctask-tree-row__rail" aria-hidden="true"></span>
-                <span class="sn-assistant-sctask-tree-row__branch" aria-hidden="true"></span>
-                <span class="sn-assistant-ritm-branch__node sn-assistant-ritm-branch__node--child" aria-hidden="true"></span>
-                <button type="button" class="sn-assistant-sctask-tree-row__content" data-action="user-tickets-open" data-table="sc_task" data-sys-id="${escapeHtml(sysId)}" title="${escapeHtml(shortDesc || number)}">
-                  <span class="sn-assistant-sctask-tree-row__body">
-                    <span class="sn-assistant-sctask-tree-row__topline">
-                      <strong class="sn-assistant-sctask-tree-row__number">${escapeHtml(number)}</strong>
-                      <span class="sn-assistant-tickets-table__state-pill sn-assistant-tickets-table__state-pill--${stateKey}">${escapeHtml(state || "-")}</span>
-                    </span>
-                    ${shortDesc ? `<span class="sn-assistant-sctask-tree-row__description">${escapeHtml(shortDesc)}</span>` : ""}
-                    <span class="sn-assistant-sctask-tree-row__meta">
-                      <span>${escapeHtml(assignedTo)}</span>
-                      <span>${escapeHtml(dateText || "-")}</span>
-                    </span>
-                  </span>
-                </button>
-              </div>
-            `;
+        const sysId = normalizeServiceNowValue(task.sysId ?? task.sys_id), number = normalizeServiceNowValue(task.number);
+        const current = Boolean(currentNumber && currentNumber === number), last2 = index === group.tasks.length - 1;
+        return `<div class="sn-assistant-sctask-tree-row ${current ? "is-current" : ""} ${last2 ? "is-last" : ""}">
+              <span class="sn-assistant-sctask-tree-row__rail" aria-hidden="true"></span><span class="sn-assistant-sctask-tree-row__branch" aria-hidden="true"></span><span class="sn-assistant-ritm-branch__node sn-assistant-ritm-branch__node--child" aria-hidden="true"></span>
+              <button type="button" class="sn-assistant-sctask-tree-row__content" data-action="user-tickets-open" data-table="sc_task" data-sys-id="${escapeHtml(sysId)}" title="${escapeHtml(shortDesc || number)}">
+                <span class="sn-assistant-sctask-tree-row__body"><span class="sn-assistant-sctask-tree-row__topline"><strong class="sn-assistant-sctask-tree-row__number">${escapeHtml(number)}</strong><span class="sn-assistant-tickets-table__state-pill sn-assistant-tickets-table__state-pill--${stateKey}">${escapeHtml(state || "-")}</span></span>${shortDesc ? `<span class="sn-assistant-sctask-tree-row__description">${escapeHtml(shortDesc)}</span>` : ""}<span class="sn-assistant-sctask-tree-row__meta"><span>${escapeHtml(assignedTo)}</span><span>${escapeHtml(dateText || "-")}</span></span></span>
+              </button></div>`;
       }).join("")}
         </div>
-      </section>
-    `;
+      </section>`;
     }).join("");
   }
+  function renderStandaloneTicket(ticket, context) {
+    const table = normalizeServiceNowValue(ticket.table), number = normalizeServiceNowValue(ticket.number);
+    const state = normalizeServiceNowValue(ticket.state), stateKey = getStateClass(state);
+    const assigned = normalizeAssignedTo(ticket.assignedTo ?? ticket.assigned_to) || "Unassigned";
+    const shortDesc = normalizeServiceNowValue(ticket.shortDesc ?? ticket.short_description);
+    const dateText = formatDate2(ticket.updated ?? ticket.sys_updated_on), sysId = normalizeServiceNowValue(ticket.sysId ?? ticket.sys_id);
+    const current = Boolean(getCurrentTicketNumber(context) && getCurrentTicketNumber(context) === number);
+    return `<button type="button" class="sn-assistant-all-ticket ${current ? "is-current" : ""}" data-action="user-tickets-open" data-table="${escapeHtml(table)}" data-sys-id="${escapeHtml(sysId)}" title="${escapeHtml(shortDesc || number)}">
+    <span class="sn-assistant-all-ticket__node sn-assistant-all-ticket__node--${escapeHtml(table)}" aria-hidden="true"></span>
+    <span class="sn-assistant-all-ticket__body"><span class="sn-assistant-all-ticket__topline"><span><span class="sn-assistant-tickets-table__badge sn-assistant-tickets-table__badge--${escapeHtml(table)}">${escapeHtml(getTableBadge(table))}</span> <strong>${escapeHtml(number)}</strong></span><span class="sn-assistant-tickets-table__state-pill sn-assistant-tickets-table__state-pill--${stateKey}">${escapeHtml(state || "-")}</span></span>${shortDesc ? `<span class="sn-assistant-all-ticket__description">${escapeHtml(shortDesc)}</span>` : ""}<span class="sn-assistant-all-ticket__meta"><span>${escapeHtml(assigned)}</span><span>${escapeHtml(dateText || "-")}</span></span></span>
+  </button>`;
+  }
+  function renderAllHierarchy(allResults, context) {
+    const incidents = allResults.filter((r) => String(r.table) === "incident");
+    const ritms = allResults.filter((r) => String(r.table) === "sc_req_item");
+    const tasks = allResults.filter((r) => String(r.table) === "sc_task");
+    const grouped = groupScTasksByRitm(tasks, allResults);
+    const groupedParents = new Set(grouped.filter((g) => g.parentNumber !== "Other SCTASKs").map((g) => g.parentNumber));
+    const ritmsWithoutTasks = ritms.filter((r) => !groupedParents.has(normalizeServiceNowValue(r.number)));
+    const linkedTasks = tasks.filter((task) => normalizeServiceNowValue(task.parentRitmNumber ?? task.parent_ritm_number));
+    const unlinkedTasks = tasks.filter((task) => !normalizeServiceNowValue(task.parentRitmNumber ?? task.parent_ritm_number));
+    const current = getCurrentTicketNumber(context);
+    const tree = renderGroupedScTasks(linkedTasks, allResults, context, { forceExpanded: false });
+    return `<div class="sn-assistant-all-hierarchy" data-user-tickets-all-view>
+    ${incidents.length ? `<div class="sn-assistant-all-hierarchy__section"><div class="sn-assistant-all-hierarchy__label">Incidents <span>${incidents.length}</span></div>${incidents.map((r) => renderStandaloneTicket(r, context)).join("")}</div>` : ""}
+    ${tree || ritmsWithoutTasks.length ? `<div class="sn-assistant-all-hierarchy__section"><div class="sn-assistant-all-hierarchy__label">Requested items <span>${ritms.length}</span></div>${tree}${ritmsWithoutTasks.map((r) => renderStandaloneTicket(r, context)).join("")}</div>` : ""}
+    ${unlinkedTasks.length ? `<div class="sn-assistant-all-hierarchy__section"><div class="sn-assistant-all-hierarchy__label">Other SCTASKs <span>${unlinkedTasks.length}</span></div>${unlinkedTasks.map((r) => renderStandaloneTicket(r, context)).join("")}</div>` : ""}
+    ${!incidents.length && !ritms.length && !tasks.length ? `<div class="sn-assistant-note sn-assistant-note--empty">No open tickets found for this user.</div>` : ""}
+  </div>`;
+  }
   function renderScTaskGroupedView(results, allResults, context) {
-    return `
-    <div class="sn-assistant-sctask-view is-grouped" data-user-tickets-sctask-view>
-      <div class="sn-assistant-sctask-view__toolbar" role="group" aria-label="SCTASK display mode">
-        <span class="sn-assistant-sctask-view__label">View</span>
-        <button type="button" class="sn-assistant-sctask-view__toggle is-active" data-action="user-tickets-sctask-mode" data-mode="grouped" aria-pressed="true">RITM tree</button>
-        <button type="button" class="sn-assistant-sctask-view__toggle" data-action="user-tickets-sctask-mode" data-mode="flat" aria-pressed="false">Flat</button>
-      </div>
-      <div class="sn-assistant-sctask-view__grouped">${renderGroupedScTasks(results, allResults, context)}</div>
-      <div class="sn-assistant-sctask-view__flat">
-        <div class="sn-assistant-tickets-table-wrapper">
-          <table class="sn-assistant-tickets-table">
-            <thead><tr><th>Number</th><th>Type</th><th>State</th><th>Assigned</th><th>Date</th></tr></thead>
-            <tbody>${results.map((row) => renderTicketRow(row)).join("")}</tbody>
-          </table>
-        </div>
-      </div>
-    </div>
-  `;
+    return `<div class="sn-assistant-sctask-view is-grouped" data-user-tickets-sctask-view><div class="sn-assistant-sctask-view__toolbar" role="group" aria-label="SCTASK display mode"><span class="sn-assistant-sctask-view__label">View</span><button type="button" class="sn-assistant-sctask-view__toggle is-active" data-action="user-tickets-sctask-mode" data-mode="grouped" aria-pressed="true">RITM tree</button><button type="button" class="sn-assistant-sctask-view__toggle" data-action="user-tickets-sctask-mode" data-mode="flat" aria-pressed="false">Flat</button></div><div class="sn-assistant-sctask-view__grouped">${renderGroupedScTasks(results, allResults, context)}</div><div class="sn-assistant-sctask-view__flat"><div class="sn-assistant-tickets-table-wrapper"><table class="sn-assistant-tickets-table"><thead><tr><th>Number</th><th>Type</th><th>State</th><th>Assigned</th><th>Date</th></tr></thead><tbody>${results.map((row) => renderTicketRow(row)).join("")}</tbody></table></div></div></div>`;
   }
   function renderUserTicketsPanelMarkup({ state, context } = {}) {
     const userName = context?.user?.fullName || context?.requestedFor || context?.caller || "Unknown user";
@@ -12926,62 +12891,22 @@ ${value}` : value;
     const activeFilter = String(state.ui.userTicketsFilter || "");
     const isClosedView = activeFilter === CLOSED_VIEW;
     const results = !isClosedView && activeFilter ? allResults.filter((row) => String(row.table) === activeFilter) : allResults;
-    const modeTabsMarkup = `
-    <div class="sn-assistant-tickets-filters" role="tablist" aria-label="Ticket history view">
-      <button type="button" class="sn-assistant-tickets-filter ${!isClosedView ? "is-active" : ""}" data-action="user-tickets-view" data-view="open" role="tab" aria-selected="${!isClosedView}">Open Tickets</button>
-      <button type="button" class="sn-assistant-tickets-filter ${isClosedView ? "is-active" : ""}" data-action="user-tickets-view" data-view="closed" role="tab" aria-selected="${isClosedView}">Last Closed Tickets</button>
-    </div>
-  `;
-    const filterChips = [
-      { id: "", label: "All", count: allResults.length },
-      { id: "incident", label: "INC", count: allResults.filter((r) => r.table === "incident").length },
-      { id: "sc_req_item", label: "RITM", count: allResults.filter((r) => r.table === "sc_req_item").length },
-      { id: "sc_task", label: "SCTASK", count: allResults.filter((r) => r.table === "sc_task").length }
-    ];
-    const filterChipsMarkup = isClosedView ? "" : `
-    <div class="sn-assistant-tickets-filters" role="tablist" aria-label="Filter tickets by type">
-      ${filterChips.map((chip) => {
+    const modeTabsMarkup = `<div class="sn-assistant-tickets-filters" role="tablist" aria-label="Ticket history view"><button type="button" class="sn-assistant-tickets-filter ${!isClosedView ? "is-active" : ""}" data-action="user-tickets-view" data-view="open" role="tab" aria-selected="${!isClosedView}">Open Tickets</button><button type="button" class="sn-assistant-tickets-filter ${isClosedView ? "is-active" : ""}" data-action="user-tickets-view" data-view="closed" role="tab" aria-selected="${isClosedView}">Last Closed Tickets</button></div>`;
+    const filterChips = [{ id: "", label: "All", count: allResults.length }, { id: "incident", label: "INC", count: allResults.filter((r) => r.table === "incident").length }, { id: "sc_req_item", label: "RITM", count: allResults.filter((r) => r.table === "sc_req_item").length }, { id: "sc_task", label: "SCTASK", count: allResults.filter((r) => r.table === "sc_task").length }];
+    const filterChipsMarkup = isClosedView ? "" : `<div class="sn-assistant-tickets-filters" role="tablist" aria-label="Filter tickets by type">${filterChips.map((chip) => {
       const isActive = chip.id === activeFilter;
       return `<button type="button" class="sn-assistant-tickets-filter ${isActive ? "is-active" : ""}" data-action="user-tickets-filter" data-filter="${escapeHtml(chip.id)}" role="tab" aria-selected="${isActive ? "true" : "false"}">${escapeHtml(chip.label)}<span class="sn-assistant-tickets-filter__count">${chip.count}</span></button>`;
-    }).join("")}
-    </div>
-  `;
+    }).join("")}</div>`;
     let bodyContent;
-    if (isLoading) {
-      bodyContent = `${modeTabsMarkup}<div class="sn-assistant-note sn-assistant-tickets-loading">${isClosedView ? "Loading last closed tickets..." : "Searching open tickets..."}</div>`;
-    } else if (!results.length) {
+    if (isLoading) bodyContent = `${modeTabsMarkup}<div class="sn-assistant-note sn-assistant-tickets-loading">${isClosedView ? "Loading last closed tickets..." : "Searching open tickets..."}</div>`;
+    else if (!results.length) {
       const emptyLabel = isClosedView ? "No recently closed tickets found for this user." : activeFilter ? `No open ${activeFilter === "incident" ? "incidents" : activeFilter === "sc_req_item" ? "RITMs" : "SCTASKs"} found for this user.` : "No open tickets found for this user.";
       bodyContent = `${modeTabsMarkup}${filterChipsMarkup}<div class="sn-assistant-note sn-assistant-note--empty">${escapeHtml(emptyLabel)}</div>`;
-    } else if (!isClosedView && activeFilter === "sc_task") {
-      bodyContent = `${modeTabsMarkup}${filterChipsMarkup}${renderScTaskGroupedView(results, allResults, context)}`;
-    } else {
-      bodyContent = `
-      ${modeTabsMarkup}
-      ${filterChipsMarkup}
-      <div class="sn-assistant-tickets-table-wrapper">
-        <table class="sn-assistant-tickets-table">
-          <thead><tr><th>Number</th><th>Type</th><th>State</th><th>Assigned</th><th>${isClosedView ? "Closed date" : "Date"}</th></tr></thead>
-          <tbody>${results.map((row) => renderTicketRow(row, { closed: isClosedView })).join("")}</tbody>
-        </table>
-      </div>
-    `;
-    }
+    } else if (!isClosedView && activeFilter === "sc_task") bodyContent = `${modeTabsMarkup}${filterChipsMarkup}${renderScTaskGroupedView(results, allResults, context)}`;
+    else if (!isClosedView && !activeFilter) bodyContent = `${modeTabsMarkup}${filterChipsMarkup}${renderAllHierarchy(allResults, context)}`;
+    else bodyContent = `${modeTabsMarkup}${filterChipsMarkup}<div class="sn-assistant-tickets-table-wrapper"><table class="sn-assistant-tickets-table"><thead><tr><th>Number</th><th>Type</th><th>State</th><th>Assigned</th><th>${isClosedView ? "Closed date" : "Date"}</th></tr></thead><tbody>${results.map((row) => renderTicketRow(row, { closed: isClosedView })).join("")}</tbody></table></div>`;
     const countLabel = isLoading ? "Loading..." : !isClosedView && activeFilter ? `${results.length} of ${allResults.length} record${allResults.length !== 1 ? "s" : ""}` : `${allResults.length} record${allResults.length !== 1 ? "s" : ""}`;
-    return `
-    <div class="sn-assistant-panel sn-assistant-panel--user-tickets">
-      <div class="sn-assistant-panel__header">
-        <div class="sn-assistant-panel__title">
-          <span class="sn-assistant-panel__eyebrow">${isClosedView ? "Last Closed Tickets" : "Open Tickets"}</span>
-          <div class="sn-assistant-panel__heading">${escapeHtml(userName)}</div>
-          <div class="sn-assistant-panel__subheading">${escapeHtml(countLabel)}</div>
-        </div>
-        <div class="sn-assistant-panel__header-actions">
-          <button type="button" class="sn-assistant-mini-button sn-assistant-mini-button--danger" data-action="user-tickets-close" title="Close" aria-label="Close"><span class="sn-assistant-icon sn-assistant-icon--close" aria-hidden="true"></span></button>
-        </div>
-      </div>
-      <div class="sn-assistant-panel__body sn-assistant-panel__body--flush">${bodyContent}</div>
-    </div>
-  `;
+    return `<div class="sn-assistant-panel sn-assistant-panel--user-tickets"><div class="sn-assistant-panel__header"><div class="sn-assistant-panel__title"><span class="sn-assistant-panel__eyebrow">${isClosedView ? "Last Closed Tickets" : "Open Tickets"}</span><div class="sn-assistant-panel__heading">${escapeHtml(userName)}</div><div class="sn-assistant-panel__subheading">${escapeHtml(countLabel)}</div></div><div class="sn-assistant-panel__header-actions"><button type="button" class="sn-assistant-mini-button sn-assistant-mini-button--danger" data-action="user-tickets-close" title="Close" aria-label="Close"><span class="sn-assistant-icon sn-assistant-icon--close" aria-hidden="true"></span></button></div></div><div class="sn-assistant-panel__body sn-assistant-panel__body--flush">${bodyContent}</div></div>`;
   }
   function bindUserTicketsPanel(root, handlers) {
     if (!root || root.dataset.snAssistantUserTicketsBound === "true") return;
