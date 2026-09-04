@@ -1,0 +1,38 @@
+name: Earning opportunity probe
+
+on:
+  push:
+    branches:
+      - earn-probe-20260905
+
+permissions:
+  contents: read
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Fetch public Clawlancer bounties
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl -fsSL --retry 2 'https://clawlancer.ai/api/listings?listing_type=BOUNTY' -o /tmp/listings.json
+          python3 - <<'PY'
+          import json
+          p='/tmp/listings.json'
+          d=json.load(open(p))
+          print('TOP_TYPE', type(d).__name__)
+          if isinstance(d, dict):
+              print('TOP_KEYS', sorted(d.keys()))
+              items=d.get('listings') or d.get('data') or d.get('items') or d.get('results') or []
+          elif isinstance(d, list):
+              items=d
+          else:
+              items=[]
+          print('COUNT', len(items))
+          for x in items:
+              if not isinstance(x, dict):
+                  continue
+              keep={k:x.get(k) for k in ['id','title','description','category','listing_type','price','price_usdc','status','state','created_at','claimed_by','seller_id'] if k in x}
+              print('ITEM', json.dumps(keep, ensure_ascii=False, separators=(',',':')))
+          PY
