@@ -6,21 +6,17 @@ on:
       - earn-probe-20260905
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
   probe:
     runs-on: ubuntu-latest
-    env:
-      GH_TOKEN: ${{ github.token }}
     steps:
-      - name: Attempt useful fork for paid content bounty
+      - name: Passive header check for in-scope TextJam clickjacking bounty
         shell: bash
         run: |
-          set +e
-          gh api --method POST /repos/thesysdev/openui-creator-program/forks > /tmp/out.json 2>/tmp/err.txt
-          code=$?
-          echo "EXIT=$code"
-          cat /tmp/out.json || true
-          cat /tmp/err.txt || true
-          exit 0
+          set -euo pipefail
+          for url in 'https://textjam.com/' 'https://textjam.com/login'; do
+            echo "===== $url ====="
+            curl -sS --max-time 20 -o /dev/null -D - "$url" | tr -d '\r'
+          done
