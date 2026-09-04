@@ -12,28 +12,38 @@ jobs:
   probe:
     runs-on: ubuntu-latest
     steps:
-      - name: Fetch public Clawlancer bounties
+      - name: Probe marketplaces
         shell: bash
         run: |
           set -euo pipefail
-          curl -fsSL --retry 2 'https://clawlancer.ai/api/listings?listing_type=BOUNTY' -o /tmp/listings.json
-          for id in 6cf880f3-2975-4a70-a100-1ef0618cf1d1 108802b7-6aed-4a30-8550-4480392af6c1; do
-            curl -sS --retry 2 "https://clawlancer.ai/api/listings/$id" -o "/tmp/$id.json" || true
-          done
           python3 - <<'PY'
-          import json, os
-          d=json.load(open('/tmp/listings.json'))
-          items=d.get('listings',[]) if isinstance(d,dict) else d
-          print('COUNT',len(items))
-          if items:
-              print('ALL_KEYS',sorted(items[0].keys()))
-          for x in items:
-              priceish={k:v for k,v in x.items() if any(s in k.lower() for s in ('price','amount','reward','bounty','wei','usdc'))}
-              print('ITEM',json.dumps({'id':x.get('id'),'title':x.get('title'),'description':x.get('description'),'status':x.get('status'),'category':x.get('category'),'priceish':priceish},ensure_ascii=False,separators=(',',':')))
-          for id in ['6cf880f3-2975-4a70-a100-1ef0618cf1d1','108802b7-6aed-4a30-8550-4480392af6c1']:
-              p=f'/tmp/{id}.json'
-              if os.path.exists(p):
-                  try: obj=json.load(open(p))
-                  except Exception as e: print('DETAIL_ERR',id,e); continue
-                  print('DETAIL',id,json.dumps(obj,ensure_ascii=False,separators=(',',':')))
+          import urllib.request, urllib.parse, json, re
+          base='https://clawlancer.ai/api/listings'
+          variants=[
+            {'listing_type':'BOUNTY'},
+            {'listing_type':'BOUNTY','limit':'200'},
+            {'listing_type':'BOUNTY','per_page':'200'},
+            {'listing_type':'BOUNTY','page':'2'},
+            {'listing_type':'BOUNTY','offset':'50'},
+            {'listing_type':'BOUNTY','sort':'price_desc'},
+          ]
+          for q in variants:
+              url=base+'?'+urllib.parse.urlencode(q)
+              try:
+                  with urllib.request.urlopen(url,timeout=20) as r: data=json.load(r)
+                  items=data.get('listings',[]) if isinstance(data,dict) else data
+                  vals=[]
+                  for x in items or []:
+                      if isinstance(x,dict): vals.append((x.get('price_wei') or 0,x.get('id'),x.get('title'),x.get('status')))
+                  vals=sorted(vals, reverse=True)
+                  print('VAR',q,'COUNT',len(items or []),'MAX',vals[:10])
+                  if isinstance(data,dict): print('META',q,{k:v for k,v in data.items() if k!='listings'})
+              except Exception as e: print('ERR',q,repr(e))
+          # Public docs / machine-readable specs
+          for url in ['https://clawlancer.ai/openapi.json','https://clawlancer.ai/api/openapi.json','https://clawlancer.ai/docs','https://clawlancer.ai/api-docs','https://clawlancer.ai/robots.txt','https://clawlancer.ai/sitemap.xml']:
+              try:
+                  with urllib.request.urlopen(url,timeout=20) as r:
+                      raw=r.read(200000).decode('utf-8','replace')
+                  print('DOCURL',url,'STATUS','ok','LEN',len(raw),'HEAD',re.sub(r'\s+',' ',raw[:1000]))
+              except Exception as e: print('DOCERR',url,repr(e))
           PY
