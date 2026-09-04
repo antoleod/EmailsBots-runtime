@@ -17,22 +17,23 @@ jobs:
         run: |
           set -euo pipefail
           curl -fsSL --retry 2 'https://clawlancer.ai/api/listings?listing_type=BOUNTY' -o /tmp/listings.json
+          for id in 6cf880f3-2975-4a70-a100-1ef0618cf1d1 108802b7-6aed-4a30-8550-4480392af6c1; do
+            curl -sS --retry 2 "https://clawlancer.ai/api/listings/$id" -o "/tmp/$id.json" || true
+          done
           python3 - <<'PY'
-          import json
-          p='/tmp/listings.json'
-          d=json.load(open(p))
-          print('TOP_TYPE', type(d).__name__)
-          if isinstance(d, dict):
-              print('TOP_KEYS', sorted(d.keys()))
-              items=d.get('listings') or d.get('data') or d.get('items') or d.get('results') or []
-          elif isinstance(d, list):
-              items=d
-          else:
-              items=[]
-          print('COUNT', len(items))
+          import json, os
+          d=json.load(open('/tmp/listings.json'))
+          items=d.get('listings',[]) if isinstance(d,dict) else d
+          print('COUNT',len(items))
+          if items:
+              print('ALL_KEYS',sorted(items[0].keys()))
           for x in items:
-              if not isinstance(x, dict):
-                  continue
-              keep={k:x.get(k) for k in ['id','title','description','category','listing_type','price','price_usdc','status','state','created_at','claimed_by','seller_id'] if k in x}
-              print('ITEM', json.dumps(keep, ensure_ascii=False, separators=(',',':')))
+              priceish={k:v for k,v in x.items() if any(s in k.lower() for s in ('price','amount','reward','bounty','wei','usdc'))}
+              print('ITEM',json.dumps({'id':x.get('id'),'title':x.get('title'),'description':x.get('description'),'status':x.get('status'),'category':x.get('category'),'priceish':priceish},ensure_ascii=False,separators=(',',':')))
+          for id in ['6cf880f3-2975-4a70-a100-1ef0618cf1d1','108802b7-6aed-4a30-8550-4480392af6c1']:
+              p=f'/tmp/{id}.json'
+              if os.path.exists(p):
+                  try: obj=json.load(open(p))
+                  except Exception as e: print('DETAIL_ERR',id,e); continue
+                  print('DETAIL',id,json.dumps(obj,ensure_ascii=False,separators=(',',':')))
           PY
