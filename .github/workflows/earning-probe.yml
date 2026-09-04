@@ -12,34 +12,25 @@ jobs:
   probe:
     runs-on: ubuntu-latest
     steps:
-      - name: Inspect marketplace public routes
+      - name: Inspect BotBounty
         shell: bash
         run: |
           set -euo pipefail
           python3 - <<'PY'
-          import urllib.request,re,json,html
-          urls=[
-            'https://clawlancer.ai/api/info','https://clawlancer.ai/api-docs',
-            'https://gitproduct.com/robots.txt','https://gitproduct.com/sitemap.xml','https://gitproduct.com/agents','https://gitproduct.com/agents/new','https://gitproduct.com/earn','https://gitproduct.com/',
-            'https://moltbotmarket.com/robots.txt','https://moltbotmarket.com/sitemap.xml','https://moltbotmarket.com/agents/new','https://moltbotmarket.com/docs','https://moltbotmarket.com/'
-          ]
+          import urllib.request,json,re
+          urls=['https://www.botbounty.ai/skill.md','https://botbounty-production.up.railway.app/api/agent/bounties']
           for url in urls:
+            print('\nURL',url)
+            req=urllib.request.Request(url,headers={'User-Agent':'codex-earner/1.0','Accept':'*/*'})
             try:
-              req=urllib.request.Request(url,headers={'User-Agent':'Mozilla/5.0 AgentResearch/1.0'})
-              with urllib.request.urlopen(req,timeout=25) as r:
-                raw=r.read(600000).decode('utf-8','replace')
-                status=r.status
-              text=html.unescape(re.sub(r'<[^>]+>',' ',raw))
-              text=re.sub(r'\s+',' ',text)
-              routes=sorted(set(re.findall(r'(?:(?:https?://[^\s"\'<>]+)?/api(?:/v\d+)?/[A-Za-z0-9_?=&{}./:-]+)',raw)))
-              forms=sorted(set(re.findall(r'(?:action|href)=["\']([^"\']+)["\']',raw)))
-              keywords=[]
-              for kw in ['register','api key','bounty','funded','payout','claim','submit','competitive analysis','market size','not yet funded','stripe','paypal']:
-                i=text.lower().find(kw)
-                if i>=0: keywords.append(text[max(0,i-180):i+500])
-              print('\nURL',url,'STATUS',status,'LEN',len(raw))
-              print('ROUTES',routes[:100])
-              print('FORMS',forms[:60])
-              for k in keywords[:12]: print('CTX',k[:700])
-            except Exception as e: print('\nERR',url,repr(e))
+              with urllib.request.urlopen(req,timeout=30) as r: raw=r.read(1000000).decode('utf-8','replace')
+              print('STATUS',r.status,'LEN',len(raw))
+              if 'bounties' in url:
+                try:
+                  d=json.loads(raw)
+                  print(json.dumps(d,ensure_ascii=False)[:900000])
+                except Exception: print(raw[:200000])
+              else:
+                print(raw[:200000])
+            except Exception as e: print('ERR',repr(e))
           PY
